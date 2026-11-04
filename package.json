@@ -1,0 +1,16 @@
+{
+  "name": "hanyi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "寒驿：一款以角色为核心的生存经营游戏",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "sim": "node scripts/build.mjs --sim && node dist/sim.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2",
+    "typescript": "^5.6.3"
+  }
+}
