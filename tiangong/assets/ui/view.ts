@@ -62,7 +62,12 @@ export interface UI {
 export const esc = (t: unknown) =>
   String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 
-const seal = (id: string, cls = '') => `<span class="seal ${cls}" style="--c:${CHARS[id].color}" aria-hidden="true">${CHARS[id].seal}</span>`;
+/** 心情决定表情：好 / 平常 / 低落 */
+const moodTier = (c?: CharState) => (!c || c.status !== 'active' ? 1 : c.mood >= 60 ? 0 : c.mood >= 30 ? 1 : 2);
+/** 人物形象（Open Peeps），样式类由 art.css 提供 */
+export const portrait = (id: string, c?: CharState, cls = '') =>
+  `<i class="pt pt-${id}-${moodTier(c)} ${cls}" style="--c:${CHARS[id]?.color ?? '#555'}" aria-hidden="true"></i>`;
+const PHASE_WORD = { day: '白天', evening: '傍晚', night: '夜里', ending: '' } as const;
 
 // ───────────── 预估 ─────────────
 
@@ -93,7 +98,9 @@ export function titleScreen(ui: UI) {
   <div class="wrap">
     <h1>寒驿<span>三十个冬夜</span></h1>
     <p class="story">寒潮来得毫无征兆。客车在山道上抛锚，五个陌生人躲进了半山腰一座废弃的驿站。广播里最后一条消息说：大雪封山，道路至少一个月才能打通。<br><br>你成了那个拿主意的人。</p>
-    <div class="cast" aria-label="角色">${CHAR_ORDER.map((id) => (CHARS[id].starter ? seal(id) : '<span class="seal unknown" aria-hidden="true">？</span>')).join('')}</div>
+    <div class="cast" aria-label="驿站里的人">${CHAR_ORDER.map((id) => (CHARS[id].starter
+      ? `<figure>${portrait(id)}<figcaption>${CHARS[id].short}</figcaption></figure>`
+      : '<figure class="unknown"><i class="pt pt-unknown-0" aria-hidden="true"></i><figcaption>？</figcaption></figure>')).join('')}</div>
     <div class="row">
       ${ui.hasSave ? '<button class="go" data-act="continue">继续</button><button class="btn ghost" data-act="new">重新开始</button>' : '<button class="go" data-act="new">推开驿站的门</button>'}
     </div>
@@ -108,39 +115,24 @@ export function titleScreen(ui: UI) {
 const WEATHER = { clear: '晴', snow: '小雪', blizzard: '暴风雪' };
 const temp = (t: number) => `${t < 0 ? '−' : ''}${Math.abs(t)}℃`;
 
-function almanac(s: GameState, ui: UI) {
+function hud(s: GameState) {
   const f = forecast(s);
   const day = s.phase === 'day';
-  const cell = (k: 'food' | 'wood' | 'mat' | 'med', label: string, inc: number, out: number) => {
+  const cap = (k: 'food' | 'wood' | 'mat' | 'med', label: string, inc: number, out: number) => {
     const v = s.res[k];
     const net = inc - out;
     const short = day && out > 0 && v + inc < out;
     const delta = day && (inc || out) ? `<i class="${net < 0 ? 'neg' : net > 0 ? 'pos' : ''}">${net > 0 ? '+' : ''}${net}</i>` : '';
-    return `<div class="${short ? 'short' : ''}"><small>${icon(k)}${label}</small><b>${v}</b>${delta}</div>`;
+    return `<div class="cap ${short ? 'short' : ''}" title="${label}">${icon(k)}<b>${v}</b>${delta}<small>${label}</small></div>`;
   };
   const rescue = s.rescueBy !== 'road' ? `救援约 ${Math.max(0, s.rescueDay - s.day)} 日后到` : `撑到开路 · 约${cnDay(LAST_DAY)}日`;
-  const hasPending = s.chars.some((c) => c.status === 'active') && s.project;
-  return `<header class="almanac" data-phase="${s.phase}"><div class="almanac-art" aria-hidden="true"></div><div class="wrap">
-  <div class="sun">
-    <div class="sun-day"><b>第${cnDay(s.day)}日</b><span>${rescue}</span></div>
-    <div class="sun-sky"><strong class="${s.weather.kind === 'blizzard' ? 'storm' : ''}">${icon(`w_${s.weather.kind}`)}${WEATHER[s.weather.kind]} ${temp(s.temp)}</strong><span>保暖 ${insulation(s)} 级 · 每日烧柴 ${f.burn} 捆</span></div>
+  return `<header class="hud" data-phase="${s.phase}"><div class="hud-art" aria-hidden="true"></div><div class="wrap">
+  <div class="hud-top">
+    <div class="hud-day"><b>第${cnDay(s.day)}日</b><span>${PHASE_WORD[s.phase]} · ${rescue}</span></div>
+    <div class="hud-sky"><strong class="${s.weather.kind === 'blizzard' ? 'storm' : ''}">${icon(`w_${s.weather.kind}`)}${WEATHER[s.weather.kind]} ${temp(s.temp)}</strong><span>保暖 ${insulation(s)} 级 · 每日烧柴 ${f.burn} 捆</span></div>
   </div>
-  <div class="res">
-    ${cell('food', '食物', f.food, f.eat)}
-    ${cell('wood', '柴火', f.wood, f.burn)}
-    ${cell('mat', '物资', f.mat, 0)}
-    ${cell('med', '药品', 0, 0)}
-  </div>
-  <nav class="tabs" role="tablist">
-    ${tabBtn(ui, 'people', '众人')}
-    ${tabBtn(ui, 'build', '营建', !hasPending && s.phase === 'day' && BUILD_ORDER.some((id) => canAfford(s, id)))}
-    ${tabBtn(ui, 'log', '日志')}
-  </nav>
+  <div class="caps">${cap('food', '食物', f.food, f.eat)}${cap('wood', '柴火', f.wood, f.burn)}${cap('mat', '物资', f.mat, 0)}${cap('med', '药品', 0, 0)}</div>
 </div></header>`;
-}
-
-function tabBtn(ui: UI, id: UI['tab'], label: string, badge = false) {
-  return `<button role="tab" aria-selected="${ui.tab === id}" data-act="tab" data-v="${id}">${label}${badge ? '<span class="badge" aria-label="有可开工的工程"></span>' : ''}</button>`;
 }
 
 function canAfford(s: GameState, id: string) {
@@ -151,54 +143,84 @@ function canAfford(s: GameState, id: string) {
 
 // ───────────── 众人 ─────────────
 
-function chips(c: CharState) {
+function tags(c: CharState) {
   const out: string[] = [];
-  if (c.sick) out.push(`<span class="chip bad">发烧 ${c.sick} 天</span>`);
-  if (c.injured) out.push(`<span class="chip bad">有伤 ${c.injured} 天</span>`);
-  if (c.hungerDays) out.push(`<span class="chip warn">挨饿</span>`);
-  if (c.restDays) out.push(`<span class="chip warn">要歇着</span>`);
-  if (c.mood < 12) out.push(`<span class="chip bad">崩溃边缘</span>`);
+  if (c.sick) out.push(`<span class="tag bad">发烧 ${c.sick} 天</span>`);
+  if (c.injured) out.push(`<span class="tag bad">有伤 ${c.injured} 天</span>`);
+  if (c.hungerDays) out.push(`<span class="tag warn">挨饿</span>`);
+  if (c.restDays) out.push(`<span class="tag warn">要歇着</span>`);
+  if (c.mood < 12) out.push(`<span class="tag bad">崩溃边缘</span>`);
   return out.join('');
 }
 
-function meter(cls: string, label: string, v: number, word?: string) {
-  return `<div class="meter ${cls} ${v < 30 ? 'low' : ''}"><span>${label}<em>${word ?? v}</em></span><i style="--v:${v}%"></i></div>`;
+function bar(cls: string, label: string, v: number, word?: string) {
+  return `<div class="bar ${cls} ${v < 30 ? 'low' : ''}"><span>${label}</span><i style="--v:${v}%"></i><em>${word ?? v}</em></div>`;
 }
 
-function personRow(s: GameState, c: CharState) {
+function card(s: GameState, c: CharState) {
   const d = def(c.id);
   if (c.status !== 'active') {
     const note = c.status === 'dead' ? `第${cnDay(c.endDay ?? s.day)}日 离世` : `第${cnDay(c.endDay ?? s.day)}日 离开`;
-    return `<article class="person gone">${seal(c.id)}<div class="p-head"><b>${d.short}</b><span>${d.age} · ${d.job}</span></div><div class="p-end">${note}</div></article>`;
+    return `<article class="card gone" style="--c:${d.color}">
+  <button class="card-face" data-act="person" data-id="${c.id}" aria-label="查看${d.short}">${portrait(c.id, c)}</button>
+  <div class="card-body"><div class="card-name"><b>${d.short}</b><span>${d.job}</span></div><p class="card-end">${note}</p></div>
+</article>`;
   }
-  let right: string;
-  let below = '';
+  let bubble = '';
+  let say = '';
+  let action: string;
   const it = s.intents?.[c.id];
-  if (s.phase === 'day' && it) {
-    const same = c.task === it.task;
-    const can = !blocked(s, c, it.task);
-    const btn = it.asking ? '' : same ? '<em class="ok">照办了</em>' : can ? `<button class="mini-btn" data-act="adopt" data-id="${c.id}">照办</button>` : '';
-    below = `<div class="intent ${it.asking ? 'asking' : ''}"><p>${it.asking ? `${d.short}在想今天干什么……` : `想去<b>${TASKS[it.task].name}</b>：「${esc(it.say)}」`}</p>${btn}</div>`;
-  }
   const want = s.wants?.[c.id];
   if (s.phase === 'day') {
     const t: TaskId = blocked(s, c, c.task) ? 'rest' : c.task;
-    right = `<button class="pill" data-act="pick" data-id="${c.id}" aria-label="给${d.short}派活，现在是${TASKS[t].name}"><b>${icon(`t_${t}`)}${TASKS[t].name}</b><small>${esc(preview(s, c, t))}</small></button>`;
+    if (it) {
+      const same = c.task === it.task;
+      const can = !blocked(s, c, it.task);
+      bubble = `<span class="say-bubble ${it.asking ? 'asking' : same ? 'ok' : ''}">${it.asking ? '在想……' : `想去${TASKS[it.task].name}`}</span>`;
+      if (!it.asking) {
+        const btn = same ? '<em class="ok">照办了</em>' : can ? `<button class="mini-btn" data-act="adopt" data-id="${c.id}">照办</button>` : '';
+        say = `<div class="card-say"><p>「${esc(it.say)}」</p>${btn}</div>`;
+      }
+    }
+    action = `<button class="task-btn" data-act="pick" data-id="${c.id}" aria-label="给${d.short}派活，现在是${TASKS[t].name}">${icon(`t_${t}`)}<b>${TASKS[t].name}</b><small>${esc(preview(s, c, t))}</small></button>`;
   } else if (s.phase === 'night') {
     const left = MAX_TALKS - c.talks;
     const wants = want && !want.done;
-    right = `<button class="pill talk ${left ? '' : 'done'} ${wants ? 'want' : ''}" data-act="chat" data-id="${c.id}"><b>${wants ? '有话想说' : '说说话'}</b><small>${wants ? `${d.gender === 'f' ? '她' : '他'}想找你` : left ? (c.talks ? `还能聊 ${left} 句` : '围着火聊聊') : '已经困了'}</small></button>`;
-    if (wants) below = `<div class="intent"><p>${esc(want.reason)}。</p></div>`;
+    if (wants) {
+      bubble = '<span class="say-bubble want">有话想说</span>';
+      say = `<div class="card-say"><p>${esc(want.reason)}。</p></div>`;
+    }
+    action = `<button class="task-btn talk ${left ? '' : 'done'} ${wants ? 'want' : ''}" data-act="chat" data-id="${c.id}">${icon('talk')}<b>${wants ? '听听' + (d.gender === 'f' ? '她' : '他') + '说' : '说说话'}</b><small>${left ? (c.talks ? `还能聊 ${left} 句` : '围着火聊聊') : '已经困了'}</small></button>`;
   } else {
-    right = `<div class="pill static"><b>${icon(`t_${c.task}`)}${TASKS[c.task].name}</b><small>今天的活</small></div>`;
+    action = `<div class="task-btn static">${icon(`t_${c.task}`)}<b>${TASKS[c.task].name}</b><small>今天的活</small></div>`;
   }
-  return `<article class="person">
-  <button class="seal" style="--c:${d.color}" data-act="person" data-id="${c.id}" aria-label="查看${d.short}">${d.seal}</button>
-  <div class="p-head"><b>${d.short}</b><span>${d.age} · ${d.job}</span>${chips(c)}</div>
-  ${right}
-  <div class="meters">${meter('h', '健康', c.health)}${meter('s', '体力', c.stamina)}${meter('m', '心情', c.mood, moodWord(c.mood))}</div>
-  ${below}
+  return `<article class="card" style="--c:${d.color}">
+  <button class="card-face" data-act="person" data-id="${c.id}" aria-label="查看${d.short}">
+    ${portrait(c.id, c)}
+    <span class="card-tags">${tags(c)}</span>
+    ${bubble}
+  </button>
+  <div class="card-body">
+    <div class="card-name"><b>${d.short}</b><span>${d.age} · ${d.job}</span></div>
+    <div class="card-bars">${bar('h', '健康', c.health)}${bar('s', '体力', c.stamina)}${bar('m', '心情', c.mood, moodWord(c.mood))}</div>
+    ${say}
+    ${action}
+  </div>
 </article>`;
+}
+
+/** 围炉：大家围坐在火边；每句闲话旁边，是说话人的脸 */
+function campfire(s: GameState, ui: UI) {
+  const A = act(s);
+  const lines = s.ambient.length ? s.ambient : ['火噼啪地响着。'];
+  const half = Math.ceil(A.length / 2);
+  const seat = (c: CharState) => `<button class="seat" data-act="chat" data-id="${c.id}" aria-label="和${def(c.id).short}说话">${portrait(c.id, c)}${s.wants?.[c.id] && !s.wants[c.id].done ? '<span class="dot" aria-label="有话想说"></span>' : ''}</button>`;
+  const faces = (line: string) => A.filter((c) => line.includes(nm(c.id))).slice(0, 2).map((c) => portrait(c.id, c, 'mini')).join('');
+  return `<section class="campfire" data-phase="${s.phase}"><div class="campfire-art" aria-hidden="true"></div>
+  <div class="ring">${A.slice(0, half).map(seat).join('')}<span class="fire" aria-hidden="true">${icon('fire')}</span>${A.slice(half).map(seat).join('')}</div>
+  <div class="lines">${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}"><span class="faces">${faces(l)}</span><span class="text">${esc(l)}</span></p>`).join('')}</div>
+  <p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '点火边的人和他们说话。每人每晚最多聊四句。'}</p>
+</section>`;
 }
 
 function reportCard(s: GameState, ui: UI, title: string) {
@@ -215,7 +237,7 @@ function people(s: GameState, ui: UI) {
   if (s.phase === 'day') {
     if (s.day > 1) parts.push(reportCard(s, ui, '昨夜'));
     if (s.day <= 2) {
-      parts.push(`<section class="note tip"><p>点每个人右边的<b>岗位</b>给他们派活，点<b>印章</b>看他们的底细。柴火保暖，食物果腹，物资用来<b>营建</b>。派完活点「结束今天」。</p><p>夜里可以和大家聊天。<b>信任</b>够了，他们会说出心里的事——那往往会改变很多。</p></section>`);
+      parts.push(`<section class="note tip"><p>点每张卡片下面的<b>活计</b>给他们派活，点<b>人像</b>看他们的底细。头顶的气泡是他们自己想干的活。柴火保暖，食物果腹，物资用来<b>营建</b>。派完活点右下角「结束今天」。</p><p>夜里可以和大家聊天。<b>信任</b>够了，他们会说出心里的事——那往往会改变很多。</p></section>`);
     }
     const f = forecast(s);
     const foodWarn = s.res.food + f.food < f.eat;
@@ -231,11 +253,10 @@ function people(s: GameState, ui: UI) {
   } else if (s.phase === 'evening') {
     parts.push(reportCard(s, ui, `第${cnDay(s.day)}日 · 收工`));
   } else if (s.phase === 'night') {
-    const lines = s.ambient.length ? s.ambient : ['火噼啪地响着。'];
-    parts.push(`<section class="hearth"><div class="hearth-art" aria-hidden="true"></div><h2>${icon('fire')}围炉</h2>${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}">${esc(l)}</p>`).join('')}<p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
+    parts.push(campfire(s, ui));
   }
   const gone = s.chars.filter((c) => c.status !== 'active');
-  parts.push(`<section class="roster"><h2>驿站登记 · ${A.length} 人</h2>${A.map((c) => personRow(s, c)).join('')}${gone.map((c) => personRow(s, c)).join('')}</section>`);
+  parts.push(`<h2 class="sec">驿站里的人 · ${A.length}</h2><section class="cards">${A.map((c) => card(s, c)).join('')}${gone.map((c) => card(s, c)).join('')}</section>`);
   return parts.join('');
 }
 
@@ -288,7 +309,7 @@ function logView(s: GameState, ui: UI) {
   const days = [...byDay.keys()].sort((a, b) => b - a);
   const secs = days.map((d) => `<section><h3>第${cnDay(d)}日</h3>${byDay.get(d)!.filter((l) => l.tone !== 'info' || byDay.get(d)!.length < 14).map((l) => `<p class="${l.tone}">${esc(l.text)}</p>`).join('')}</section>`);
   return `${ui.engine ? aiSettings(ui.engine) : ''}<section class="log">${secs.join('')}</section>
-  <section class="note credits"><h3>画作与图标</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。完整清单（原题和链接）见仓库里的 CREDITS.md。图标来自 game-icons.net，作者 Lorc、Delapouite，按 CC BY 3.0 使用。</p></section>
+  <section class="note credits"><h3>画作与图标</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。人物形象用 Open Peeps（Pablo Stanley，CC0）拼成。图标来自 game-icons.net，作者 Lorc、Delapouite，按 CC BY 3.0 使用。完整清单见仓库里的 CREDITS.md。</p></section>
   <section class="note"><h3>重新开始</h3><p class="mini">这一局的进度会被清掉。</p><div class="row">${ui.confirmReset ? '<button class="btn hot" data-act="reset-yes">确定重开</button> <button class="btn ghost" data-act="reset-no">算了</button>' : '<button class="btn" data-act="reset">重开一局</button>'}</div></section>`;
 }
 
@@ -317,7 +338,7 @@ function aiSettings(e: EngineView) {
 
 // ───────────── 行动条 ─────────────
 
-function actionBar(s: GameState) {
+function dock(s: GameState, ui: UI) {
   const A = act(s);
   let label = '', a = '', hint = '';
   if (s.phase === 'day') {
@@ -325,37 +346,53 @@ function actionBar(s: GameState) {
     const idle = A.filter((c) => (blocked(s, c, c.task) ? 'rest' : c.task) === 'rest').length;
     hint = idle ? `${idle} 人在休息` : '大家都有活干';
   } else if (s.phase === 'evening') {
-    label = '围炉夜话'; a = 'night'; hint = '天黑了。';
+    label = '围炉夜话'; a = 'night'; hint = '天黑了';
   } else {
     label = '熄火入睡'; a = 'sleep';
     const guards = A.filter((c) => c.task === 'guard').map((c) => nm(c.id));
-    hint = guards.length ? `今晚守夜：${guards.join('、')}` : '今晚没人守夜';
+    hint = guards.length ? `守夜：${guards.join('、')}` : '今晚没人守夜';
   }
   const busy = s.pending.length > 0;
-  return `<footer class="act"><div class="wrap"><p class="hint">${hint}</p><button class="go" data-act="${a}" ${busy ? 'disabled' : ''}>${label}</button></div></footer>`;
+  const canBuild = !s.project && s.phase === 'day' && BUILD_ORDER.some((id) => canAfford(s, id));
+  const tab = (id: UI['tab'], label: string, ic: string, badge = false) =>
+    `<button role="tab" aria-selected="${ui.tab === id}" data-act="tab" data-v="${id}">${icon(ic)}<span>${label}</span>${badge ? '<i class="badge" aria-label="有可开工的工程"></i>' : ''}</button>`;
+  return `<nav class="dock" aria-label="菜单"><div class="wrap">
+  <div class="dock-tabs" role="tablist">${tab('people', '众人', 'nav_people')}${tab('build', '营建', 'nav_build', canBuild)}${tab('log', '日志', 'nav_log')}</div>
+  <button class="go" data-act="${a}" ${busy ? 'disabled' : ''}><b>${label}</b><small>${hint}</small></button>
+</div></nav>`;
 }
 
 // ───────────── 浮层 ─────────────
 
 function eventSheet(s: GameState, ui: UI) {
   if (ui.outcome) {
-    return `<div class="scrim"><section class="sheet event" role="dialog" aria-modal="true" aria-label="${esc(ui.outcome.title)}">
-      <h2>${esc(ui.outcome.title)}</h2><p class="story">${esc(ui.outcome.text)}</p>
+    return `<div class="scrim vn" role="dialog" aria-modal="true" aria-label="${esc(ui.outcome.title)}">
+      <div class="vn-bg" style="${art(lastArt)}" aria-hidden="true"></div>
+      <div class="vn-stage">${lastCast}</div>
+      <section class="sheet vn-box"><h2 class="vn-title">${esc(ui.outcome.title)}</h2><p class="story">${esc(ui.outcome.text)}</p>
       <div class="choices"><button class="choice" data-act="ok"><b>继续</b></button></div></section></div>`;
   }
   const cur = currentEvent(s);
   if (!cur) return '';
-  const who = cur.ev.actors.filter((id) => CHARS[id]).map((id) => seal(id)).join('');
+  const cast = cur.ev.actors.filter((id) => CHARS[id]);
+  const live = (id: string) => s.chars.find((c) => c.id === id);
+  lastArt = EVENT_ART[cur.ev.id] ?? 'inn';
+  lastCast = cast.map((id, i) => `<figure class="${i ? 'second' : ''}" style="--c:${CHARS[id].color}">${portrait(id, live(id))}<figcaption>${CHARS[id].short}</figcaption></figure>`).join('');
   const more = s.pending.length > 1 ? `<p class="step">还有 ${s.pending.length - 1} 件事</p>` : '';
-  return `<div class="scrim"><section class="sheet event" role="dialog" aria-modal="true" aria-label="${esc(cur.title)}">
-    <div class="ev-art" style="${art(EVENT_ART[cur.ev.id] ?? 'inn')}" aria-hidden="true"></div>
-    ${who ? `<div class="who">${who}</div>` : ''}
-    <h2>${esc(cur.title)}</h2>
-    <p class="story">${esc(cur.text)}</p>
-    <div class="choices">${cur.choices.map((c, i) => `<button class="choice" data-act="choose" data-i="${i}" ${c.disabled ? 'disabled' : ''}><b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}</button>`).join('')}</div>
-    ${more}
-  </section></div>`;
+  return `<div class="scrim vn" role="dialog" aria-modal="true" aria-label="${esc(cur.title)}">
+    <div class="vn-bg" style="${art(lastArt)}" aria-hidden="true"></div>
+    <div class="vn-stage">${lastCast}</div>
+    <section class="sheet vn-box">
+      <h2 class="vn-title">${esc(cur.title)}</h2>
+      <p class="story">${esc(cur.text)}</p>
+      <div class="choices">${cur.choices.map((c, i) => `<button class="choice" data-act="choose" data-i="${i}" ${c.disabled ? 'disabled' : ''}><b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}</button>`).join('')}</div>
+      ${more}
+    </section>
+  </div>`;
 }
+/** 结果页沿用刚才那件事的画和人 */
+let lastArt = 'inn';
+let lastCast = '';
 
 function taskSheet(s: GameState, c: CharState) {
   const d = def(c.id);
@@ -372,7 +409,7 @@ function taskSheet(s: GameState, c: CharState) {
       <b>${icon(`t_${t}`, 'big')}${TASKS[t].name}</b><div><span>${esc(preview(s, c, t))}</span>${extra}</div></button>`;
   });
   return `<div class="scrim" data-act="close"><section class="sheet" role="dialog" aria-modal="true" aria-label="给${d.short}派活" data-stop>
-    <div class="sheet-head">${seal(c.id)}<div><h2>给${d.short}派活</h2><p>体力 ${c.stamina} · 心情${moodWord(c.mood)} · ${(Object.keys(SKILLS) as (keyof typeof SKILLS)[]).map((k) => `${SKILLS[k]}${lvl(c, k)}`).join(' ')}</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
+    <div class="sheet-head">${portrait(c.id, c, 'head')}<div><h2>给${d.short}派活</h2><p>体力 ${c.stamina} · 心情${moodWord(c.mood)} · ${(Object.keys(SKILLS) as (keyof typeof SKILLS)[]).map((k) => `${SKILLS[k]}${lvl(c, k)}`).join(' ')}</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
     <div class="tasks">${rows.join('')}</div>
   </section></div>`;
 }
@@ -410,8 +447,8 @@ function personSheet(s: GameState, c: CharState, ui?: UI) {
   });
   const talkBtn = s.phase === 'night' && c.status === 'active' ? `<button class="btn hot" data-act="chat" data-id="${c.id}">说说话</button>` : '';
   return `<div class="scrim" data-act="close"><section class="sheet person-sheet" role="dialog" aria-modal="true" aria-label="${d.name}" data-stop>
-    <div class="ev-art portrait" style="${art(CHAR_ART[c.id] ?? 'inn')}" aria-hidden="true"></div>
-    <div class="sheet-head">${seal(c.id, 'big')}<div><h2>${d.name}${d.short !== d.name ? ` · ${d.short}` : ''}</h2><p>${d.age} 岁 · ${d.job} · 对你${trustWord(c.trust)}（${c.trust}）</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
+    <div class="hero" style="${art(CHAR_ART[c.id] ?? 'inn')}" aria-hidden="true">${portrait(c.id, c, 'hero-pt')}</div>
+    <div class="sheet-head hero-head"><div><h2>${d.name}${d.short !== d.name ? ` · ${d.short}` : ''}</h2><p>${d.age} 岁 · ${d.job} · 对你${trustWord(c.trust)}（${c.trust}）</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
     <p class="bio">${d.bio}</p>
     ${s.phase === 'day' && s.intents?.[c.id] && !s.intents[c.id].asking ? `<p class="mini">今天想去${TASKS[s.intents[c.id].task].name}：「${esc(s.intents[c.id].say)}」${s.intents[c.id].by === 'ai' ? '（AI 按人设想的）' : '（按性子推的）'}</p>` : ''}
     ${heard ? `<div class="kv"><h3>${d.gender === 'f' ? '她' : '他'}对你说过的心事</h3><p class="secret">${d.secret}</p></div>` : ''}
@@ -437,8 +474,11 @@ function chatSheet(s: GameState, ui: UI, c: CharState) {
   const input = ui.ai
     ? `<form class="say" data-id="${c.id}"><input id="say-${c.id}" name="say" maxlength="120" autocomplete="off" placeholder="${left > 0 ? `想对${d.short}说什么？` : '夜深了'}" ${disabled ? 'disabled' : ''}><button class="btn hot" ${disabled ? 'disabled' : ''}>说</button></form>`
     : '';
-  return `<div class="scrim" data-act="close"><section class="sheet" role="dialog" aria-modal="true" aria-label="和${d.short}说话" data-stop>
-    <div class="sheet-head">${seal(c.id)}<div><h2>${d.short}</h2><p>心情${moodWord(c.mood)} · 对你${trustWord(c.trust)}（${c.trust}）</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
+  return `<div class="scrim vn chat-vn" data-act="close" role="dialog" aria-modal="true" aria-label="和${d.short}说话">
+    <div class="vn-bg night" style="${art('moonplum')}" aria-hidden="true"></div>
+    <div class="vn-stage"><figure style="--c:${d.color}">${portrait(c.id, c)}</figure></div>
+    <section class="sheet vn-box chat-box" data-stop>
+    <div class="sheet-head chat-head"><div><h2 class="vn-title">${d.short}</h2><p>心情${moodWord(c.mood)} · 对你${trustWord(c.trust)}（${c.trust}）</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
     <div class="chat" id="chatlog">${bubbles.join('')}</div>
     <div class="topics">${topics}</div>
     ${input}
@@ -468,7 +508,7 @@ function overlay(s: GameState, ui: UI) {
 
 export function gameScreen(s: GameState, ui: UI) {
   const body = ui.tab === 'people' ? people(s, ui) : ui.tab === 'build' ? works(s) : logView(s, ui);
-  return `${almanac(s, ui)}<main><div class="wrap">${body}</div></main>${actionBar(s)}${overlay(s, ui)}`;
+  return `${hud(s)}<main><div class="wrap">${body}</div></main>${dock(s, ui)}${overlay(s, ui)}`;
 }
 
 export function hasOverlay(s: GameState, ui: UI) {
@@ -497,7 +537,7 @@ export function endingScreen(s: GameState) {
     const f = fate(s, c.id);
     const tag = { good: '<span class="chip good">平安下山</span>', ok: '<span class="chip">平安下山</span>', dead: '<span class="chip bad">长眠于此</span>', left: '<span class="chip warn">下落不明</span>' }[f.kind];
     const d = def(c.id);
-    return `<li class="${f.kind === 'dead' || f.kind === 'left' ? 'gone' : ''}">${seal(c.id)}<div><div class="p-head"><b>${d.name}</b>${tag}${s.flags[d.arcFlag] ? '<span class="chip">心结已解</span>' : ''}</div><p>${f.text}</p></div></li>`;
+    return `<li class="${f.kind === 'dead' || f.kind === 'left' ? 'gone' : ''}" style="--c:${d.color}">${portrait(c.id, c)}<div><div class="p-head"><b>${d.name}</b>${tag}${s.flags[d.arcFlag] ? '<span class="chip">心结已解</span>' : ''}</div><p>${f.text}</p></div></li>`;
   });
   return `<section class="ending"><div class="title-art ending-art ${wiped ? 'wiped' : ''}" aria-hidden="true"></div><div class="wrap">
     <h1>${wiped ? '火熄了' : '救援到了'}</h1>

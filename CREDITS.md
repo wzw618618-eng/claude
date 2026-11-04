@@ -19,14 +19,18 @@
 | `plumsnow` | 小满 | Plum in snow | 刘世儒（Liu Shiru） | — | [48942](https://www.metmuseum.org/art/collection/search/48942) |
 | `snowpass` | 格桑 | Traveling through Snow-Covered Mountains | 姚彦卿（Yao Yanqing (Tingmei)） | — | [39549](https://www.metmuseum.org/art/collection/search/39549) |
 
+## 人物形象
+
+八个人的形象用 [Open Peeps](https://www.openpeeps.com/)（Pablo Stanley 绘，[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)）的发型、五官和服装部件拼成，经 [DiceBear](https://www.dicebear.com/)（代码 MIT 许可）生成。每人三种表情，跟着心情换。配置在 `scripts/art.mjs` 的 `PEOPLE` 里，生成的图在 `art/portraits/`。
+
 ## 图标
 
 来自 [game-icons.net](https://game-icons.net)，按 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) 使用，经 `@iconify-json/game-icons` 取得，未作修改。
 
 | 作者 | 图标 |
 | --- | --- |
-| Lorc | roast-chicken、wood-axe、footprint、hammer-nails、conversation、lantern-flame、sun、snowflake-2、snowing、campfire |
-| Delapouite | wood-pile、toolbox、medicines、bow-arrow、backpack、cooking-pot、first-aid-kit、night-sleep、thermometer-cold |
+| Lorc | roast-chicken、wood-axe、footprint、hammer-nails、conversation、lantern-flame、sun、snowflake-2、snowing、campfire、scroll-unfurled |
+| Delapouite | wood-pile、toolbox、medicines、bow-arrow、backpack、cooking-pot、first-aid-kit、night-sleep、thermometer-cold、meeple-group、wood-cabin、chat-bubble |
 
 ## 字体
 
