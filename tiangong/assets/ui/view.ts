@@ -12,6 +12,22 @@ import {
   blocked, buildOut, cookSave, cookScore, huntOut, injuryRisk, preview, scavOut, taskMood, woodOut,
 } from '../hanyi/systems/work';
 import { MAX_TALKS, TOPICS } from '../hanyi/ai/dialogue';
+import { icon } from './icons';
+
+/** 每个人的画：用在他的登记页上 */
+const CHAR_ART: Record<string, string> = {
+  qin: 'pine', lin: 'plummoon', jie: 'geese', ma: 'retreat', su: 'purewhite', man: 'plumsnow', gesang: 'snowpass', wu: 'ferry',
+};
+/** 事件配图 */
+const EVENT_ART: Record<string, string> = {
+  find_bus: 'travelers', find_man: 'plumsnow', find_gesang: 'snowpass', find_wu: 'retreat', stranger: 'travelers',
+  cellar: 'pine', jie_portrait: 'pine', jie_signal: 'geese', lin_leave: 'ferry', lin_bond: 'plummoon',
+  ma_confess: 'retreat', radio_done: 'inn', phone_done: 'inn', su_phone: 'purewhite', su_challenge: 'purewhite',
+  man_fever: 'plumsnow', gesang_story: 'snowpass', wu_carving: 'retreat', wu_speaks: 'ferry',
+  wolves: 'snowdark', blizzard: 'snowdark', death: 'purewhite', leave_try: 'ferry', theft: 'snowdark',
+  quarrel: 'snowdark', breakdown: 'moonplum', friends: 'moonplum', mentor: 'pine',
+};
+const art = (name: string) => `--art: var(--art-${name})`;
 
 /** 天工引擎版额外显示的东西（独立网页版不传） */
 export interface EngineView {
@@ -72,6 +88,7 @@ export function forecast(s: GameState) {
 
 export function titleScreen(ui: UI) {
   return `<section class="title">
+  <div class="title-art" aria-hidden="true"></div>
   <canvas id="snow" aria-hidden="true"></canvas>
   <div class="wrap">
     <h1>寒驿<span>三十个冬夜</span></h1>
@@ -81,6 +98,7 @@ export function titleScreen(ui: UI) {
       ${ui.hasSave ? '<button class="go" data-act="continue">继续</button><button class="btn ghost" data-act="new">重新开始</button>' : '<button class="go" data-act="new">推开驿站的门</button>'}
     </div>
     <p class="mini">白天给每个人派活：砍柴取暖、打猎果腹、搜寻物资、营建驿站。夜里围着火，和他们说说话。信任，会让他们说出藏在心里的事。${ui.ai ? '<br>夜谈由 Claude 即兴扮演每个角色，你可以说任何话。' : ''}</p>
+    <p class="art-credit">画：清 · 袁耀，雪山中的客栈与旅人（1745），大都会艺术博物馆藏</p>
   </div>
 </section>`;
 }
@@ -98,14 +116,14 @@ function almanac(s: GameState, ui: UI) {
     const net = inc - out;
     const short = day && out > 0 && v + inc < out;
     const delta = day && (inc || out) ? `<i class="${net < 0 ? 'neg' : net > 0 ? 'pos' : ''}">${net > 0 ? '+' : ''}${net}</i>` : '';
-    return `<div class="${short ? 'short' : ''}"><small>${label}</small><b>${v}</b>${delta}</div>`;
+    return `<div class="${short ? 'short' : ''}"><small>${icon(k)}${label}</small><b>${v}</b>${delta}</div>`;
   };
   const rescue = s.rescueBy !== 'road' ? `救援约 ${Math.max(0, s.rescueDay - s.day)} 日后到` : `撑到开路 · 约${cnDay(LAST_DAY)}日`;
   const hasPending = s.chars.some((c) => c.status === 'active') && s.project;
-  return `<header class="almanac"><div class="wrap">
+  return `<header class="almanac" data-phase="${s.phase}"><div class="almanac-art" aria-hidden="true"></div><div class="wrap">
   <div class="sun">
     <div class="sun-day"><b>第${cnDay(s.day)}日</b><span>${rescue}</span></div>
-    <div class="sun-sky"><strong class="${s.weather.kind === 'blizzard' ? 'storm' : ''}">${WEATHER[s.weather.kind]} ${temp(s.temp)}</strong><span>保暖 ${insulation(s)} 级 · 每日烧柴 ${f.burn} 捆</span></div>
+    <div class="sun-sky"><strong class="${s.weather.kind === 'blizzard' ? 'storm' : ''}">${icon(`w_${s.weather.kind}`)}${WEATHER[s.weather.kind]} ${temp(s.temp)}</strong><span>保暖 ${insulation(s)} 级 · 每日烧柴 ${f.burn} 捆</span></div>
   </div>
   <div class="res">
     ${cell('food', '食物', f.food, f.eat)}
@@ -165,14 +183,14 @@ function personRow(s: GameState, c: CharState) {
   const want = s.wants?.[c.id];
   if (s.phase === 'day') {
     const t: TaskId = blocked(s, c, c.task) ? 'rest' : c.task;
-    right = `<button class="pill" data-act="pick" data-id="${c.id}" aria-label="给${d.short}派活，现在是${TASKS[t].name}"><b>${TASKS[t].name}</b><small>${esc(preview(s, c, t))}</small></button>`;
+    right = `<button class="pill" data-act="pick" data-id="${c.id}" aria-label="给${d.short}派活，现在是${TASKS[t].name}"><b>${icon(`t_${t}`)}${TASKS[t].name}</b><small>${esc(preview(s, c, t))}</small></button>`;
   } else if (s.phase === 'night') {
     const left = MAX_TALKS - c.talks;
     const wants = want && !want.done;
     right = `<button class="pill talk ${left ? '' : 'done'} ${wants ? 'want' : ''}" data-act="chat" data-id="${c.id}"><b>${wants ? '有话想说' : '说说话'}</b><small>${wants ? `${d.gender === 'f' ? '她' : '他'}想找你` : left ? (c.talks ? `还能聊 ${left} 句` : '围着火聊聊') : '已经困了'}</small></button>`;
     if (wants) below = `<div class="intent"><p>${esc(want.reason)}。</p></div>`;
   } else {
-    right = `<div class="pill static"><b>${TASKS[c.task].name}</b><small>今天的活</small></div>`;
+    right = `<div class="pill static"><b>${icon(`t_${c.task}`)}${TASKS[c.task].name}</b><small>今天的活</small></div>`;
   }
   return `<article class="person">
   <button class="seal" style="--c:${d.color}" data-act="person" data-id="${c.id}" aria-label="查看${d.short}">${d.seal}</button>
@@ -214,7 +232,7 @@ function people(s: GameState, ui: UI) {
     parts.push(reportCard(s, ui, `第${cnDay(s.day)}日 · 收工`));
   } else if (s.phase === 'night') {
     const lines = s.ambient.length ? s.ambient : ['火噼啪地响着。'];
-    parts.push(`<section class="hearth"><h2>围炉</h2>${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}">${esc(l)}</p>`).join('')}<p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
+    parts.push(`<section class="hearth"><div class="hearth-art" aria-hidden="true"></div><h2>${icon('fire')}围炉</h2>${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}">${esc(l)}</p>`).join('')}<p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
   }
   const gone = s.chars.filter((c) => c.status !== 'active');
   parts.push(`<section class="roster"><h2>驿站登记 · ${A.length} 人</h2>${A.map((c) => personRow(s, c)).join('')}${gone.map((c) => personRow(s, c)).join('')}</section>`);
@@ -270,6 +288,7 @@ function logView(s: GameState, ui: UI) {
   const days = [...byDay.keys()].sort((a, b) => b - a);
   const secs = days.map((d) => `<section><h3>第${cnDay(d)}日</h3>${byDay.get(d)!.filter((l) => l.tone !== 'info' || byDay.get(d)!.length < 14).map((l) => `<p class="${l.tone}">${esc(l.text)}</p>`).join('')}</section>`);
   return `${ui.engine ? aiSettings(ui.engine) : ''}<section class="log">${secs.join('')}</section>
+  <section class="note credits"><h3>画作与图标</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。完整清单（原题和链接）见仓库里的 CREDITS.md。图标来自 game-icons.net，作者 Lorc、Delapouite，按 CC BY 3.0 使用。</p></section>
   <section class="note"><h3>重新开始</h3><p class="mini">这一局的进度会被清掉。</p><div class="row">${ui.confirmReset ? '<button class="btn hot" data-act="reset-yes">确定重开</button> <button class="btn ghost" data-act="reset-no">算了</button>' : '<button class="btn" data-act="reset">重开一局</button>'}</div></section>`;
 }
 
@@ -329,6 +348,7 @@ function eventSheet(s: GameState, ui: UI) {
   const who = cur.ev.actors.filter((id) => CHARS[id]).map((id) => seal(id)).join('');
   const more = s.pending.length > 1 ? `<p class="step">还有 ${s.pending.length - 1} 件事</p>` : '';
   return `<div class="scrim"><section class="sheet event" role="dialog" aria-modal="true" aria-label="${esc(cur.title)}">
+    <div class="ev-art" style="${art(EVENT_ART[cur.ev.id] ?? 'inn')}" aria-hidden="true"></div>
     ${who ? `<div class="who">${who}</div>` : ''}
     <h2>${esc(cur.title)}</h2>
     <p class="story">${esc(cur.text)}</p>
@@ -349,7 +369,7 @@ function taskSheet(s: GameState, c: CharState) {
       why && why !== '没工程' ? `<small>${why}</small>` : '',
     ].join('');
     return `<button class="task" data-act="set" data-id="${c.id}" data-v="${t}" aria-pressed="${c.task === t}" ${why ? 'disabled' : ''}>
-      <b>${TASKS[t].name}</b><div><span>${esc(preview(s, c, t))}</span>${extra}</div></button>`;
+      <b>${icon(`t_${t}`, 'big')}${TASKS[t].name}</b><div><span>${esc(preview(s, c, t))}</span>${extra}</div></button>`;
   });
   return `<div class="scrim" data-act="close"><section class="sheet" role="dialog" aria-modal="true" aria-label="给${d.short}派活" data-stop>
     <div class="sheet-head">${seal(c.id)}<div><h2>给${d.short}派活</h2><p>体力 ${c.stamina} · 心情${moodWord(c.mood)} · ${(Object.keys(SKILLS) as (keyof typeof SKILLS)[]).map((k) => `${SKILLS[k]}${lvl(c, k)}`).join(' ')}</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
@@ -389,7 +409,8 @@ function personSheet(s: GameState, c: CharState, ui?: UI) {
     return `<div class="rel"><span>${nm(o.id)}</span><span class="track"><i style="${style}"></i></span><span>${relWord(r)}</span></div>`;
   });
   const talkBtn = s.phase === 'night' && c.status === 'active' ? `<button class="btn hot" data-act="chat" data-id="${c.id}">说说话</button>` : '';
-  return `<div class="scrim" data-act="close"><section class="sheet" role="dialog" aria-modal="true" aria-label="${d.name}" data-stop>
+  return `<div class="scrim" data-act="close"><section class="sheet person-sheet" role="dialog" aria-modal="true" aria-label="${d.name}" data-stop>
+    <div class="ev-art portrait" style="${art(CHAR_ART[c.id] ?? 'inn')}" aria-hidden="true"></div>
     <div class="sheet-head">${seal(c.id, 'big')}<div><h2>${d.name}${d.short !== d.name ? ` · ${d.short}` : ''}</h2><p>${d.age} 岁 · ${d.job} · 对你${trustWord(c.trust)}（${c.trust}）</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
     <p class="bio">${d.bio}</p>
     ${s.phase === 'day' && s.intents?.[c.id] && !s.intents[c.id].asking ? `<p class="mini">今天想去${TASKS[s.intents[c.id].task].name}：「${esc(s.intents[c.id].say)}」${s.intents[c.id].by === 'ai' ? '（AI 按人设想的）' : '（按性子推的）'}</p>` : ''}
@@ -478,7 +499,7 @@ export function endingScreen(s: GameState) {
     const d = def(c.id);
     return `<li class="${f.kind === 'dead' || f.kind === 'left' ? 'gone' : ''}">${seal(c.id)}<div><div class="p-head"><b>${d.name}</b>${tag}${s.flags[d.arcFlag] ? '<span class="chip">心结已解</span>' : ''}</div><p>${f.text}</p></div></li>`;
   });
-  return `<section class="ending"><div class="wrap">
+  return `<section class="ending"><div class="title-art ending-art ${wiped ? 'wiped' : ''}" aria-hidden="true"></div><div class="wrap">
     <h1>${wiped ? '火熄了' : '救援到了'}</h1>
     <p class="story">${story}</p>
     <div class="tally"><div><small>坚持</small><b>${s.day} 天</b></div><div><small>活着下山</small><b>${saved} / ${ids.length}</b></div><div><small>解开心结</small><b>${arcs} 人</b></div></div>

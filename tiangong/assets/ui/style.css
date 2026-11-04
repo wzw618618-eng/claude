@@ -24,7 +24,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { background: var(--ink); color: var(--snow); }
+html, body { background: var(--ink); color: var(--snow); margin: 0; }
 .hanyi { background: var(--ink); color: var(--snow); font-family: var(--font-ui); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
 /* 天工引擎版：界面挂在 #game-ui 里，作为一层可滚动的全屏面板 */
 .hanyi-scroll { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; z-index: 10; pointer-events: auto; }
@@ -387,3 +387,91 @@ button.pill:hover { border-color: var(--dim); }
   .pill { min-width: 84px; }
   .res b { font-size: 17px; }
 }
+
+
+/* ═════════════ 画 ═════════════
+   画作是绢本设色的古画：白天让它暖暖地铺在日头后面，夜里把同一类画染成冷蓝。 */
+
+/* 白天、傍晚：灯下的暖色；夜里沿用上面的冷色 */
+:root[data-phase="day"], .hanyi[data-phase="day"] {
+  --ink: #15110d; --ink-2: #1e1913; --ink-3: #2a231b; --rule: #3b3127;
+  --frost: #b9ab95; --dim: #857764;
+}
+:root[data-phase="evening"], .hanyi[data-phase="evening"] {
+  --ink: #16110f; --ink-2: #201815; --ink-3: #2c221d; --rule: #40302a;
+  --frost: #bba796; --dim: #8a7466;
+}
+.hanyi, body { background-image: radial-gradient(130% 55% at 50% -12%, color-mix(in srgb, var(--ember) 7%, transparent), transparent 62%); background-attachment: fixed; }
+
+.ico { width: 1.05em; height: 1.05em; fill: currentColor; vertical-align: -0.17em; margin-right: 0.3em; flex: none; }
+.ico.big { display: block; width: 26px; height: 26px; margin: 0 0 3px; color: var(--ember); opacity: 0.9; }
+.res small .ico { color: var(--ember); opacity: 0.85; margin-right: 0.2em; }
+.sun-sky strong .ico { color: var(--warn); }
+.pill b .ico { color: var(--ember); }
+.hearth h2 .ico { color: var(--ember); width: 0.9em; height: 0.9em; vertical-align: -0.08em; }
+.task b { display: grid; justify-items: start; }
+
+/* 标题：《雪山客途》铺满上半屏，往下渐隐进夜色 */
+.title-art {
+  position: absolute; inset: 0 0 auto 0; height: 82%;
+  background: var(--art-inn) center 18% / cover no-repeat;
+}
+.title-art::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(15, 21, 28, 0.05) 0%, rgba(15, 21, 28, 0.3) 34%, rgba(15, 21, 28, 0.82) 58%, var(--ink) 92%);
+}
+.title { align-content: end; }
+.title .wrap { padding-top: 30vh; }
+.title h1 { text-shadow: 0 2px 22px rgba(0, 0, 0, 0.55); }
+.art-credit { font-size: 11px; color: var(--dim); letter-spacing: 0.04em; }
+
+/* 日头：白天是《雪景草堂》；傍晚染上暮色；夜里换成染成夜色的《雪山客途》 */
+.almanac { overflow: hidden; }
+.almanac .wrap { position: relative; z-index: 1; }
+.almanac-art { position: absolute; inset: 0; }
+/* 画和调色在 ::before 上，渐隐在 ::after 上，调色不会染到渐隐的颜色 */
+.almanac-art::before { content: ""; position: absolute; inset: 0; background: var(--art-retreat) center 62% / cover no-repeat; opacity: 0.62; }
+.almanac-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0, 0, 0, 0.05), color-mix(in srgb, var(--ink) 55%, transparent) 45%, var(--ink) 88%); }
+.almanac[data-phase="evening"] .almanac-art::before { filter: sepia(0.5) saturate(1.3) brightness(0.72) hue-rotate(-12deg); }
+.almanac[data-phase="night"] .almanac-art::before { background-image: var(--art-inn); background-position: center 30%; filter: brightness(0.62) saturate(0.4) hue-rotate(180deg); opacity: 0.55; }
+.sun-day b, .sun-sky strong { text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6); }
+.res div { background: color-mix(in srgb, var(--ink-2) 86%, transparent); backdrop-filter: blur(2px); }
+
+/* 围炉：马远《月下观梅》，染成夜色，火光从下面透上来 */
+.hearth-art {
+  position: absolute; inset: 0;
+  background: var(--art-moonplum) center 40% / cover no-repeat;
+  filter: brightness(0.6) saturate(0.45) hue-rotate(175deg) contrast(1.08);
+  opacity: 0.6;
+  -webkit-mask-image: radial-gradient(85% 75% at 60% 35%, #000 35%, transparent 80%);
+  mask-image: radial-gradient(85% 75% at 60% 35%, #000 35%, transparent 80%);
+}
+.hearth > :not(.hearth-art) { position: relative; z-index: 1; }
+.hearth p { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7); }
+
+/* 事件与登记页：顶上一幅画，印章压在画的下沿 */
+.ev-art {
+  height: 150px;
+  margin: -18px calc(-1 * max(16px, env(safe-area-inset-right, 0px))) 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  border-radius: 16px 16px 0 0;
+  background: var(--art) center 45% / cover no-repeat;
+  position: relative;
+}
+.ev-art::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 35%, var(--ink-2) 100%); }
+.ev-art.portrait { height: 200px; background-position: center 35%; }
+.event .who { margin-top: -50px; position: relative; z-index: 1; }
+.event .who .seal, .person-sheet .sheet-head .seal { box-shadow: 0 0 0 3px var(--ink-2), inset 0 0 0 2px rgba(245, 236, 224, 0.16), inset 0 0 0 4px var(--c), inset 0 0 0 5px rgba(245, 236, 224, 0.28); }
+.event h2 { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5); }
+.person-sheet .sheet-head { margin-top: -58px; position: relative; z-index: 1; align-items: flex-end; }
+.person-sheet .sheet-head .x { align-self: flex-start; margin-top: 46px; }
+
+/* 结局：同一幅《雪山客途》，团灭时褪成灰色 */
+.ending { position: relative; overflow: hidden; }
+.ending-art { height: 62vh; }
+.ending-art.wiped::before { content: ""; position: absolute; inset: 0; background: inherit; filter: grayscale(1) brightness(0.55); }
+.ending .wrap { position: relative; padding-top: 32vh; }
+.ending h1 { text-shadow: 0 2px 22px rgba(0, 0, 0, 0.55); }
+
+/* 卡片稍微透一点，让背景的暖光渗进来 */
+.note, .work { background: color-mix(in srgb, var(--ink-2) 92%, transparent); }
+.note.credits p { line-height: 1.7; }

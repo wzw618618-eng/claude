@@ -52,6 +52,9 @@ function render(opts: { top?: boolean; chatBottom?: boolean } = {}) {
   if (ui.screen === 'title' || !s) app.innerHTML = titleScreen(ui);
   else if (s.phase === 'ending') app.innerHTML = endingScreen(s);
   else app.innerHTML = gameScreen(s, ui);
+  const phase = ui.screen === 'title' || !s ? 'title' : s.phase;
+  document.documentElement.dataset.phase = phase;
+  app.dataset.phase = phase;
   const overlay = !!s && ui.screen === 'game' && s.phase !== 'ending' && hasOverlay(s, ui);
   document.documentElement.classList.toggle('lock', overlay);
   window.scrollTo(0, y);

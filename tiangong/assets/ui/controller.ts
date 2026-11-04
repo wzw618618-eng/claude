@@ -8,6 +8,7 @@ import type { Topic } from '../hanyi/ai/dialogue.ts';
 import type { GameState, TaskId } from '../hanyi/core/types.ts';
 import { type Act, CHANNEL, type ToEngine, type ToHost } from '../camp/protocol.ts';
 import { createChatApiProvider, createClaudeProvider, createOfflineProvider, TALK_LIMITS } from '../souls/providers.ts';
+import artCss from './art.css?raw';
 import css from './style.css?raw';
 import { endingScreen, type EngineView, gameScreen, hasOverlay, titleScreen, type UI } from './view.ts';
 
@@ -37,7 +38,7 @@ export function mountHanyi(host: HanyiHost) {
   fonts.rel = 'stylesheet';
   fonts.href = FONTS;
   const style = doc.createElement('style');
-  style.textContent = css;
+  style.textContent = artCss + css;
   const app = doc.createElement('div');
   shell.append(fonts, style, app);
   host.uiRoot.append(shell);
@@ -67,6 +68,7 @@ export function mountHanyi(host: HanyiHost) {
     if (ui.screen === 'title' || !s) app.innerHTML = titleScreen(ui);
     else if (s.phase === 'ending') app.innerHTML = endingScreen(s);
     else app.innerHTML = gameScreen(s, ui);
+    shell.dataset.phase = ui.screen === 'title' || !s ? 'title' : s.phase;
     const overlay = !!s && ui.screen === 'game' && s.phase !== 'ending' && hasOverlay(s, ui);
     shell.classList.toggle('lock', overlay);
     shell.scrollTop = y;
