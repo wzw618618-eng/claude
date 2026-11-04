@@ -2,7 +2,8 @@
 
 import { Engine, commit, makeCtx } from './core/engine';
 import { GameState, TaskId } from './core/types';
-import { act, ch, ended, newGame } from './core/world';
+import { act, ch, ended, newGame as freshGame } from './core/world';
+import { planDay, ruleWants } from './ai/intent';
 import { buildPlugin, campfireScenes, endingPlugin, socialPlugin, weatherPlugin, startProject, cancelProject } from './systems/camp';
 import { morningPlugin, prunePending, resolveChoice, storyPlugin } from './systems/story';
 import { bodyPlugin, upkeepPlugin } from './systems/survival';
@@ -19,7 +20,12 @@ export const engine = new Engine()
   .use(endingPlugin)
   .use(morningPlugin);
 
-export { newGame };
+/** 开一局新游戏：第一天早上，每个人先说说自己想干什么 */
+export function newGame(seed?: number) {
+  const s = freshGame(seed);
+  planDay(s);
+  return s;
+}
 
 export function endDay(s: GameState) {
   if (s.phase !== 'day' || s.pending.length) return;
@@ -33,6 +39,7 @@ export function toNight(s: GameState) {
   const ctx = makeCtx(s);
   campfireScenes(ctx);
   commit(ctx);
+  ruleWants(s);
 }
 
 export function endNight(s: GameState) {
@@ -42,6 +49,8 @@ export function endNight(s: GameState) {
     s.phase = 'day';
     // 昨天的岗位如果今天干不了，自动改成休息
     for (const c of act(s)) if (blocked(s, c, c.task)) c.task = 'rest';
+    s.wants = {};
+    planDay(s);
   }
 }
 

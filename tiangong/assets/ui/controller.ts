@@ -145,6 +145,8 @@ export function mountHanyi(host: HanyiHost) {
       case 'night': actOn({ type: 'toNight' }); ui.tab = 'people'; top = true; break;
       case 'sleep': actOn({ type: 'endNight' }); ui.sheet = null; ui.reportOpen = false; ui.tab = 'people'; top = true; break;
       case 'policy': actOn({ type: 'policy', k: el.dataset.k as 'ration' | 'heat', v }); return;
+      case 'adopt': actOn({ type: 'adopt', id }); return;
+      case 'adopt-all': actOn({ type: 'adopt' }); return;
       case 'build': actOn({ type: 'build', id }); return;
       case 'cancel': actOn({ type: 'cancel' }); return;
       case 'report': ui.reportOpen = !ui.reportOpen; break;

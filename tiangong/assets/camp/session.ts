@@ -12,6 +12,10 @@ import {
   NpcBrain,
 } from '@forgeax/engine/npc';
 import { applyTalk, buildPrompt, canTalk, scriptedReply, type TalkResult, type Topic, TOPICS } from '../hanyi/ai/dialogue.ts';
+import {
+  acceptBanter, acceptIntent, acceptOpener, adoptAll, adoptIntent, applyBanter, banterPair,
+  buildBanterPrompt, buildIntentPrompt, buildOpenerPrompt, openChat,
+} from '../hanyi/ai/intent.ts';
 import { makeRng } from '../hanyi/core/rng.ts';
 import type { GameState } from '../hanyi/core/types.ts';
 import { act, ch, def, has, moodWord, nm, rel, relWord, trustWord } from '../hanyi/core/world.ts';
@@ -23,13 +27,14 @@ import { TALK_LIMITS } from '../souls/providers.ts';
 import { type Affordance, type Perception, SoulClient, charIdOf, soulIdOf } from '../souls/soul-client.ts';
 import { type Act, CHANNEL, type ToEngine, type ToHost } from './protocol.ts';
 
-interface Pending {
-  readonly id: string;
-  readonly topic?: Topic;
-  readonly fallback: TalkResult;
-  raw: string;
-  shown: string;
-}
+/** 一个在等 AI 回复的请求 */
+type Pending =
+  | { kind: 'talk'; id: string; topic?: Topic; fallback: TalkResult; raw: string; shown: string }
+  | { kind: 'intent'; id: string; day: number }
+  | { kind: 'opener'; id: string; day: number }
+  | { kind: 'banter'; a: string; b: string; day: number };
+
+const OFFLINE = 'hanyi-offline';
 
 export class CampSession {
   s: GameState;
@@ -58,11 +63,17 @@ export class CampSession {
         if (saved) this.s = saved;
         this.align();
         this.publish();
+        this.think();
         break;
       }
       case 'act': this.publish(this.act(msg.act)); break;
       case 'talk': this.talk(msg.id, msg.topic, msg.text); break;
-      case 'focus': this.focus = msg.id; this.align(); this.publish(); break;
+      case 'focus':
+        this.focus = msg.id;
+        if (msg.id) openChat(this.s, msg.id);
+        this.align();
+        this.publish();
+        break;
       case 'intelligence':
         if (port) void this.connect(createClient(msg.providerId, port), msg.label);
         break;
@@ -85,8 +96,10 @@ export class CampSession {
         break;
       case 'build': startProject(s, a.id); break;
       case 'cancel': cancelProject(s); break;
+      case 'adopt': if (a.id) adoptIntent(s, a.id); else adoptAll(s); break;
     }
     this.align();
+    if (a.type === 'new' || a.type === 'endNight' || a.type === 'toNight') this.think();
     return outcome;
   }
 
@@ -187,9 +200,12 @@ export class CampSession {
     this.provider = label;
     for (const [id, p] of this.pending) {
       this.pending.delete(id);
-      this.finish(p, p.topic ? p.fallback : null, '换了 AI 提供方，这句改用台词回答。');
+      if (p.kind === 'talk') this.finish(p, p.topic ? p.fallback : null, '换了 AI 提供方，这句改用台词回答。');
+      else this.settle(p);
     }
+    this.thoughtFor = '';
     this.publish();
+    this.think();
     if (old && old !== service) await old.close().catch(() => undefined);
   }
 
@@ -207,7 +223,7 @@ export class CampSession {
     this.focus = id;
     this.note = null;
     this.align();
-    const p: Pending = { id, topic: topic ?? (text ? undefined : 'chat'), fallback, raw: '', shown: '' };
+    const p: Pending = { kind: 'talk', id, topic: topic ?? (text ? undefined : 'chat'), fallback, raw: '', shown: '' };
     if (!this.intel) {
       this.finish(p, fallback, null);
       return;
@@ -231,6 +247,13 @@ export class CampSession {
     for (const ev of this.intel.poll()) {
       const p = this.pending.get(ev.activityId);
       if (!p) continue;
+      if (p.kind !== 'talk') {
+        if (ev.type === 'text-delta') continue;
+        this.pending.delete(ev.activityId);
+        if (ev.type === 'completed') this.land(p, ev.output);
+        else this.settle(p);
+        continue;
+      }
       if (ev.type === 'text-delta') {
         p.raw += ev.text;
         const t = replySoFar(p.raw);
@@ -253,7 +276,78 @@ export class CampSession {
     }
   }
 
-  private finish(p: Pending, r: TalkResult | null, note: string | null) {
+  // ───────────── 自主行动：自荐、主动开口、篝火对话 ─────────────
+
+  private thoughtFor = '';
+
+  private get thinksWithAI() {
+    return !!this.intel && this.intel.providerId !== OFFLINE;
+  }
+
+  /** 按当前阶段，让在场的灵魂用 AI 想一想；离线时保留按性子推出来的结果 */
+  think() {
+    if (!this.thinksWithAI) return;
+    const s = this.s;
+    const key = `${s.day}:${s.phase}`;
+    if (this.thoughtFor === key) return;
+    this.thoughtFor = key;
+    if (s.phase === 'day') {
+      for (const c of act(s)) {
+        if (this.souls.get(soulIdOf(c.id))?.lod === 'offstage') continue;
+        const it = s.intents?.[c.id];
+        if (!it || it.by === 'ai') continue;
+        if (this.ask({ kind: 'intent', id: c.id, day: s.day }, buildIntentPrompt(s, c.id), c.id)) it.asking = true;
+      }
+    } else if (s.phase === 'night') {
+      for (const [id, w] of Object.entries(s.wants ?? {})) {
+        if (!w.done && w.by === 'rule') this.ask({ kind: 'opener', id, day: s.day }, buildOpenerPrompt(s, id, w), id);
+      }
+      const pair = banterPair(s, (s.rng % 1000) / 1000);
+      if (pair) this.ask({ kind: 'banter', a: pair[0], b: pair[1], day: s.day }, buildBanterPrompt(s, pair[0], pair[1]), pair[0]);
+    }
+    this.publish();
+  }
+
+  private ask(p: Exclude<Pending, { kind: 'talk' }>, prompt: string, soul: string) {
+    const r = this.intel!.submit({ input: encodeEnvelope({ v: 1, soul: soulIdOf(soul), prompt, fallback: null }) });
+    if (!r.ok) return false;
+    this.pending.set(r.value.id, p);
+    return true;
+  }
+
+  /** AI 想好了：校验通过才采用，过期的（已经换了一天）直接丢掉 */
+  private land(p: Exclude<Pending, { kind: 'talk' }>, output: string) {
+    const s = this.s;
+    if (p.day !== s.day) return;
+    if (p.kind === 'intent') {
+      const it = s.phase === 'day' ? acceptIntent(s, p.id, output) : null;
+      if (it && s.intents) s.intents[p.id] = it;
+      else this.settle(p);
+    } else if (p.kind === 'opener') {
+      const w = s.wants?.[p.id];
+      const r = acceptOpener(output);
+      if (w && !w.done && r) {
+        w.opener = r.reply;
+        w.by = 'ai';
+        w.reveals = r.revealed;
+      }
+    } else {
+      const r = s.phase === 'night' ? acceptBanter(output, p.a, p.b) : null;
+      if (r && ch(s, p.a)?.status === 'active' && ch(s, p.b)?.status === 'active') applyBanter(s, p.a, p.b, r);
+    }
+    this.publish();
+  }
+
+  /** AI 没想出来：保留规则给的结果 */
+  private settle(p: Exclude<Pending, { kind: 'talk' }>) {
+    if (p.kind === 'intent') {
+      const it = this.s.intents?.[p.id];
+      if (it) it.asking = false;
+    }
+    this.publish();
+  }
+
+  private finish(p: Extract<Pending, { kind: 'talk' }>, r: TalkResult | null, note: string | null) {
     this.thinking = null;
     this.note = note;
     const s = this.s;

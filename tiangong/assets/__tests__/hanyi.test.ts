@@ -191,3 +191,107 @@ describe('寒驿 · DeepSeek 等 OpenAI 兼容接口', () => {
     expect(session.s.chat.ma!.at(-1)).toEqual({ from: 'them', text: '嗯。' });
   });
 });
+
+import { adoptIntent, planDay, ruleWants } from '../hanyi/ai/intent.ts';
+
+/** 按提示词内容回不同的 JSON，模拟一个会自荐、会开口、会写篝火对话的 AI */
+function scriptedAI(overrides: { intent?: string } = {}) {
+  return createFakeIntelligenceProvider({
+    id: 'fake-llm',
+    script: (sub) => {
+      const prompt = JSON.parse(sub.input).prompt as string;
+      let out = '{"reply":"嗯。","trust":0,"mood":0,"revealed":false}';
+      if (prompt.includes('【你今天能做的事】')) out = overrides.intent ?? '{"task":"rest","say":"今天我想歇着。"}';
+      else if (prompt.includes('你主动走到主事人身边')) out = '{"reply":"（他在你旁边坐下）睡不着。","revealed":false}';
+      else if (prompt.includes('篝火边的对话')) {
+        const ids = [...prompt.matchAll(/- ([a-z]+)：/g)].map((m) => m[1]);
+        out = JSON.stringify({ lines: [{ who: ids[0], text: '还冷吗？' }, { who: ids[1], text: '好多了，谢谢。' }], warmth: 2 });
+      }
+      return { deltas: [out], output: out };
+    },
+  });
+}
+const drain = (p: { advance(): void }, s: CampSession, n = 4) => { for (let i = 0; i < n; i++) { p.advance(); s.poll(); } };
+
+describe('寒驿 · 角色自己拿主意', () => {
+  it('每天早上每个人都会自荐一件能干的活；有伤的人想歇着', () => {
+    const session = new CampSession(() => undefined, 21);
+    const s = session.s;
+    expect(Object.keys(s.intents!)).toEqual(['qin', 'lin', 'jie', 'ma', 'su']);
+    ch(s, 'jie')!.injured = 2;
+    planDay(s);
+    expect(s.intents!.jie!.task).not.toBe('wood');
+    expect(s.intents!.ma!.task).toBe('cook');
+  });
+
+  it('照他说的办会让他多信任你一点，一天只算一次', () => {
+    const session = new CampSession(() => undefined, 22);
+    const s = session.s;
+    const qin = ch(s, 'qin')!;
+    const before = qin.trust;
+    session.act({ type: 'adopt', id: 'qin' });
+    session.act({ type: 'adopt', id: 'qin' });
+    expect(qin.task).toBe(s.intents!.qin!.task);
+    expect(qin.trust).toBe(before + 1);
+    expect(adoptIntent(s, 'qin')).toBe(true);
+    expect(qin.trust).toBe(before + 1);
+  });
+
+  it('接上 AI 后，在场的灵魂按人设重新想自荐；不合规的选择会被拒绝', () => {
+    const good = scriptedAI();
+    const session = new CampSession(() => undefined, 23);
+    void session.connect(createIntelligenceRuntime(good, { limits: TALK_LIMITS }), '测试');
+    expect(session.s.intents!.qin!.asking).toBe(true);
+    drain(good, session);
+    expect(session.s.intents!.qin).toEqual({ task: 'rest', say: '今天我想歇着。', by: 'ai' });
+
+    const bad = scriptedAI({ intent: '{"task":"fly","say":"我去飞。"}' });
+    const other = new CampSession(() => undefined, 23);
+    void other.connect(createIntelligenceRuntime(bad, { limits: TALK_LIMITS }), '测试');
+    drain(bad, other);
+    expect(other.s.intents!.qin!.by).toBe('rule');
+    expect(other.s.intents!.qin!.asking).toBe(false);
+  });
+
+  it('夜里，心里有事的人会主动找你，开口的话由 AI 来说', () => {
+    const ai = scriptedAI();
+    const session = new CampSession(() => undefined, 24);
+    void session.connect(createIntelligenceRuntime(ai, { limits: TALK_LIMITS }), '测试');
+    drain(ai, session);
+    ch(session.s, 'lin')!.mood = 10;
+    session.act({ type: 'endDay' });
+    while (session.s.pending.length) session.act({ type: 'choose', i: 0 });
+    session.act({ type: 'toNight' });
+    const who = Object.keys(session.s.wants ?? {});
+    expect(who.length).toBeGreaterThan(0);
+    drain(ai, session);
+    const id = who[0]!;
+    const trust = ch(session.s, id)!.trust;
+    session.receive({ channel: 'hanyi/camp', kind: 'focus', id });
+    expect(session.s.chat[id]![0]).toEqual({ from: 'them', text: '（他在你旁边坐下）睡不着。' });
+    expect(ch(session.s, id)!.trust).toBe(trust + 1);
+  });
+
+  it('篝火边两个人会聊起来，聊得好关系就变好', () => {
+    const ai = scriptedAI();
+    const session = new CampSession(() => undefined, 25);
+    void session.connect(createIntelligenceRuntime(ai, { limits: TALK_LIMITS }), '测试');
+    drain(ai, session);
+    session.act({ type: 'endDay' });
+    while (session.s.pending.length) session.act({ type: 'choose', i: 0 });
+    session.act({ type: 'toNight' });
+    const before = session.s.ambient.length;
+    drain(ai, session);
+    const talk = session.s.ambient.slice(before).find((l) => l.includes('\n'));
+    expect(talk).toMatch(/：还冷吗？\n.+：好多了，谢谢。/);
+  });
+
+  it('离线时按规则来：没有 AI 请求，规则给的自荐和开口照常可用', () => {
+    const session = new CampSession(() => undefined, 26);
+    void session.connect(createIntelligenceRuntime(createOfflineProvider(), { limits: TALK_LIMITS }), '离线台词');
+    expect(Object.values(session.s.intents!).every((it) => it.by === 'rule' && !it.asking)).toBe(true);
+    ch(session.s, 'su')!.mood = 5;
+    ruleWants(session.s);
+    expect(session.s.wants!.su!.opener).toBeTruthy();
+  });
+});

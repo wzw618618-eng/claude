@@ -106,7 +106,7 @@ export const CHARS: Record<string, CharDef> = {
     voice: '说话轻，句子完整，带着护士的习惯用语（"先别动""我看看""多喝热水"）。提到女儿时语气会软下来。',
     background: '离婚后独自带女儿朵朵（6岁）。朵朵平时住在山下镇子的外婆家，她每周末回去。',
     secret: '她答应过朵朵这周末一定回去过生日。她一直在盘算一个人走下山的路线，哪怕她知道这很可能会死。',
-    secretTrust: 40,
+    secretTrust: 58,
     lines: {
       greet: {
         low: ['我没事……你先去忙吧。', '朵朵现在肯定在哭。对不起，我……'],
@@ -151,7 +151,7 @@ export const CHARS: Record<string, CharDef> = {
     voice: '年轻人口吻，语速快，偶尔用"绝了""离谱""我真的会谢"之类的网络用语，喜欢给别人起外号。',
     background: '和父亲大吵一架后离家，"进山写生"只是借口。父亲是工地包工头，一心想让他学土木。',
     secret: '他其实是离家出走的。手机里有几十条父亲的未接来电和消息，他一条都没敢点开。',
-    secretTrust: 45,
+    secretTrust: 68,
     lines: {
       greet: {
         low: ['哈……没事，我就是有点想家。不是，不想。', '我画不出来了，手冻得握不住笔。'],
@@ -196,7 +196,7 @@ export const CHARS: Record<string, CharDef> = {
     voice: '一股烟火气，爱说"放心""包在我身上""娃娃们"，三句话不离吃，口头禅是"吃饱了不想家"。',
     background: '客运公司的老司机，年轻时当过厨子。老婆在县城开小卖部，儿子在外地打工。',
     secret: '车坏在半路，是因为他为了省钱推迟了保养，刹车和电路早就有毛病。他一直不敢说。',
-    secretTrust: 50,
+    secretTrust: 60,
     lines: {
       greet: {
         low: ['都怪我……要是车不坏……算了，不说了。', '今天没胃口，你们吃吧。'],
@@ -286,7 +286,7 @@ export const CHARS: Record<string, CharDef> = {
     voice: '孩子的口吻，短句，常问问题，称呼别人"叔叔""阿姨""爷爷""哥哥"，会提到她的布兔子"豆豆"。',
     background: '和妈妈开车回外婆家，路上车子滑下了桥边的坡。',
     secret: '妈妈让她在车里等，她却因为害怕跑了出来。她觉得妈妈找不到她，是因为自己没听话。',
-    secretTrust: 50,
+    secretTrust: 62,
     lines: {
       greet: {
         low: ['我想妈妈了……', '豆豆说它冷。'],

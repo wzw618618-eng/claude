@@ -16,7 +16,7 @@ export function createOfflineProvider(opts: { chunk?: number; delayMs?: number }
     id: 'hanyi-offline',
     start(sub, sink) {
       const env = decodeEnvelope(sub.input);
-      const text = env ? JSON.stringify(env.fallback) : JSON.stringify({ reply: '……', trust: 0, mood: 0, revealed: false });
+      const text = JSON.stringify(env?.fallback ?? { reply: '……', trust: 0, mood: 0, revealed: false });
       const rec: { timer?: ReturnType<typeof setTimeout>; sink: ActivitySink } = { sink };
       live.set(sub.id, rec);
       let i = 0;
@@ -155,4 +155,4 @@ export function createClaudeProvider(sample: any): IntelligenceProvider {
 }
 
 /** Host 与游戏世界两侧共用的 Activity 上限：提示词带着角色设定和最近的事，比默认值长 */
-export const TALK_LIMITS = { maxInputChars: 32000, maxOutputChars: 4000 } as const;
+export const TALK_LIMITS = { maxInputChars: 32000, maxOutputChars: 4000, maxConcurrentActivities: 16 } as const;

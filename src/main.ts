@@ -4,6 +4,7 @@ import { applyTalk, buildPrompt, canTalk, parseAI, scriptedReply, TalkResult, To
 import { makeRng } from '../tiangong/assets/hanyi/core/rng';
 import { GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
 import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
+import { adoptAll, adoptIntent, openChat } from '../tiangong/assets/hanyi/ai/intent';
 import { endingScreen, gameScreen, hasOverlay, titleScreen, UI } from '../tiangong/assets/ui/view';
 
 declare global {
@@ -94,7 +95,9 @@ app.addEventListener('click', (e) => {
     case 'pick': ui.sheet = { kind: 'task', id }; break;
     case 'set': setTask(s, id, v as TaskId); ui.sheet = null; break;
     case 'person': ui.sheet = { kind: 'person', id }; break;
-    case 'chat': ui.sheet = { kind: 'chat', id }; ui.aiNote = null; break;
+    case 'chat': ui.sheet = { kind: 'chat', id }; ui.aiNote = null; openChat(s, id); break;
+    case 'adopt': adoptIntent(s, id); break;
+    case 'adopt-all': adoptAll(s); break;
     case 'close': ui.sheet = null; break;
     case 'topic': void talk(id, v as Topic); return;
     case 'choose': { const r = choose(s, Number(el.dataset.i)); if (r) ui.outcome = r; break; }

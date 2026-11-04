@@ -88,9 +88,24 @@ export function scriptedReply(s: GameState, id: string, topic: Topic, rng: Rng):
 
 const WEATHER = { clear: '晴', snow: '下雪', blizzard: '暴风雪' };
 
-export function buildPrompt(s: GameState, id: string, history: { from: 'me' | 'them'; text: string }[], said: string) {
+/** 角色设定：谁、什么性子、怎么说话、心底的秘密（以及此刻能不能说出口） */
+export function personaBlock(s: GameState, id: string) {
   const c = ch(s, id)!;
   const d = def(id);
+  const canReveal = c.trust >= d.secretTrust;
+  return `【你扮演】${d.name}（大家叫${ta(d)}"${d.short}"），${d.age}岁，${d.job}。
+性格：${d.personality}
+说话方式：${d.voice}
+背景：${d.background}
+特质：${d.traits.map((t) => `${TRAITS[t].name}（${TRAITS[t].desc}）`).join('；')}
+擅长：${(Object.keys(c.skills) as (keyof typeof c.skills)[]).filter((k) => c.skills[k] >= 3).map((k) => SKILLS[k]).join('、') || '没什么特别擅长的'}
+心底的秘密：${d.secret}
+${canReveal ? '你现在足够信任主事人：如果对方真诚地问起你的过去或心事，你可以说出这个秘密（要用你自己的方式，别一口气全倒出来）。' : '你还不够信任主事人：绝对不要说出这个秘密，被问到时要回避、岔开或者含糊带过，但可以流露一点情绪。'}`;
+}
+
+/** 此刻的处境：天气、营地存粮、自己的身心、对别人的看法、最近发生的事 */
+export function situationBlock(s: GameState, id: string) {
+  const c = ch(s, id)!;
   const status: string[] = [];
   if (c.injured) status.push('身上有伤');
   if (c.sick) status.push('在发烧');
@@ -102,28 +117,28 @@ export function buildPrompt(s: GameState, id: string, history: { from: 'me' | 't
     .join('；');
   const gone = s.chars.filter((o) => o.status !== 'active' && o.id !== id).map((o) => `${nm(o.id)}${o.status === 'dead' ? '已经死了' : '离开了营地'}`);
   const recent = s.log.filter((l) => l.day >= s.day - 2).slice(-8).map((l) => `第${l.day}天：${l.text}`).join('\n');
-  const canReveal = c.trust >= d.secretTrust;
-  const convo = history.slice(-8).map((h) => (h.from === 'me' ? `主事人：${h.text}` : `${d.short}：${h.text}`)).join('\n');
-
-  return `你在为一款叫《寒驿》的中文生存经营游戏扮演一个角色，和玩家对话。
-
-【世界】寒潮突至，大雪封山。一群陌生人被困在半山腰一座废弃的驿站（以前是护林站），断电断路，要靠砍柴、打猎、搜寻物资撑到救援。玩家是这群人里拿主意的"主事人"。
-
-【你扮演】${d.name}（大家叫${ta(d)}"${d.short}"），${d.age}岁，${d.job}。
-性格：${d.personality}
-说话方式：${d.voice}
-背景：${d.background}
-特质：${d.traits.map((t) => `${TRAITS[t].name}（${TRAITS[t].desc}）`).join('；')}
-擅长：${(Object.keys(c.skills) as (keyof typeof c.skills)[]).filter((k) => c.skills[k] >= 3).map((k) => SKILLS[k]).join('、') || '没什么特别擅长的'}
-心底的秘密：${d.secret}
-${canReveal ? '你现在足够信任主事人：如果对方真诚地问起你的过去或心事，你可以说出这个秘密（要用你自己的方式，别一口气全倒出来）。' : '你还不够信任主事人：绝对不要说出这个秘密，被问到时要回避、岔开或者含糊带过，但可以流露一点情绪。'}
-
-【此刻】第${s.day}天夜里，${WEATHER[s.weather.kind]}，气温${s.temp}℃，屋里保暖程度${insulation(s)}级。营地还剩食物${s.res.food}份、柴火${s.res.wood}捆、药品${s.res.med}盒。
+  const when = s.phase === 'night' ? '夜里' : s.phase === 'evening' ? '傍晚' : '早上';
+  return `【此刻】第${s.day}天${when}，${WEATHER[s.weather.kind]}，气温${s.temp}℃，屋里保暖程度${insulation(s)}级。营地还剩食物${s.res.food}份、柴火${s.res.wood}捆、药品${s.res.med}盒。
 你的状态：健康${c.health}/100，体力${c.stamina}/100，心情${moodWord(c.mood)}（${c.mood}/100）${status.length ? '，' + status.join('，') : ''}。
 你对主事人的信任：${trustWord(c.trust)}（${c.trust}/100）。
 你对其他人的看法：${relLines || '营地里只剩你了'}。${gone.length ? '\n' + gone.join('；') + '。' : ''}
 最近发生的事：
-${recent || '（没什么特别的）'}
+${recent || '（没什么特别的）'}`;
+}
+
+export const WORLD_BLOCK = `【世界】寒潮突至，大雪封山。一群陌生人被困在半山腰一座废弃的驿站（以前是护林站），断电断路，要靠砍柴、打猎、搜寻物资撑到救援。玩家是这群人里拿主意的"主事人"。`;
+
+export function buildPrompt(s: GameState, id: string, history: { from: 'me' | 'them'; text: string }[], said: string) {
+  const d = def(id);
+  const convo = history.slice(-8).map((h) => (h.from === 'me' ? `主事人：${h.text}` : `${d.short}：${h.text}`)).join('\n');
+
+  return `你在为一款叫《寒驿》的中文生存经营游戏扮演一个角色，和玩家对话。
+
+${WORLD_BLOCK}
+
+${personaBlock(s, id)}
+
+${situationBlock(s, id)}
 
 【刚才的对话】
 ${convo || '（今晚第一次说话）'}

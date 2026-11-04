@@ -44,6 +44,25 @@ export interface CharState {
   moodTonight: number;
 }
 
+/** 角色自己想干的活（白天自荐） */
+export interface Intent {
+  task: TaskId;
+  say: string;
+  by: 'rule' | 'ai';
+  /** AI 还在想 */
+  asking?: boolean;
+}
+
+/** 夜里主动找你说话 */
+export interface Want {
+  reason: string;
+  opener: string;
+  by: 'rule' | 'ai';
+  done: boolean;
+  /** 开场白就是说出心事 */
+  reveals?: boolean;
+}
+
 export interface GameState {
   v: number;
   seed: number;
@@ -68,4 +87,6 @@ export interface GameState {
   rescueDay: number;
   rescueBy: string;
   ending: { kind: 'rescued' | 'wiped'; day: number } | null;
+  intents?: Record<string, Intent>;
+  wants?: Record<string, Want>;
 }

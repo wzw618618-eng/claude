@@ -126,7 +126,7 @@ main .wrap { padding-block: 14px calc(110px + env(safe-area-inset-bottom, 0px));
 .roster h2 { font-size: 12px; color: var(--dim); letter-spacing: 0.18em; font-weight: 500; padding-bottom: 4px; }
 .person {
   display: grid; grid-template-columns: 46px minmax(0, 1fr) auto;
-  grid-template-areas: "seal head right" "seal meters meters";
+  grid-template-areas: "seal head right" "seal meters meters" "seal intent intent";
   column-gap: 12px; row-gap: 8px; align-items: center;
   padding: 12px 0; border-bottom: 1px solid var(--rule);
 }
@@ -135,6 +135,16 @@ main .wrap { padding-block: 14px calc(110px + env(safe-area-inset-bottom, 0px));
 .person > .meters { grid-area: meters; }
 .person > .pill, .person > .p-end { grid-area: right; }
 .person.gone { grid-template-areas: "seal head right"; }
+.person > .intent { grid-area: intent; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.intent p { font-family: var(--font-story); font-size: 13.5px; line-height: 1.6; color: var(--frost); min-width: 0; }
+.intent p b { color: var(--snow); font-weight: 600; font-family: var(--font-ui); }
+.intent.asking p { color: var(--dim); }
+.intent em.ok { font-style: normal; font-size: 12px; color: var(--good); white-space: nowrap; }
+.mini-btn { flex: none; padding: 4px 10px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--ember) 60%, transparent); color: var(--ember); font-size: 12.5px; }
+.adopt-all { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.adopt-all .mini { flex: 1; min-width: 12em; }
+.pill.want { border-color: var(--ember); background: var(--ember-soft); }
+.hearth p.talkline { white-space: pre-line; border-left: 2px solid color-mix(in srgb, var(--ember) 50%, transparent); padding-left: 10px; }
 .person:last-child { border-bottom: 0; }
 .seal {
   width: 46px; height: 46px; border-radius: 7px;

@@ -10,7 +10,8 @@ export interface TalkEnvelope {
   readonly v: 1;
   readonly soul: string;
   readonly prompt: string;
-  readonly fallback: TalkResult;
+  /** 离线提供方直接用它；自荐、开场白、篝火对话不走离线提供方，为 null */
+  readonly fallback: TalkResult | null;
 }
 
 export const encodeEnvelope = (e: TalkEnvelope) => JSON.stringify(e);
@@ -18,7 +19,7 @@ export const encodeEnvelope = (e: TalkEnvelope) => JSON.stringify(e);
 export function decodeEnvelope(input: string): TalkEnvelope | null {
   try {
     const o = JSON.parse(input) as Partial<TalkEnvelope>;
-    return o && o.v === 1 && typeof o.prompt === 'string' && o.fallback ? (o as TalkEnvelope) : null;
+    return o && o.v === 1 && typeof o.prompt === 'string' ? (o as TalkEnvelope) : null;
   } catch {
     return null;
   }

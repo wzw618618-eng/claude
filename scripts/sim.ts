@@ -10,9 +10,10 @@ import { BUILD_ORDER, BUILDINGS } from '../tiangong/assets/hanyi/data/rules';
 import { choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
 import { currentEvent } from '../tiangong/assets/hanyi/systems/story';
 import { applyTalk, canTalk, scriptedReply, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
+import { adoptAll } from '../tiangong/assets/hanyi/ai/intent';
 import { blocked, careScore, cookScore, huntOut, woodOut, scavOut } from '../tiangong/assets/hanyi/systems/work';
 
-type Policy = 'smart' | 'random' | 'idle';
+type Policy = 'smart' | 'random' | 'idle' | 'listen';
 
 function plan(s: GameState, policy: Policy, r: ReturnType<typeof makeRng>) {
   const A = act(s);
@@ -23,6 +24,11 @@ function plan(s: GameState, policy: Policy, r: ReturnType<typeof makeRng>) {
       const ok = all.filter((t) => !blocked(s, c, t));
       setTask(s, c.id, r.pick(ok));
     }
+    return;
+  }
+  if (policy === 'listen') {
+    if (!s.project) for (const id of BUILD_ORDER) { const b = BUILDINGS[id]; if (s.built.includes(id) || (b.needFlag && !s.flags[b.needFlag])) continue; if (startProject(s, id) === null) break; }
+    adoptAll(s);
     return;
   }
   // smart
@@ -147,6 +153,7 @@ export function trace(seed: number) {
 
 if (process.argv[3] === "trace") { trace(n); } else {
 run('smart', n);
+run('listen', n);
 run('random', Math.min(n, 200));
 run('idle', 50);
 }

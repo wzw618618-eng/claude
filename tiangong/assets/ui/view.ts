@@ -154,12 +154,23 @@ function personRow(s: GameState, c: CharState) {
     return `<article class="person gone">${seal(c.id)}<div class="p-head"><b>${d.short}</b><span>${d.age} · ${d.job}</span></div><div class="p-end">${note}</div></article>`;
   }
   let right: string;
+  let below = '';
+  const it = s.intents?.[c.id];
+  if (s.phase === 'day' && it) {
+    const same = c.task === it.task;
+    const can = !blocked(s, c, it.task);
+    const btn = it.asking ? '' : same ? '<em class="ok">照办了</em>' : can ? `<button class="mini-btn" data-act="adopt" data-id="${c.id}">照办</button>` : '';
+    below = `<div class="intent ${it.asking ? 'asking' : ''}"><p>${it.asking ? `${d.short}在想今天干什么……` : `想去<b>${TASKS[it.task].name}</b>：「${esc(it.say)}」`}</p>${btn}</div>`;
+  }
+  const want = s.wants?.[c.id];
   if (s.phase === 'day') {
     const t: TaskId = blocked(s, c, c.task) ? 'rest' : c.task;
     right = `<button class="pill" data-act="pick" data-id="${c.id}" aria-label="给${d.short}派活，现在是${TASKS[t].name}"><b>${TASKS[t].name}</b><small>${esc(preview(s, c, t))}</small></button>`;
   } else if (s.phase === 'night') {
     const left = MAX_TALKS - c.talks;
-    right = `<button class="pill talk ${left ? '' : 'done'}" data-act="chat" data-id="${c.id}"><b>说说话</b><small>${left ? (c.talks ? `还能聊 ${left} 句` : '围着火聊聊') : '已经困了'}</small></button>`;
+    const wants = want && !want.done;
+    right = `<button class="pill talk ${left ? '' : 'done'} ${wants ? 'want' : ''}" data-act="chat" data-id="${c.id}"><b>${wants ? '有话想说' : '说说话'}</b><small>${wants ? `${d.gender === 'f' ? '她' : '他'}想找你` : left ? (c.talks ? `还能聊 ${left} 句` : '围着火聊聊') : '已经困了'}</small></button>`;
+    if (wants) below = `<div class="intent"><p>${esc(want.reason)}。</p></div>`;
   } else {
     right = `<div class="pill static"><b>${TASKS[c.task].name}</b><small>今天的活</small></div>`;
   }
@@ -168,6 +179,7 @@ function personRow(s: GameState, c: CharState) {
   <div class="p-head"><b>${d.short}</b><span>${d.age} · ${d.job}</span>${chips(c)}</div>
   ${right}
   <div class="meters">${meter('h', '健康', c.health)}${meter('s', '体力', c.stamina)}${meter('m', '心情', c.mood, moodWord(c.mood))}</div>
+  ${below}
 </article>`;
 }
 
@@ -195,17 +207,27 @@ function people(s: GameState, ui: UI) {
     <div><small>口粮</small><div class="seg">${segBtn(s.policy.ration === 'normal', 'ration', 'normal', '吃饱')}${segBtn(s.policy.ration === 'half', 'ration', 'half', '减半')}</div></div>
     <div><small>取暖</small><div class="seg">${segBtn(s.policy.heat === 'normal', 'heat', 'normal', '烧够')}${segBtn(s.policy.heat === 'save', 'heat', 'save', '省着烧')}</div></div>
   </div>
+  ${adoptAllRow(s)}
   <p class="forecast">今天预计：吃掉 <b>${f.eat}</b> 份口粮${f.save ? `（掌勺省 ${f.save}）` : ''}，烧掉 <b>${f.burn}</b> 捆柴。${foodWarn ? '<span class="warn">粮食不够分。</span>' : ''}${woodWarn ? '<span class="warn">柴火不够烧。</span>' : ''}</p>
 </section>`);
   } else if (s.phase === 'evening') {
     parts.push(reportCard(s, ui, `第${cnDay(s.day)}日 · 收工`));
   } else if (s.phase === 'night') {
     const lines = s.ambient.length ? s.ambient : ['火噼啪地响着。'];
-    parts.push(`<section class="hearth"><h2>围炉</h2>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}<p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
+    parts.push(`<section class="hearth"><h2>围炉</h2>${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}">${esc(l)}</p>`).join('')}<p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
   }
   const gone = s.chars.filter((c) => c.status !== 'active');
   parts.push(`<section class="roster"><h2>驿站登记 · ${A.length} 人</h2>${A.map((c) => personRow(s, c)).join('')}${gone.map((c) => personRow(s, c)).join('')}</section>`);
   return parts.join('');
+}
+
+function adoptAllRow(s: GameState) {
+  const diff = act(s).filter((c) => {
+    const it = s.intents?.[c.id];
+    return it && !it.asking && c.task !== it.task && !blocked(s, c, it.task);
+  }).length;
+  if (!diff) return '';
+  return `<div class="adopt-all"><button class="btn" data-act="adopt-all">按大家的意思派活</button><span class="mini">${diff} 人想干的和你派的不一样。每人每天第一次被采纳，信任 +1。</span></div>`;
 }
 
 function segBtn(on: boolean, k: string, v: string, label: string) {
@@ -370,6 +392,7 @@ function personSheet(s: GameState, c: CharState, ui?: UI) {
   return `<div class="scrim" data-act="close"><section class="sheet" role="dialog" aria-modal="true" aria-label="${d.name}" data-stop>
     <div class="sheet-head">${seal(c.id, 'big')}<div><h2>${d.name}${d.short !== d.name ? ` · ${d.short}` : ''}</h2><p>${d.age} 岁 · ${d.job} · 对你${trustWord(c.trust)}（${c.trust}）</p></div><button class="x" data-act="close" aria-label="关闭">×</button></div>
     <p class="bio">${d.bio}</p>
+    ${s.phase === 'day' && s.intents?.[c.id] && !s.intents[c.id].asking ? `<p class="mini">今天想去${TASKS[s.intents[c.id].task].name}：「${esc(s.intents[c.id].say)}」${s.intents[c.id].by === 'ai' ? '（AI 按人设想的）' : '（按性子推的）'}</p>` : ''}
     ${heard ? `<div class="kv"><h3>${d.gender === 'f' ? '她' : '他'}对你说过的心事</h3><p class="secret">${d.secret}</p></div>` : ''}
     <div class="kv"><h3>性子</h3><div class="traits">${d.traits.map((t) => `<div><b>${TRAITS[t].name}</b>${TRAITS[t].desc}</div>`).join('')}</div></div>
     <div class="kv"><h3>本事</h3><div class="skills">${(Object.keys(SKILLS) as (keyof typeof SKILLS)[]).map((k) => `<div><small>${SKILLS[k]}</small><b>${lvl(c, k)}</b></div>`).join('')}</div></div>

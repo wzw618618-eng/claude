@@ -15,7 +15,9 @@ export type Act =
   | { type: 'setTask'; id: string; task: TaskId }
   | { type: 'policy'; k: 'ration' | 'heat'; v: string }
   | { type: 'build'; id: string }
-  | { type: 'cancel' };
+  | { type: 'cancel' }
+  /** 照他说的办；不带 id 时，所有人都照自己说的办 */
+  | { type: 'adopt'; id?: string };
 
 export type ToEngine =
   | { channel: typeof CHANNEL; kind: 'hello'; save?: string }
