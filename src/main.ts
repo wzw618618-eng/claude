@@ -1,10 +1,10 @@
 // 入口：持有游戏状态，处理点击，存档，接上 AI 对话。
 
-import { applyTalk, buildPrompt, canTalk, parseAI, scriptedReply, TalkResult, Topic, TOPICS } from './ai/dialogue';
-import { makeRng } from './core/rng';
-import { GameState, TaskId } from './core/types';
-import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject, toNight } from './game';
-import { endingScreen, gameScreen, hasOverlay, titleScreen, UI } from './ui/view';
+import { applyTalk, buildPrompt, canTalk, parseAI, scriptedReply, TalkResult, Topic, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
+import { makeRng } from '../tiangong/assets/hanyi/core/rng';
+import { GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
+import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
+import { endingScreen, gameScreen, hasOverlay, titleScreen, UI } from '../tiangong/assets/ui/view';
 
 declare global {
   interface Window { claude?: any }

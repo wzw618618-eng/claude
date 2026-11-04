@@ -1,0 +1,16 @@
+# 构建与运行时产物
+node_modules/
+dist/
+artifacts/
+release/
+.forgeax/
+.assetlib/
+# 各 AI 工具的技能副本：在本目录运行 `npx -y @forgeax/game init` 会重新生成
+.agents/
+.claude/
+.codebuddy/
+.codeium/
+.config/
+.cursor/
+.workbuddy/
+.zcode/

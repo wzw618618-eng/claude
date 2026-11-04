@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": ["src", "scripts/*.ts"]
+  "include": ["src", "scripts/*.ts", "tiangong/assets/hanyi", "tiangong/assets/ui/view.ts"]
 }

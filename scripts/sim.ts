@@ -1,16 +1,16 @@
 // 无头模拟：用简单的策略连玩几百局，看平衡性（存活率、死亡时间、各结局占比、事件触发频率）。
 // 用法：npm run sim
 
-import { GameState, TaskId } from '../src/core/types';
-import { act, heatNeed, eats, ended } from '../src/core/world';
+import { GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
+import { act, heatNeed, eats, ended } from '../tiangong/assets/hanyi/core/world';
 
 declare const process: { argv: string[] };
-import { makeRng } from '../src/core/rng';
-import { BUILD_ORDER, BUILDINGS } from '../src/data/rules';
-import { choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../src/game';
-import { currentEvent } from '../src/systems/story';
-import { applyTalk, canTalk, scriptedReply, TOPICS } from '../src/ai/dialogue';
-import { blocked, careScore, cookScore, huntOut, woodOut, scavOut } from '../src/systems/work';
+import { makeRng } from '../tiangong/assets/hanyi/core/rng';
+import { BUILD_ORDER, BUILDINGS } from '../tiangong/assets/hanyi/data/rules';
+import { choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
+import { currentEvent } from '../tiangong/assets/hanyi/systems/story';
+import { applyTalk, canTalk, scriptedReply, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
+import { blocked, careScore, cookScore, huntOut, woodOut, scavOut } from '../tiangong/assets/hanyi/systems/work';
 
 type Policy = 'smart' | 'random' | 'idle';
 

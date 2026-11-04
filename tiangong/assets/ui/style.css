@@ -1,6 +1,6 @@
 /* 布局：驿站登记簿。顶部是黄历式的「日头」，每位幸存者是一行盖着私印的登记；夜里换成围炉的火光。
    有意只做一套深色：这是一个发生在冬夜里的游戏。 */
-:root {
+:root, .hanyi {
   color-scheme: dark;
   --ink: #0f151c;
   --ink-2: #151d27;
@@ -25,6 +25,16 @@
 
 * { box-sizing: border-box; }
 html, body { background: var(--ink); color: var(--snow); }
+.hanyi { background: var(--ink); color: var(--snow); font-family: var(--font-ui); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+/* 天工引擎版：界面挂在 #game-ui 里，作为一层可滚动的全屏面板 */
+.hanyi-scroll { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; z-index: 10; pointer-events: auto; }
+.hanyi-scroll.lock { overflow: hidden; }
+/* 引擎宿主在窄屏底部中间显示帧率，给它留出位置 */
+@media (max-width: 600px) {
+  .hanyi-scroll .act .wrap { padding-bottom: 52px; }
+  .hanyi-scroll main .wrap { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  .hanyi-scroll .sheet { padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+}
 body {
   font-family: var(--font-ui);
   font-size: 15px;
@@ -41,11 +51,12 @@ body::before {
   z-index: 30;
   background: var(--ink);
 }
-button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-button:disabled { cursor: not-allowed; }
-:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; border-radius: 6px; }
-h1, h2, h3 { text-wrap: balance; margin: 0; font-weight: 600; }
-p { margin: 0; }
+:where(.hanyi) button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:where(.hanyi) button:disabled { cursor: not-allowed; }
+:where(.hanyi) :focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; border-radius: 6px; }
+:where(.hanyi) :is(h1, h2, h3) { text-wrap: balance; margin: 0; font-weight: 600; }
+:where(.hanyi) p { margin: 0; }
+:where(.hanyi) code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--frost); background: var(--ink-3); padding: 1px 5px; border-radius: 4px; }
 
 .wrap {
   max-width: 640px;
@@ -105,6 +116,7 @@ main .wrap { padding-block: 14px calc(110px + env(safe-area-inset-bottom, 0px));
 .seg { display: flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
 .seg button { flex: 1; padding: 6px 4px; font-size: 13px; color: var(--frost); }
 .seg button[aria-pressed="true"] { background: var(--ink-3); color: var(--snow); }
+.seg button:disabled { opacity: 0.4; }
 .forecast { font-size: 13px; color: var(--frost); }
 .forecast b { color: var(--snow); font-weight: 600; font-variant-numeric: tabular-nums; }
 .forecast .warn { color: var(--warn); }
@@ -338,6 +350,23 @@ button.pill:hover { border-color: var(--dim); }
 .tally div b { font-size: 22px; font-variant-numeric: tabular-nums; }
 
 .still { animation: none !important; }
+
+/* 灵魂面板 */
+.soul { border-top: 1px solid var(--rule); padding-top: 12px; }
+.soul-id { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.perceive { display: grid; grid-template-columns: 3em minmax(0, 1fr); gap: 4px 10px; margin: 0; font-size: 13px; }
+.perceive dt { color: var(--dim); }
+.perceive dd { margin: 0; color: var(--snow); min-width: 0; }
+.soul-aff { display: grid; gap: 6px; }
+.soul-aff small { font-size: 11px; color: var(--dim); letter-spacing: 0.1em; }
+.soul-aff div { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* AI 设置 */
+.ai-card .seg button { padding: 8px 4px; }
+.ai-form { display: grid; gap: 8px; }
+.ai-form label { display: grid; gap: 4px; font-size: 12px; color: var(--frost); }
+.ai-form input { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--rule); background: var(--ink); color: var(--snow); font: inherit; font-size: 15px; min-width: 0; }
+.ai-form .btn { justify-self: start; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

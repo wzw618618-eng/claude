@@ -8,9 +8,18 @@
 - **经营**：每天给每个人派活（砍柴、狩猎、搜寻、探路、营建、掌勺、照料、安抚、守夜、休息），决定口粮和取暖的松紧，选择先建什么。
 - **角色**：八个人，每人有自己的性格特质、本事、心情、对你的信任、彼此之间的关系，和一件藏在心里的事。夜里围着火和他们说话，信任够了，他们会开口——而那往往会改变整局的走向。
 
+## 两个版本
+
+| 版本 | 在哪 | 怎么打开 |
+| --- | --- | --- |
+| 独立网页版 | 仓库根目录 | 浏览器直接打开 `dist/index.html`；在 claude.ai 里打开时夜谈由 Claude 扮演 |
+| 天工引擎版 | [`tiangong/`](tiangong/README.md) | 跑在天工引擎（ForgeaX Engine 0.4.8）上，每个角色是一个引擎 NPC 灵魂，AI 可以接 DeepSeek 等接口 |
+
+两个版本共用同一套玩法代码（`tiangong/assets/hanyi/`），玩起来一样。
+
 ## 怎么玩
 
-用浏览器直接打开 `dist/index.html` 就能玩（手机、电脑都行），进度自动存在浏览器里。
+进度自动存在浏览器里。
 
 一天分三段：
 
@@ -38,40 +47,51 @@
 ## 代码结构
 
 ```
+tiangong/                天工引擎工程（详见 tiangong/README.md）
+  assets/hanyi/          玩法本体，两个版本共用
+    core/                状态类型、可存档随机数、插件宿主、读写状态的工具
+    data/                数据包：角色（人格+台词+结局）、规则（特质/岗位/工程）、事件
+    systems/             玩法插件：干活、口粮取暖、身心、人际、营建、天气、剧情调度、结局
+    ai/                  围炉夜话：手写台词、提示词、回复校验
+    game.ts              把插件按顺序装进引擎，对外提供操作
+  assets/ui/             界面渲染（纯函数）和样式，两个版本共用
+  assets/camp.pack.ts    天工版：游戏世界根插件（NpcBrain、Intelligence）
+  assets/ui.pack.ts      天工版：界面根插件
+  assets/souls/          天工版：灵魂客户端、AI 提供方
 src/
-  core/      状态类型、可存档随机数、插件宿主、读写状态的工具
-  data/      数据包：角色（人格+台词+结局）、规则（特质/岗位/工程）、事件
-  systems/   玩法插件：干活、口粮取暖、身心、人际、营建、天气、剧情调度、结局
-  ai/        围炉夜话：手写台词 + Claude 即兴对话（同一套规则）
-  ui/        界面（纯函数渲染 HTML）和样式
-  game.ts    把插件按顺序装进引擎，对外提供操作
-  main.ts    入口：点击处理、存档、接上 AI
+  main.ts                独立网页版入口：点击处理、存档、接上 Claude
 scripts/
-  build.mjs  打包成单个 HTML
-  sim.ts     无头模拟：用不同策略连玩几百局，检查平衡
+  build.mjs              把独立网页版打包成单个 HTML
+  sim.ts                 无头模拟：用不同策略连玩几百局，检查平衡
 ```
 
-游戏状态是纯 JSON，所有玩法都是挂在「白天结算 / 夜里结算」上的插件，界面只负责显示。改角色、改数值、加事件都只动 `src/data/`。
+游戏状态是纯 JSON，所有玩法都是挂在「白天结算 / 夜里结算」上的插件，界面只负责显示。改角色、改数值、加事件都只动 `tiangong/assets/hanyi/data/`。
 
 ```bash
 npm install
-npm run build   # 生成 dist/index.html
+npm run build   # 生成独立网页版 dist/index.html
 npm run check   # TypeScript 类型检查
 npm run sim     # 平衡模拟（默认 300 局）
 ```
 
 当前平衡（`npm run sim`，300 局）：一个看得见所有数值、按规则精打细算的策略，97% 的局没有团灭，95% 的人活着下山；随机派活几乎全灭；什么都不干撑不过第九天。
 
-## 关于天工引擎
+## 天工引擎版
 
-天工引擎是造化工坊在 2026 年 11 月 3 日宣布开源的 AI 原生游戏引擎，主打「Agent 优先」「Harness 模式、一切皆插件」「TypeScript-first 的可编辑资产（pack.ts）」以及运行时由 AI 生成对话和剧情。写这个项目时，公开报道里还没有给出代码仓库地址和 API 文档，所以这一版没有直接依赖它，而是按它的思路组织，方便之后搬过去：
+天工引擎就是 ForgeaX Engine（造化工坊）。在 `tiangong/` 里：
 
-| 这里 | 迁到天工引擎时 |
-| --- | --- |
-| `src/data/*.ts`（角色、规则、事件都是纯数据） | 作为资产包（pack.ts），让 AI 直接读写 |
-| `src/systems/*`（每个玩法一个插件，挂在结算时刻上） | 一一对应成引擎插件 |
-| `src/ai/dialogue.ts`（角色设定 → 提示词 → 结构化回复） | 换成引擎里的 AI Harness（报道提到可嵌入 Deepseek、Codex 等），提示词和回复格式不用改 |
-| `src/ui/*`（只读状态、发操作） | 换成引擎的渲染插件；状态和规则不受影响 |
-| `scripts/sim.ts`（无头跑局） | 对应引擎的 Headless CLI 自动验证 |
+```bash
+cd tiangong
+pnpm install
+npx -y @forgeax/game init      # 绑定工程，并给各个 AI 工具装上引擎技能
+pnpm test                      # 行为测试
+pnpm exec forgeax project build --json
+pnpm exec forgeax project preview --json
+```
 
-拿到天工引擎的仓库或文档后，可以照这张表逐个替换。
+AI 角色用的是引擎自带的两层能力：
+
+- **NPC（`@forgeax/engine/npc`）**：每个角色一个 `NpcBrain` 实体，带灵魂 ID 和认知 LOD（聚光 / 在场 / 离场）。引擎的 `npcPlugin` 每帧扫描它们，我们的灵魂客户端按 LOD 决定多久重新感知一次世界。
+- **Intelligence（`@forgeax/engine/intelligence`）**：每句夜谈是一个 Activity，边生成边显示；AI 提供方（离线台词、DeepSeek、其他 OpenAI 兼容接口、Claude）在浏览器主线程运行，密钥只在那一侧，经引擎的端口桥接给游戏世界。
+
+完整说明、架构图和已知限制见 [tiangong/README.md](tiangong/README.md)；开发中发现的引擎问题记在 [tiangong/docs/feedback.md](tiangong/docs/feedback.md)。

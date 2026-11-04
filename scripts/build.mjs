@@ -29,9 +29,9 @@ if (process.argv.includes('--sim')) {
     logLevel: 'warning',
   });
   const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-  const css = await readFile('src/ui/style.css', 'utf8');
+  const css = await readFile('tiangong/assets/ui/style.css', 'utf8');
   const head = (await readFile('src/ui/head.html', 'utf8')).replace('/*__CSS__*/', () => css);
-  const body = `<div id="app"></div>\n<script>${js}</script>\n`;
+  const body = `<div id="app" class="hanyi"></div>\n<script>${js}</script>\n`;
   await writeFile('dist/artifact.html', head + body);
   await writeFile(
     'dist/index.html',

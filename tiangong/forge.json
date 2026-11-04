@@ -1,0 +1,9 @@
+{
+  "id": "hanyi",
+  "name": "寒驿",
+  "schemaVersion": "3.0.0",
+  "roots": {
+    "engine": "712fbecf-7403-50cc-8ce7-f8bc61e421bc",
+    "frontend": "af6538ec-9d42-5130-814c-de07c5963793"
+  }
+}

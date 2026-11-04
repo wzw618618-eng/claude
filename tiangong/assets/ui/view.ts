@@ -1,17 +1,33 @@
 // 界面：纯函数，把游戏状态画成 HTML 字符串。交互由 main.ts 用 data-act 统一处理。
 
-import { CharState, GameState, TaskId } from '../core/types';
+import { CharState, GameState, TaskId } from '../hanyi/core/types';
 import {
   act, cnDay, def, eats, has, heatNeed, insulation, lvl, moodWord, nm, rel, relWord, trustWord,
-} from '../core/world';
-import { CHARS, CHAR_ORDER } from '../data/characters';
-import { BUILDINGS, BUILD_ORDER, LAST_DAY, SKILLS, TASKS, TASK_ORDER, TRAITS } from '../data/rules';
-import { fate, isPresentAtEnd } from '../systems/camp';
-import { currentEvent } from '../systems/story';
+} from '../hanyi/core/world';
+import { CHARS, CHAR_ORDER } from '../hanyi/data/characters';
+import { BUILDINGS, BUILD_ORDER, LAST_DAY, SKILLS, TASKS, TASK_ORDER, TRAITS } from '../hanyi/data/rules';
+import { fate, isPresentAtEnd } from '../hanyi/systems/camp';
+import { currentEvent } from '../hanyi/systems/story';
 import {
   blocked, buildOut, cookSave, cookScore, huntOut, injuryRisk, preview, scavOut, taskMood, woodOut,
-} from '../systems/work';
-import { MAX_TALKS, TOPICS } from '../ai/dialogue';
+} from '../hanyi/systems/work';
+import { MAX_TALKS, TOPICS } from '../hanyi/ai/dialogue';
+
+/** 天工引擎版额外显示的东西（独立网页版不传） */
+export interface EngineView {
+  souls: {
+    soulId: string;
+    lod: 'spotlight' | 'ambient' | 'offstage';
+    affordances: readonly { id: string; kind: string; label: string }[];
+    perception?: { day: number; body: string; heart: string; ties: string; recent: readonly string[] };
+    samples: number;
+    age: number;
+  }[];
+  provider: string;
+  sessions: Record<string, string>;
+  stream: { id: string; text: string } | null;
+  settings: { kind: 'offline' | 'deepseek' | 'custom' | 'claude'; baseUrl: string; model: string; hasKey: boolean; claude: boolean; editing: boolean };
+}
 
 export interface UI {
   screen: 'title' | 'game';
@@ -24,6 +40,7 @@ export interface UI {
   reportOpen: boolean;
   ai: boolean;
   hasSave: boolean;
+  engine?: EngineView;
 }
 
 export const esc = (t: unknown) =>
@@ -184,7 +201,7 @@ function people(s: GameState, ui: UI) {
     parts.push(reportCard(s, ui, `第${cnDay(s.day)}日 · 收工`));
   } else if (s.phase === 'night') {
     const lines = s.ambient.length ? s.ambient : ['火噼啪地响着。'];
-    parts.push(`<section class="hearth"><h2>围炉</h2>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}<p class="ai">${ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
+    parts.push(`<section class="hearth"><h2>围炉</h2>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}<p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '每人每晚最多聊四句。'}</p></section>`);
   }
   const gone = s.chars.filter((c) => c.status !== 'active');
   parts.push(`<section class="roster"><h2>驿站登记 · ${A.length} 人</h2>${A.map((c) => personRow(s, c)).join('')}${gone.map((c) => personRow(s, c)).join('')}</section>`);
@@ -230,8 +247,31 @@ function logView(s: GameState, ui: UI) {
   }
   const days = [...byDay.keys()].sort((a, b) => b - a);
   const secs = days.map((d) => `<section><h3>第${cnDay(d)}日</h3>${byDay.get(d)!.filter((l) => l.tone !== 'info' || byDay.get(d)!.length < 14).map((l) => `<p class="${l.tone}">${esc(l.text)}</p>`).join('')}</section>`);
-  return `<section class="log">${secs.join('')}</section>
+  return `${ui.engine ? aiSettings(ui.engine) : ''}<section class="log">${secs.join('')}</section>
   <section class="note"><h3>重新开始</h3><p class="mini">这一局的进度会被清掉。</p><div class="row">${ui.confirmReset ? '<button class="btn hot" data-act="reset-yes">确定重开</button> <button class="btn ghost" data-act="reset-no">算了</button>' : '<button class="btn" data-act="reset">重开一局</button>'}</div></section>`;
+}
+
+// ───────────── AI 设置（天工引擎版） ─────────────
+
+function aiSettings(e: EngineView) {
+  const k = e.settings.kind;
+  const seg = (v: EngineView['settings']['kind'], label: string, disabled = false) =>
+    `<button aria-pressed="${k === v}" data-act="ai-kind" data-v="${v}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+  const needsForm = k === 'deepseek' || k === 'custom';
+  const form = needsForm && e.settings.editing
+    ? `<form class="ai-form" data-ai-form>
+        ${k === 'custom' ? `<label>接口地址<input id="ai-base" name="base" value="${esc(e.settings.baseUrl)}" placeholder="https://…/v1" autocomplete="off"></label>` : ''}
+        <label>模型<input id="ai-model" name="model" value="${esc(e.settings.model || (k === 'deepseek' ? 'deepseek-chat' : ''))}" autocomplete="off"></label>
+        <label>API Key<input id="ai-key" name="key" type="password" placeholder="${e.settings.hasKey ? '已保存，留空则沿用' : 'sk-…'}" autocomplete="off"></label>
+        <button class="btn hot">保存并连接</button>
+      </form>`
+    : needsForm ? '<button class="btn" data-act="ai-edit">修改接口和密钥</button>' : '';
+  return `<section class="note ai-card"><h3>AI 角色由谁来演</h3>
+    <p class="mini">每个角色都是天工引擎里的一个 NPC 灵魂（NpcBrain）。夜谈时，游戏通过引擎的 Intelligence 接口向这里选的 AI 要一句回答；只有格式合规的回答才会改变信任和心情。现在：<b>${esc(e.provider)}</b></p>
+    <div class="seg">${seg('offline', '离线台词')}${seg('deepseek', 'DeepSeek')}${seg('custom', '其他接口')}${seg('claude', 'Claude', !e.settings.claude)}</div>
+    ${form}
+    <p class="mini">${k === 'offline' ? '不联网，用手写台词。' : k === 'claude' ? '只在 claude.ai 里打开时可用。' : '密钥只存在这台设备的浏览器里，只发给你填写的接口。接口需要允许浏览器直接访问（CORS）。'}</p>
+  </section>`;
 }
 
 // ───────────── 行动条 ─────────────
@@ -295,7 +335,28 @@ function taskSheet(s: GameState, c: CharState) {
   </section></div>`;
 }
 
-function personSheet(s: GameState, c: CharState) {
+const LOD_TEXT = {
+  spotlight: ['聚光', '正在和你说话。每一帧都在感知，回答时用的是最新的状态。'],
+  ambient: ['在场', '在营地里。每两秒感知一次周围。'],
+  offstage: ['离场', '已经不在营地，不再感知。'],
+} as const;
+
+function soulPanel(e: EngineView, c: CharState) {
+  const soul = e.souls.find((x) => x.soulId === `hanyi.${c.id}`);
+  if (!soul) return '';
+  const [word, explain] = LOD_TEXT[soul.lod];
+  const p = soul.perception;
+  const chips = soul.affordances.map((a) => `<span class="chip ${a.kind === 'secret' ? 'warn' : ''}">${esc(a.label)}</span>`).join('');
+  const session = e.sessions[c.id];
+  return `<div class="kv soul"><h3>天工引擎 · NPC 灵魂</h3>
+    <p class="soul-id"><code>${esc(soul.soulId)}</code><span class="chip ${soul.lod === 'spotlight' ? 'good' : soul.lod === 'offstage' ? 'bad' : ''}">认知层级：${word}</span></p>
+    <p class="mini">${explain}已感知 ${soul.samples} 次${Number.isFinite(soul.age) ? `，上次在 ${soul.age.toFixed(1)} 秒前` : ''}。${session ? `对话会话 <code>${esc(session.slice(0, 18))}</code>。` : ''}</p>
+    ${p ? `<dl class="perceive"><dt>身体</dt><dd>${esc(p.body)}</dd><dt>心里</dt><dd>${esc(p.heart)}</dd><dt>关系</dt><dd>${esc(p.ties)}</dd>${p.recent.length ? `<dt>记得</dt><dd>${p.recent.map((r) => esc(r)).join('<br>')}</dd>` : ''}</dl>` : ''}
+    <div class="soul-aff"><small>能做的事</small><div>${chips}</div></div>
+  </div>`;
+}
+
+function personSheet(s: GameState, c: CharState, ui?: UI) {
   const d = def(c.id);
   const heard = !!s.flags[`heard_${c.id}`];
   const others = s.chars.filter((o) => o.id !== c.id && o.status === 'active');
@@ -313,6 +374,7 @@ function personSheet(s: GameState, c: CharState) {
     <div class="kv"><h3>性子</h3><div class="traits">${d.traits.map((t) => `<div><b>${TRAITS[t].name}</b>${TRAITS[t].desc}</div>`).join('')}</div></div>
     <div class="kv"><h3>本事</h3><div class="skills">${(Object.keys(SKILLS) as (keyof typeof SKILLS)[]).map((k) => `<div><small>${SKILLS[k]}</small><b>${lvl(c, k)}</b></div>`).join('')}</div></div>
     ${rels.length ? `<div class="kv"><h3>和大家的关系</h3><div class="rels">${rels.join('')}</div></div>` : ''}
+    ${ui?.engine ? soulPanel(ui.engine, c) : ''}
     ${talkBtn}
   </section></div>`;
 }
@@ -323,7 +385,8 @@ function chatSheet(s: GameState, ui: UI, c: CharState) {
   const left = MAX_TALKS - c.talks;
   const thinking = ui.thinking === c.id;
   const bubbles = log.map((m) => `<p class="bubble ${m.from}">${esc(m.text)}</p>`);
-  if (thinking) bubbles.push(`<p class="bubble them wait">${d.short}想了想……</p>`);
+  const streamed = ui.engine?.stream?.id === c.id ? ui.engine.stream.text : '';
+  if (thinking) bubbles.push(streamed ? `<p class="bubble them">${esc(streamed)}</p>` : `<p class="bubble them wait">${d.short}想了想……</p>`);
   if (!log.length && !thinking) bubbles.push(`<p class="bubble them wait">${esc(opening(s, c))}</p>`);
   const disabled = left <= 0 || thinking || !!ui.thinking;
   const topics = TOPICS.map((t) => `<button data-act="topic" data-id="${c.id}" data-v="${t.id}" ${disabled ? 'disabled' : ''}>${t.label.replace('TA', d.gender === 'f' ? '她' : '他')}</button>`).join('');
@@ -355,7 +418,7 @@ function overlay(s: GameState, ui: UI) {
   if (!c) return '';
   if (ui.sheet.kind === 'task' && s.phase === 'day' && c.status === 'active') return taskSheet(s, c);
   if (ui.sheet.kind === 'chat' && s.phase === 'night' && c.status === 'active') return chatSheet(s, ui, c);
-  if (ui.sheet.kind === 'person') return personSheet(s, c);
+  if (ui.sheet.kind === 'person') return personSheet(s, c, ui);
   return '';
 }
 
