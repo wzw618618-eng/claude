@@ -10,11 +10,11 @@
 
 ## 美术
 
-人物是八张随心情变化表情的人像（Open Peeps，CC0），整个界面围着他们转：白天是一张张人物卡，夜里大家围坐在火边，事件和夜谈是全屏的画加人物和对话框。
+像素画风。八个人都是手绘的 48×48 像素半身像，各有标志：老秦的雷锋帽和驿站钥匙、林晚的低马尾和护士服、阿杰耳朵上的铅笔、胖叔脖子上的白毛巾、苏蔓的金丝眼镜、小满怀里的布兔子、格桑缀着绿松石的辫子和雪镜、吴铁的工作帽和橘色反光背心。每人三种表情跟着心情换，还会隔几秒眨一下眼。整个界面围着他们转：白天是一张张人物卡，夜里大家围坐在火边，事件和夜谈是全屏的画加人物和对话框。
 
-背景用的是宋、元、明、清的雪景和梅花古画：标题和结局是袁耀的雪山客栈，白天的日头是刘松年的雪中草堂，夜里围炉是马远的月下观梅，每个事件和每个人也各配一幅。白天用暖色，夜里把同一类画染成冷蓝。画作来自大都会艺术博物馆开放获取（公有领域，CC0），图标来自 game-icons.net（CC BY 3.0）。完整清单见 [CREDITS.md](CREDITS.md)。
+背景是宋、元、明、清的雪景和梅花古画，缩成了像素画，和人物一个画风：标题和结局是袁耀的雪山客栈，白天的日头是刘松年的雪中草堂，夜里围炉是马远的月下观梅，每个事件和每个人也各配一幅。白天用暖色，夜里把同一类画染成冷蓝。画作来自大都会艺术博物馆开放获取（公有领域，CC0），图标来自 game-icons.net（CC BY 3.0）。完整清单见 [CREDITS.md](CREDITS.md)。
 
-换画、换图标或改人物长相：改 `art/paintings/` 里的图，或 `scripts/art.mjs` 里的图标表和 `PEOPLE` 配置，然后运行 `npm run art`，再运行 `npm run build`。
+改人物长相：改 `scripts/pixel/people.mjs`，用 `node scripts/pixel/preview.mjs 预览.png` 看效果。换画：改 `art/paintings/` 里的图，再运行 `python3 scripts/pixelate.py`（需要 Pillow）。换图标：改 `scripts/art.mjs` 里的图标表。改完运行 `npm run art`，再运行 `npm run build`。
 
 ## 两个版本
 
@@ -70,6 +70,9 @@ src/
   main.ts                独立网页版入口：点击处理、存档、接上 Claude
 scripts/
   build.mjs              把独立网页版打包成单个 HTML
+  art.mjs                美术：人物像素像、像素化的背景、图标 → tiangong/assets/ui/art.css、icons.ts
+  pixel/                 像素人物：画布和描边（draw.mjs）、八个人的画法（people.mjs）、预览图（preview.mjs）
+  pixelate.py            把古画缩成像素画背景
   sim.ts                 无头模拟：用不同策略连玩几百局，检查平衡
 ```
 

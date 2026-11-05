@@ -44,6 +44,8 @@ body, .hanyi {
   background-image: radial-gradient(130% 55% at 50% -12%, color-mix(in srgb, var(--ember) 7%, transparent), transparent 62%);
   background-attachment: fixed;
 }
+/* 人物和背景都是像素画：放大时保持硬边（这个属性会继承给所有子元素） */
+.hanyi { image-rendering: crisp-edges; image-rendering: pixelated; }
 html.lock, html.lock body { overflow: hidden; }
 body::before {
   content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--ink);
@@ -71,12 +73,19 @@ body::before {
 .mini.err { color: var(--warn); }
 
 /* ───── 人物形象 ─────
-   Open Peeps 的线稿是深色墨线，放在带一点人物色的纸色底上。 */
+   48×48 的像素半身像。::after 是闭眼的那一帧，隔几秒闪一下就是眨眼。 */
 .pt {
-  display: block; aspect-ratio: 1;
+  display: block; aspect-ratio: 1; position: relative;
   /* 只用分写属性：简写 background 会把 .pt-<角色> 设好的图清掉 */
   background-position: center bottom; background-size: 100% auto; background-repeat: no-repeat;
 }
+.pt::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; border-radius: inherit;
+  background-image: var(--blink, none); background-size: inherit; background-position: inherit; background-repeat: no-repeat;
+  animation: pt-blink var(--blink-dur, 5s) step-end var(--blink-delay, 0s) infinite;
+}
+@keyframes pt-blink { 0% { opacity: 0; } 96% { opacity: 1; } 98.6% { opacity: 0; } }
+.gone .pt::after { display: none; }
 .pt.mini { width: 26px; height: 26px; border-radius: 50%; background-color: color-mix(in srgb, var(--c) 30%, var(--card-paper)); background-size: 118% auto; background-position: center 110%; flex: none; box-shadow: 0 0 0 1.5px var(--ink-2); }
 .pt.head { width: 52px; border-radius: 12px; background-color: color-mix(in srgb, var(--c) 28%, var(--card-paper)); flex: none; }
 

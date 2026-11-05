@@ -1,13 +1,13 @@
 // 美术素材生成：
-//   art/paintings/*.jpg  → tiangong/assets/ui/art.css   （画作内联成 data URI，两个版本共用）
-//   人物形象（Open Peeps）→ art/portraits/*.svg，并写进 art.css 的 .pt-<角色>-<心情> 类
+//   art/paintings/*.jpg →（scripts/pixelate.py）→ art/pixel-bg/*.png → tiangong/assets/ui/art.css（内联成 data URI，两个版本共用）
+//   人物形象（scripts/pixel 手绘像素画）→ art/portraits/*.png，并写进 art.css 的 .pt-<角色>-<心情> 类
 //   game-icons 图标挑选 → tiangong/assets/ui/icons.ts
 // 画作来源和授权见 art/credits.json，图标授权见 CREDITS.md。改了素材后运行：npm run art
 
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { createAvatar } from '@dicebear/core';
-import { openPeeps } from '@dicebear/collection';
+import { encodePNG } from './pixel/png.mjs';
+import { PEOPLE, blinkLayer, portrait } from './pixel/people.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -21,50 +21,30 @@ const ICONS = {
   nav_people: 'meeple-group', nav_build: 'wood-cabin', nav_log: 'scroll-unfurled', talk: 'chat-bubble',
 };
 
-// 人物形象：每人固定的长相，三种表情对应心情好 / 平常 / 低落（Open Peeps，CC0）
-const PEOPLE = {
-  qin: { head: 'hatBeanie', facialHair: 'goatee2', skin: 'e0a878', cloth: '5f7d5c', faces: ['calm', 'old', 'tired'] },
-  lin: { head: 'bun', skin: 'f5dcc8', cloth: 'c58a7a', faces: ['smile', 'calm', 'concerned'] },
-  jie: { head: 'pomp', skin: 'f1d0b0', cloth: '5b88b0', faces: ['smileBig', 'cheeky', 'tired'] },
-  ma: { head: 'noHair2', facialHair: 'moustache2', skin: 'e0a878', cloth: 'b08a3c', faces: ['eatingHappy', 'smile', 'concerned'] },
-  su: { head: 'mediumBangs3', accessories: 'glasses4', skin: 'f5dcc8', cloth: '80609a', faces: ['contempt', 'serious', 'tired'] },
-  man: { head: 'buns', skin: 'f8e1d0', cloth: 'e0a3a3', faces: ['cute', 'awe', 'concernedFear'] },
-  gesang: { head: 'longBangs', skin: 'c98a5a', cloth: 'b5523b', faces: ['driven', 'serious', 'solemn'] },
-  wu: { head: 'short5', facialHair: 'chin', skin: 'd29a6a', cloth: '6c7884', faces: ['calm', 'blank', 'solemn'] },
-  unknown: { head: 'medium1', skin: '3a4450', cloth: '2a3440', faces: ['blank'] },
-};
+// 人物形象：scripts/pixel/people.mjs 里手绘的 48×48 像素半身像，每人三种表情（心情好 / 平常 / 低落）
+const CAST = ['qin', 'lin', 'jie', 'ma', 'su', 'man', 'gesang', 'wu', 'unknown'];
 
-function peep(id, face) {
-  const b = PEOPLE[id];
-  return createAvatar(openPeeps, {
-    seed: id,
-    head: [b.head],
-    face: [face],
-    facialHair: b.facialHair ? [b.facialHair] : undefined,
-    facialHairProbability: b.facialHair ? 100 : 0,
-    accessories: b.accessories ? [b.accessories] : undefined,
-    accessoriesProbability: b.accessories ? 100 : 0,
-    maskProbability: 0,
-    skinColor: [b.skin],
-    clothingColor: [b.cloth],
-    headContrastColor: [id === 'unknown' ? '1c242d' : '2c1b18'],
-  }).toString();
-}
-
-const paintings = (await readdir('art/paintings')).filter((f) => f.endsWith('.jpg')).sort();
+// 背景用像素化之后的画（scripts/pixelate.py 从 art/paintings 生成）
+const paintings = (await readdir('art/pixel-bg')).filter((f) => f.endsWith('.png')).sort();
 let css = '/* 由 scripts/art.mjs 生成，不要手改。画作：大都会艺术博物馆开放获取（CC0），详见 art/credits.json */\n:root, .hanyi {\n';
 for (const f of paintings) {
-  const b64 = (await readFile(`art/paintings/${f}`)).toString('base64');
-  css += `  --art-${f.replace(/\.jpg$/, '')}: url("data:image/jpeg;base64,${b64}");\n`;
+  const b64 = (await readFile(`art/pixel-bg/${f}`)).toString('base64');
+  css += `  --art-${f.replace(/\.png$/, '')}: url("data:image/png;base64,${b64}");\n`;
 }
 css += '}\n';
+await rm('art/portraits', { recursive: true, force: true });
 await mkdir('art/portraits', { recursive: true });
 let portraits = 0;
-for (const [id, b] of Object.entries(PEOPLE)) {
-  for (const [i, face] of b.faces.entries()) {
-    const svg = peep(id, face);
-    await writeFile(`art/portraits/${id}-${i}.svg`, svg);
-    css += `.pt-${id}-${i} { background-image: url("data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}"); }\n`;
+for (const id of CAST) {
+  for (let i = 0; i < (PEOPLE[id].moods ?? 3); i++) {
+    const cv = portrait(id, i);
+    const png = encodePNG(cv.w, cv.h, cv.rgba());
+    await writeFile(`art/portraits/${id}-${i}.png`, png);
+    // 眨眼：闭眼叠层 + 每人不同的节奏，免得大家一起眨
+    const blink = blinkLayer(id, i);
+    const h = [...id].reduce((v, ch) => Math.imul(v ^ ch.charCodeAt(0), 16777619) >>> 0, 2166136261);
+    const timing = blink ? ` --blink: url("data:image/png;base64,${encodePNG(blink.w, blink.h, blink.rgba()).toString('base64')}"); --blink-dur: ${(4.2 + (h % 23) / 10).toFixed(1)}s; --blink-delay: -${((h >>> 9) % 50) / 10}s;` : '';
+    css += `.pt-${id}-${i} { background-image: url("data:image/png;base64,${png.toString('base64')}");${timing} }\n`;
     portraits++;
   }
 }

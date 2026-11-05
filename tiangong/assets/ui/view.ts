@@ -64,7 +64,7 @@ export const esc = (t: unknown) =>
 
 /** 心情决定表情：好 / 平常 / 低落 */
 const moodTier = (c?: CharState) => (!c || c.status !== 'active' ? 1 : c.mood >= 60 ? 0 : c.mood >= 30 ? 1 : 2);
-/** 人物形象（Open Peeps），样式类由 art.css 提供 */
+/** 人物形象（手绘像素画），样式类由 art.css 提供 */
 export const portrait = (id: string, c?: CharState, cls = '') =>
   `<i class="pt pt-${id}-${moodTier(c)} ${cls}" style="--c:${CHARS[id]?.color ?? '#555'}" aria-hidden="true"></i>`;
 const PHASE_WORD = { day: '白天', evening: '傍晚', night: '夜里', ending: '' } as const;
@@ -309,7 +309,7 @@ function logView(s: GameState, ui: UI) {
   const days = [...byDay.keys()].sort((a, b) => b - a);
   const secs = days.map((d) => `<section><h3>第${cnDay(d)}日</h3>${byDay.get(d)!.filter((l) => l.tone !== 'info' || byDay.get(d)!.length < 14).map((l) => `<p class="${l.tone}">${esc(l.text)}</p>`).join('')}</section>`);
   return `${ui.engine ? aiSettings(ui.engine) : ''}<section class="log">${secs.join('')}</section>
-  <section class="note credits"><h3>画作与图标</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。人物形象用 Open Peeps（Pablo Stanley，CC0）拼成。图标来自 game-icons.net，作者 Lorc、Delapouite，按 CC BY 3.0 使用。完整清单见仓库里的 CREDITS.md。</p></section>
+  <section class="note credits"><h3>画作与图标</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。画作缩成了像素画；人物的像素像是这个游戏自己画的。图标来自 game-icons.net，作者 Lorc、Delapouite，按 CC BY 3.0 使用。完整清单见仓库里的 CREDITS.md。</p></section>
   <section class="note"><h3>重新开始</h3><p class="mini">这一局的进度会被清掉。</p><div class="row">${ui.confirmReset ? '<button class="btn hot" data-act="reset-yes">确定重开</button> <button class="btn ghost" data-act="reset-no">算了</button>' : '<button class="btn" data-act="reset">重开一局</button>'}</div></section>`;
 }
 

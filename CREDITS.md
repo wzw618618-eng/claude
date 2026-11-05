@@ -2,7 +2,7 @@
 
 ## 画作
 
-全部来自[大都会艺术博物馆开放获取](https://www.metmuseum.org/about-the-met/policies-and-documents/open-access)，属于公有领域，按 CC0 1.0 发布，可以自由使用、修改和商用。游戏里用的是裁剪、缩小后的版本（`art/paintings/`），裁剪范围记在 `art/credits.json`。
+全部来自[大都会艺术博物馆开放获取](https://www.metmuseum.org/about-the-met/policies-and-documents/open-access)，属于公有领域，按 CC0 1.0 发布，可以自由使用、修改和商用。`art/paintings/` 里是裁剪、缩小后的原画，裁剪范围记在 `art/credits.json`；游戏里用的是再由 `scripts/pixelate.py` 缩成像素画的版本（`art/pixel-bg/`，长边 160 像素、28 色）。
 
 | 文件 | 用在 | 原题 | 画家 | 年代 | 馆藏页 |
 | --- | --- | --- | --- | --- | --- |
@@ -21,7 +21,7 @@
 
 ## 人物形象
 
-八个人的形象用 [Open Peeps](https://www.openpeeps.com/)（Pablo Stanley 绘，[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)）的发型、五官和服装部件拼成，经 [DiceBear](https://www.dicebear.com/)（代码 MIT 许可）生成。每人三种表情，跟着心情换。配置在 `scripts/art.mjs` 的 `PEOPLE` 里，生成的图在 `art/portraits/`。
+八个人的像素半身像是这个项目自己画的，没有用第三方素材：脸型、五官、头发、衣服都写在 `scripts/pixel/people.mjs` 里，由 `npm run art` 画成 48×48 的 PNG（`art/portraits/`）。每人三种表情跟着心情换，另有一帧闭眼用来眨眼。
 
 ## 图标
 
