@@ -11,7 +11,6 @@
     "art": "node scripts/art.mjs"
   },
   "devDependencies": {
-    "@iconify-json/game-icons": "^1.2.4",
     "esbuild": "^0.24.2",
     "typescript": "^5.6.3"
   }

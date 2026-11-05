@@ -20,7 +20,7 @@
 - Reproduction: `forgeax_run_current_game` 成功启动预览 → 修改 `assets/` 下的源码 → 再次调用 `forgeax_run_current_game`，或运行 `npx -y @forgeax/game preview stop --target-dir <game-root>`
 - Expected: 重新构建并替换（或停止）这个连接器自己启动的预览
 - Actual: 两者都返回 `preview_ownership_unverified: preview_static_digest_mismatch`，旧预览进程继续运行
-- Evidence: 本工程开发过程中连续出现两次；手动结束旧预览进程后再调用即可成功
+- Evidence: 本工程开发过程中连续出现两次；手动结束旧预览进程后再调用即可成功。2026-11-05 改界面后再次出现（`preview_static_digest_mismatch`），同样的办法解决
 - Status: workaround
 
 ### 2026-11-04 — 无显卡环境下，无头浏览器里的软件 WebGPU 设备丢失

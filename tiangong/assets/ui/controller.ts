@@ -10,10 +10,14 @@ import { type Act, CHANNEL, type ToEngine, type ToHost } from '../camp/protocol.
 import { createChatApiProvider, createClaudeProvider, createOfflineProvider, TALK_LIMITS } from '../souls/providers.ts';
 import artCss from './art.css?raw';
 import css from './style.css?raw';
-import { endingScreen, type EngineView, gameScreen, hasOverlay, titleScreen, type UI } from './view.ts';
+import { createSound, CUE_FOR_ACT } from './audio.ts';
+import { createFx } from './fx.ts';
+import { endingScreen, type EngineView, gameScreen, hasOverlay, TIPS, titleScreen, type UI } from './view.ts';
 
 const SAVE_KEY = 'hanyi.engine.save.v1';
 const AI_KEY = 'hanyi.engine.ai.v1';
+const TIPS_KEY = 'hanyi.tips.v1';
+const SOUND_KEY = 'hanyi.sound.v1';
 const FONTS = 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap';
 
 type Kind = EngineView['settings']['kind'];
@@ -40,8 +44,13 @@ export function mountHanyi(host: HanyiHost) {
   const style = doc.createElement('style');
   style.textContent = artCss + css;
   const app = doc.createElement('div');
-  shell.append(fonts, style, app);
+  const layer = doc.createElement('div');
+  layer.className = 'hanyi-fx';
+  layer.setAttribute('aria-hidden', 'true');
+  shell.append(fonts, style, app, layer);
   host.uiRoot.append(shell);
+  const sound = createSound(win, { muted: read(SOUND_KEY) === 'off' });
+  const fx = createFx(app, layer, win, sound);
 
   let s: GameState | null = null;
   let cfg: AiConfig = loadConfig();
@@ -50,11 +59,14 @@ export function mountHanyi(host: HanyiHost) {
   const ui: UI = {
     screen: 'title', tab: 'people', sheet: null, outcome: null, confirmReset: false,
     thinking: null, aiNote: null, reportOpen: false, ai: cfg.kind !== 'offline', hasSave: !!read(SAVE_KEY),
+    tips: (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]') as string[]; } catch { return []; } })(),
+    sound: read(SOUND_KEY) !== 'off',
     engine: {
       souls: [], provider: '连接中', sessions: {}, stream: null,
       settings: { kind: cfg.kind, baseUrl: cfg.baseUrl, model: cfg.model, hasKey: !!cfg.apiKey, claude: false, editing: false },
     },
   };
+  const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
   const send = (m: ToEngine, transfer?: Transferable[]) => host.port.postMessage(m, transfer ?? []);
   const actOn = (a: Act) => send({ channel: CHANNEL, kind: 'act', act: a });
 
@@ -80,7 +92,7 @@ export function mountHanyi(host: HanyiHost) {
     }
     if (key && key === lastKey) app.querySelectorAll('.scrim, .sheet').forEach((el) => el.classList.add('still'));
     lastKey = key;
-    if (ui.screen === 'title' || s?.phase === 'ending') snow(app, win);
+    fx.after(s, ui);
   };
 
   // ───────────── 来自游戏世界 ─────────────
@@ -118,12 +130,25 @@ export function mountHanyi(host: HanyiHost) {
     if (!el || !app.contains(el)) return;
     const stop = t.closest('[data-stop]');
     if (stop && !stop.contains(el)) return;
-    if ((el as HTMLButtonElement).disabled) return;
+    sound.unlock();
+    if ((el as HTMLButtonElement).disabled) { sound.play('deny'); return; }
     const a = el.dataset.act!;
     const id = el.dataset.id ?? '';
     const v = el.dataset.v ?? '';
     let top = false;
+    if (CUE_FOR_ACT[a]) sound.play(CUE_FOR_ACT[a]);
     switch (a) {
+      case 'sound':
+        sound.setMuted(!sound.muted);
+        ui.sound = !sound.muted;
+        write(SOUND_KEY, ui.sound ? 'on' : 'off');
+        if (ui.sound) sound.play('tap');
+        break;
+      case 'info': ui.sheet = { kind: 'info', id: v }; break;
+      case 'end-check': ui.sheet = { kind: 'end', id: '' }; break;
+      case 'tip': if (!ui.tips!.includes(v)) ui.tips!.push(v); saveTips(); break;
+      case 'tip-skip': ui.tips = [...new Set([...ui.tips!, ...TIPS.map((t) => t.id).filter((t) => ['people', 'assign', 'res', 'end'].includes(t))])]; saveTips(); break;
+      case 'tip-reset': ui.tips = []; saveTips(); ui.tab = 'people'; top = true; break;
       case 'new':
       case 'reset-yes':
         actOn({ type: 'new' });
@@ -131,7 +156,10 @@ export function mountHanyi(host: HanyiHost) {
         top = true;
         break;
       case 'continue': ui.screen = 'game'; top = true; break;
-      case 'tab': ui.tab = v as UI['tab']; ui.confirmReset = false; top = true; break;
+      case 'tab':
+        ui.tab = v as UI['tab']; ui.confirmReset = false; top = true;
+        if (v === 'build' && !ui.tips!.includes('build')) { ui.tips!.push('build'); saveTips(); }
+        break;
       case 'pick': ui.sheet = { kind: 'task', id }; break;
       case 'set': actOn({ type: 'setTask', id, task: v as TaskId }); ui.sheet = null; break;
       case 'person': ui.sheet = { kind: 'person', id }; break;
@@ -143,7 +171,7 @@ export function mountHanyi(host: HanyiHost) {
       case 'topic': send({ channel: CHANNEL, kind: 'talk', id, topic: v as Topic }); return;
       case 'choose': actOn({ type: 'choose', i: Number(el.dataset.i) }); return;
       case 'ok': ui.outcome = null; break;
-      case 'end-day': actOn({ type: 'endDay' }); ui.reportOpen = false; ui.tab = 'people'; top = true; break;
+      case 'end-day': actOn({ type: 'endDay' }); ui.sheet = null; ui.reportOpen = false; ui.tab = 'people'; top = true; break;
       case 'night': actOn({ type: 'toNight' }); ui.tab = 'people'; top = true; break;
       case 'sleep': actOn({ type: 'endNight' }); ui.sheet = null; ui.reportOpen = false; ui.tab = 'people'; top = true; break;
       case 'policy': actOn({ type: 'policy', k: el.dataset.k as 'ration' | 'heat', v }); return;
@@ -255,33 +283,9 @@ export function mountHanyi(host: HanyiHost) {
       app.removeEventListener('click', onClick);
       app.removeEventListener('submit', onSubmit);
       void binding?.close();
+      fx.dispose();
+      sound.dispose();
       shell.remove();
     },
   };
-}
-
-// ───────────── 雪 ─────────────
-
-function snow(app: HTMLElement, win: Window | null) {
-  const cv = app.querySelector<HTMLCanvasElement>('#snow');
-  if (!cv || !win) return;
-  const g = cv.getContext('2d');
-  if (!g) return;
-  const dpr = Math.min(2, win.devicePixelRatio || 1);
-  const flakes = Array.from({ length: 80 }, () => ({ x: Math.random(), y: Math.random(), r: 0.6 + Math.random() * 1.8, v: 0.0006 + Math.random() * 0.0016, w: Math.random() * 6.28 }));
-  const still = win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const draw = () => {
-    if (!cv.isConnected) return;
-    if (cv.width !== cv.clientWidth * dpr) { cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr; }
-    g.clearRect(0, 0, cv.width, cv.height);
-    g.fillStyle = 'rgba(231, 235, 238, 0.55)';
-    for (const f of flakes) {
-      if (!still) { f.y += f.v; f.w += 0.01; if (f.y > 1.02) { f.y = -0.02; f.x = Math.random(); } }
-      g.beginPath();
-      g.arc((f.x + Math.sin(f.w) * 0.01) * cv.width, f.y * cv.height, f.r * dpr, 0, Math.PI * 2);
-      g.fill();
-    }
-    if (!still) win.requestAnimationFrame(draw);
-  };
-  draw();
 }

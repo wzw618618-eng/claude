@@ -25,12 +25,11 @@
 
 ## 图标
 
-来自 [game-icons.net](https://game-icons.net)，按 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) 使用，经 `@iconify-json/game-icons` 取得，未作修改。
+二十多个 12×12 的像素图标也是这个项目自己画的，写在 `scripts/pixel/icons.mjs` 里，由 `npm run art` 生成内联 SVG（`tiangong/assets/ui/icons.ts`）。
 
-| 作者 | 图标 |
-| --- | --- |
-| Lorc | roast-chicken、wood-axe、footprint、hammer-nails、conversation、lantern-flame、sun、snowflake-2、snowing、campfire、scroll-unfurled |
-| Delapouite | wood-pile、toolbox、medicines、bow-arrow、backpack、cooking-pot、first-aid-kit、night-sleep、thermometer-cold、meeple-group、wood-cabin、chat-bubble |
+## 声音
+
+没有音频文件。风雪、柴火、拨弦配乐和按键音都是运行时用 Web Audio 合成的（`tiangong/assets/ui/audio.ts`）。
 
 ## 字体
 

@@ -5,14 +5,26 @@ import { makeRng } from '../tiangong/assets/hanyi/core/rng';
 import { GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
 import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
 import { adoptAll, adoptIntent, openChat } from '../tiangong/assets/hanyi/ai/intent';
-import { endingScreen, gameScreen, hasOverlay, titleScreen, UI } from '../tiangong/assets/ui/view';
+import { createSound, CUE_FOR_ACT } from '../tiangong/assets/ui/audio';
+import { createFx } from '../tiangong/assets/ui/fx';
+import { endingScreen, gameScreen, hasOverlay, TIPS, titleScreen, UI } from '../tiangong/assets/ui/view';
 
 declare global {
   interface Window { claude?: any }
 }
 
 const KEY = 'hanyi.save.v1';
+const TIPS_KEY = 'hanyi.tips.v1';
+const SOUND_KEY = 'hanyi.sound.v1';
 const app = document.getElementById('app')!;
+const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* 存不了不影响游玩 */ } };
+const sound = createSound(window, { muted: read(SOUND_KEY) === 'off' });
+const layer = document.createElement('div');
+layer.className = 'hanyi-fx';
+layer.setAttribute('aria-hidden', 'true');
+document.body.append(layer);
+const fx = createFx(app, layer, window, sound);
 let s: GameState | null = null;
 let sample: any = null;
 let aiOff = false;
@@ -28,7 +40,10 @@ const ui: UI = {
   reportOpen: false,
   ai: false,
   hasSave: false,
+  tips: (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]'); } catch { return []; } })(),
+  sound: read(SOUND_KEY) !== 'off',
 };
+const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
 
 function save() {
   if (!s) return;
@@ -66,7 +81,7 @@ function render(opts: { top?: boolean; chatBottom?: boolean } = {}) {
   }
   if (key && key === lastSheetKey) app.querySelectorAll('.scrim, .sheet').forEach((el) => el.classList.add('still'));
   lastSheetKey = key;
-  if (ui.screen === 'title' || s?.phase === 'ending') snow();
+  fx.after(s, ui);
 }
 
 // ───────────── 点击 ─────────────
@@ -77,11 +92,20 @@ app.addEventListener('click', (e) => {
   if (!el) return;
   const stop = t.closest('[data-stop]');
   if (stop && !stop.contains(el)) return; // 点在面板里的空白处，不当作点了背后的遮罩
-  if ((el as HTMLButtonElement).disabled) return;
+  sound.unlock();
+  if ((el as HTMLButtonElement).disabled) { sound.play('deny'); return; }
   const a = el.dataset.act!;
   const id = el.dataset.id ?? '';
   const v = el.dataset.v ?? '';
   let top = false;
+  if (CUE_FOR_ACT[a]) sound.play(CUE_FOR_ACT[a]);
+  if (a === 'sound') {
+    sound.setMuted(!sound.muted);
+    ui.sound = !sound.muted;
+    write(SOUND_KEY, ui.sound ? 'on' : 'off');
+    if (ui.sound) sound.play('tap');
+    return render();
+  }
 
   if (a === 'new') {
     s = newGame();
@@ -94,7 +118,15 @@ app.addEventListener('click', (e) => {
   if (!s) return render();
 
   switch (a) {
-    case 'tab': ui.tab = v as UI['tab']; ui.confirmReset = false; top = true; break;
+    case 'tab':
+      ui.tab = v as UI['tab']; ui.confirmReset = false; top = true;
+      if (v === 'build' && !ui.tips!.includes('build')) { ui.tips!.push('build'); saveTips(); }
+      break;
+    case 'info': ui.sheet = { kind: 'info', id: v }; break;
+    case 'end-check': ui.sheet = { kind: 'end', id: '' }; break;
+    case 'tip': if (!ui.tips!.includes(v)) ui.tips!.push(v); saveTips(); break;
+    case 'tip-skip': ui.tips = [...new Set([...ui.tips!, ...TIPS.map((t) => t.id).filter((t) => ['people', 'assign', 'res', 'end'].includes(t))])]; saveTips(); break;
+    case 'tip-reset': ui.tips = []; saveTips(); ui.tab = 'people'; top = true; break;
     case 'pick': ui.sheet = { kind: 'task', id }; break;
     case 'set': setTask(s, id, v as TaskId); ui.sheet = null; break;
     case 'person': ui.sheet = { kind: 'person', id }; break;
@@ -105,7 +137,7 @@ app.addEventListener('click', (e) => {
     case 'topic': void talk(id, v as Topic); return;
     case 'choose': { const r = choose(s, Number(el.dataset.i)); if (r) ui.outcome = r; break; }
     case 'ok': ui.outcome = null; break;
-    case 'end-day': endDay(s); ui.reportOpen = false; ui.tab = 'people'; top = true; break;
+    case 'end-day': endDay(s); ui.sheet = null; ui.reportOpen = false; ui.tab = 'people'; top = true; break;
     case 'night': toNight(s); ui.tab = 'people'; top = true; break;
     case 'sleep': endNight(s); ui.sheet = null; ui.reportOpen = false; ui.tab = 'people'; top = true; break;
     case 'policy': {
@@ -194,45 +226,6 @@ async function talk(id: string, topic: Topic | null, text?: string) {
   log.push({ from: 'them', text: result.reply });
   save();
   render({ chatBottom: true });
-}
-
-// ───────────── 雪 ─────────────
-
-let snowRaf = 0;
-function snow() {
-  cancelAnimationFrame(snowRaf);
-  const cv = document.getElementById('snow') as HTMLCanvasElement | null;
-  if (!cv) return;
-  const g = cv.getContext('2d');
-  if (!g) return;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const size = () => {
-    cv.width = cv.clientWidth * dpr;
-    cv.height = cv.clientHeight * dpr;
-  };
-  size();
-  const flakes = Array.from({ length: 90 }, () => ({
-    x: Math.random(), y: Math.random(), r: 0.6 + Math.random() * 1.8, v: 0.0006 + Math.random() * 0.0016, w: Math.random() * Math.PI * 2,
-  }));
-  const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const draw = () => {
-    if (!cv.isConnected) return;
-    if (cv.width !== cv.clientWidth * dpr) size();
-    g.clearRect(0, 0, cv.width, cv.height);
-    g.fillStyle = 'rgba(231, 235, 238, 0.55)';
-    for (const f of flakes) {
-      if (!still) {
-        f.y += f.v;
-        f.w += 0.01;
-        if (f.y > 1.02) { f.y = -0.02; f.x = Math.random(); }
-      }
-      g.beginPath();
-      g.arc((f.x + Math.sin(f.w) * 0.01) * cv.width, f.y * cv.height, f.r * dpr, 0, Math.PI * 2);
-      g.fill();
-    }
-    if (!still) snowRaf = requestAnimationFrame(draw);
-  };
-  draw();
 }
 
 // ───────────── 启动 ─────────────
