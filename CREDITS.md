@@ -23,6 +23,10 @@
 
 八个人的像素半身像是这个项目自己画的，没有用第三方素材：脸型、五官、头发、衣服都写在 `scripts/pixel/people.mjs` 里，由 `npm run art` 画成 48×48 的 PNG（`art/portraits/`）。每人三种表情跟着心情换，另有一帧闭眼用来眨眼。
 
+## 驿站场景
+
+「众人」页上的驿站剖面图、八个人的全身小人（站、走、干活、坐、躺）、家具、营建出来的东西和工具，也都是这个项目自己画的，写在 `scripts/pixel/scene.mjs` 里，打包成一张 5 KB 的图集（`tiangong/assets/ui/scene-atlas.ts`），由 `tiangong/assets/ui/scene.ts` 在运行时拼成场景。
+
 ## 图标
 
 二十多个 12×12 的像素图标也是这个项目自己画的，写在 `scripts/pixel/icons.mjs` 里，由 `npm run art` 生成内联 SVG（`tiangong/assets/ui/icons.ts`）。

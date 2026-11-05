@@ -3,11 +3,14 @@
 // - 过场：傍晚 / 入夜 / 新的一天，屏幕中间闪过一张大字卡；
 // - 跳数字：资源有增减时，从日头上的数字旁边飘出 +3 / −2；聊天涨了信任，从人像旁飘出来；
 // - 人物反应：派了活、心情变了，人像跳一下；
+// - 驿站场景：canvas[data-scene] 每帧重画（scene.ts），点到画里的人就当作点了他（白天派活、夜里说话）；
 // - 教学：给提示指着的那个东西加高亮，并滚到能看见的地方；
 // - 对应的声音。
 
 import type { GameState } from '../hanyi/core/types';
 import type { Sound } from './audio';
+import { drawScene, hitTest, newRuntime, SCENE_H } from './scene';
+import { SCENE_PNG } from './scene-atlas';
 import { dayCard, type UI } from './view';
 
 interface Snap {
@@ -58,6 +61,59 @@ export function createFx(app: HTMLElement, layer: HTMLElement, win: Window | nul
   const flakes = new Map<string, Flake[]>();
   const timers = new Set<number>();
   const still = !!win?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  // 驿站场景
+  const img = doc.createElement('img');
+  let imgReady = false;
+  img.onload = () => { imgReady = true; if (!raf) loop(); };
+  img.src = SCENE_PNG;
+  const rt = newRuntime();
+  let cur: GameState | null = null;
+  let lastScene = 0;
+  const clock = () => win?.performance?.now() ?? Date.now();
+
+  function paintScene(cv: HTMLCanvasElement, t: number) {
+    if (!cur || !imgReady || cur.phase === 'ending') return;
+    const box = cv.parentElement;
+    const cw = box?.clientWidth ?? 390;
+    const k = cw >= 520 ? 4 : cw >= 240 ? 3 : 2;
+    const W = Math.max(60, Math.ceil(cw / k));
+    if (cv.width !== W || cv.height !== SCENE_H || cv.dataset.k !== String(k)) {
+      cv.width = W;
+      cv.height = SCENE_H;
+      cv.dataset.k = String(k);
+      cv.style.width = `${W * k}px`;
+      cv.style.height = `${SCENE_H * k}px`;
+      cv.style.marginLeft = `${Math.floor((cw - W * k) / 2)}px`;
+    }
+    const g = cv.getContext('2d');
+    if (g) drawScene(g, img, cur, W, t, rt);
+  }
+
+  /** 点画：在冒泡到界面的点击处理之前，把点中的人写到 canvas 的 data-act / data-id 上 */
+  const sceneTarget = (e: MouseEvent) => {
+    const cv = (e.target as Element | null)?.closest?.('canvas[data-scene]') as HTMLCanvasElement | null;
+    if (!cv || !cur) return null;
+    const r = cv.getBoundingClientRect();
+    const id = hitTest(rt, ((e.clientX - r.left) * cv.width) / r.width, ((e.clientY - r.top) * cv.height) / r.height);
+    return { cv, id };
+  };
+  const onClick = (e: MouseEvent) => {
+    const hit = sceneTarget(e);
+    if (!hit) return;
+    if (hit.id && cur) {
+      hit.cv.dataset.act = cur.phase === 'day' ? 'pick' : cur.phase === 'night' ? 'chat' : 'person';
+      hit.cv.dataset.id = hit.id;
+    } else {
+      delete hit.cv.dataset.act;
+      delete hit.cv.dataset.id;
+    }
+  };
+  const onMove = (e: PointerEvent) => {
+    const hit = sceneTarget(e);
+    if (hit) hit.cv.style.cursor = hit.id ? 'pointer' : 'default';
+  };
+  app.addEventListener('click', onClick, true);
+  app.addEventListener('pointermove', onMove);
 
   const later = (ms: number, fn: () => void) => {
     if (!win) return fn();
@@ -189,8 +245,15 @@ export function createFx(app: HTMLElement, layer: HTMLElement, win: Window | nul
   function loop() {
     raf = 0;
     const cvs = app.querySelectorAll<HTMLCanvasElement>('canvas[data-snow]');
-    if (!cvs.length) return;
+    const scenes = app.querySelectorAll<HTMLCanvasElement>('canvas[data-scene]');
+    if (!cvs.length && !scenes.length) return;
     cvs.forEach(drawSnow);
+    const t = clock();
+    // 场景按 30 帧画就够了：像素动画本来就是一格一格跳的
+    if (scenes.length && (still || t - lastScene > 32)) {
+      lastScene = t;
+      scenes.forEach((cv) => paintScene(cv, still ? 0 : t));
+    }
     if (!still && win) raf = win.requestAnimationFrame(loop);
   }
 
@@ -207,9 +270,13 @@ export function createFx(app: HTMLElement, layer: HTMLElement, win: Window | nul
       }
       coach(snap.tip, snap.tip !== prev?.tip);
       prev = snap;
+      cur = s;
+      lastScene = 0;
       if (!raf) loop();
     },
     dispose() {
+      app.removeEventListener('click', onClick, true);
+      app.removeEventListener('pointermove', onMove);
       if (raf && win) win.cancelAnimationFrame(raf);
       for (const id of timers) win?.clearTimeout(id);
       layer.replaceChildren();

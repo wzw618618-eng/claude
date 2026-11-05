@@ -2,12 +2,14 @@
 //   art/paintings/*.jpg →（scripts/pixelate.py）→ art/pixel-bg/*.png → tiangong/assets/ui/art.css（内联成 data URI，两个版本共用）
 //   人物形象（scripts/pixel 手绘像素画）→ art/portraits/*.png，并写进 art.css 的 .pt-<角色>-<心情> 类
 //   像素图标（scripts/pixel/icons.mjs）→ tiangong/assets/ui/icons.ts
+//   驿站场景的小人和道具（scripts/pixel/scene.mjs）→ tiangong/assets/ui/scene-atlas.ts
 // 画作来源和授权见 art/credits.json 和 CREDITS.md。改了素材后运行：npm run art
 
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { ICONS, iconSvg } from './pixel/icons.mjs';
 import { encodePNG } from './pixel/png.mjs';
 import { PEOPLE, blinkLayer, portrait } from './pixel/people.mjs';
+import { buildScene } from './pixel/scene.mjs';
 
 // 人物形象：scripts/pixel/people.mjs 里手绘的 48×48 像素半身像，每人三种表情（心情好 / 平常 / 低落）
 const CAST = ['qin', 'lin', 'jie', 'ma', 'su', 'man', 'gesang', 'wu', 'unknown'];
@@ -47,4 +49,13 @@ await writeFile(
     `export const ICON_BODIES: Record<string, { size: number; body: string }> = ${JSON.stringify(out, null, 2)};\n\n` +
     `export const icon = (key: string, cls = '') => {\n  const i = ICON_BODIES[key];\n  return i ? \`<svg class="ico \${cls}" viewBox="0 0 \${i.size} \${i.size}" shape-rendering="crispEdges" aria-hidden="true">\${i.body}</svg>\` : '';\n};\n`,
 );
+// 驿站场景的图集（scripts/pixel/scene.mjs）
+const scene = buildScene();
+await writeFile(
+  'tiangong/assets/ui/scene-atlas.ts',
+  `// 由 scripts/art.mjs 生成，不要手改。驿站场景的像素图集（scripts/pixel/scene.mjs），这个游戏自己画的。\n` +
+    `export const SCENE_PNG = 'data:image/png;base64,${scene.png.toString('base64')}';\n` +
+    `export const FRAMES: Record<string, [number, number, number, number]> = ${JSON.stringify(scene.frames)};\n`,
+);
+console.log(`scene-atlas.ts: ${Object.keys(scene.frames).length} 张小图（${(scene.png.length / 1024).toFixed(0)} KB）`);
 console.log(`art.css: ${paintings.length} 幅画、${portraits} 张人物（${(css.length / 1024).toFixed(0)} KB），icons.ts: ${Object.keys(out).length} 个图标`);

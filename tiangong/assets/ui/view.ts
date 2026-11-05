@@ -231,15 +231,22 @@ function card(s: GameState, c: CharState) {
 </article>`;
 }
 
-/** 围炉：大家围坐在火边；每句闲话旁边，是说话人的脸 */
+/** 驿站场景：一幅会动的像素剖面图，由 fx.ts 每帧画进 canvas（scene.ts）。点画里的人和点卡片一样。 */
+function scenePanel(s: GameState) {
+  const A = act(s);
+  const what = s.phase === 'day'
+    ? A.map((c) => `${nm(c.id)}${TASKS[blocked(s, c, c.task) ? 'rest' : c.task].name}`).join('，')
+    : `${A.map((c) => nm(c.id)).join('、')}围坐在火边`;
+  const hint = s.phase === 'day' ? '点画里的人给他派活' : s.phase === 'night' ? '点火边的人和他说说话' : '点画里的人看看他';
+  return `<div class="scene-box" data-phase="${s.phase}"><canvas class="scene" data-scene role="img" aria-label="驿站里：${esc(what)}。${hint}。"></canvas><p class="scene-hint">${hint}</p></div>`;
+}
+
+/** 围炉：火边的闲话；每句旁边是说话人的脸 */
 function campfire(s: GameState, ui: UI) {
   const A = act(s);
   const lines = s.ambient.length ? s.ambient : ['火噼啪地响着。'];
-  const half = Math.ceil(A.length / 2);
-  const seat = (c: CharState, i: number) => `<button class="seat" style="--i:${i}" data-act="chat" data-id="${c.id}" aria-label="和${def(c.id).short}说话">${portrait(c.id, c)}${s.wants?.[c.id] && !s.wants[c.id].done ? '<span class="dot" aria-label="有话想说"></span>' : ''}</button>`;
   const faces = (line: string) => A.filter((c) => line.includes(nm(c.id))).slice(0, 2).map((c) => portrait(c.id, c, 'mini')).join('');
   return `<section class="campfire" data-phase="${s.phase}"><div class="campfire-art" aria-hidden="true"></div>
-  <div class="ring">${A.slice(0, half).map((c, i) => seat(c, i)).join('')}<span class="fire" aria-hidden="true">${icon('fire')}<i class="embers"></i></span>${A.slice(half).map((c, i) => seat(c, i + half)).join('')}</div>
   <div class="lines">${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}"><span class="faces">${faces(l)}</span><span class="text">${esc(l)}</span></p>`).join('')}</div>
   <p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '点火边的人和他们说话。每人每晚最多聊四句。'}</p>
 </section>`;
@@ -254,7 +261,7 @@ function reportCard(s: GameState, ui: UI, title: string) {
 }
 
 function people(s: GameState, ui: UI) {
-  const parts: string[] = [];
+  const parts: string[] = [scenePanel(s)];
   const A = act(s);
   if (s.phase === 'day') {
     if (s.day > 1) parts.push(reportCard(s, ui, '昨夜'));
@@ -329,7 +336,7 @@ function logView(s: GameState, ui: UI) {
   const secs = days.map((d) => `<section><h3>第${cnDay(d)}日</h3>${byDay.get(d)!.filter((l) => l.tone !== 'info' || byDay.get(d)!.length < 14).map((l) => `<p class="${l.tone}">${esc(l.text)}</p>`).join('')}</section>`);
   const settings = `<section class="note settings"><h3>设置</h3><div class="row">${ui.sound !== undefined ? `<button class="btn" data-act="sound">${icon(ui.sound ? 'sound' : 'mute')}${ui.sound ? '声音：开' : '声音：关'}</button>` : ''}<button class="btn" data-act="tip-reset">重新看一遍教学</button></div></section>`;
   return `${settings}${ui.engine ? aiSettings(ui.engine) : ''}<section class="log">${secs.join('')}</section>
-  <section class="note credits"><h3>素材</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。画作缩成了像素画；人物的像素像是这个游戏自己画的。人物、图标和音乐都是这个游戏自己画、自己合成的。完整清单见仓库里的 CREDITS.md。</p></section>
+  <section class="note credits"><h3>素材</h3><p class="mini">画作均来自大都会艺术博物馆开放获取（公有领域，CC0）：袁耀、刘松年、马远、马麟、刘世儒、姚彦卿、Xu Jing 以及几位佚名宋元画家笔下的雪景和梅花。画作缩成了像素画；人物的像素像是这个游戏自己画的。人物、驿站场景、图标和音乐都是这个游戏自己画、自己合成的。完整清单见仓库里的 CREDITS.md。</p></section>
   <section class="note"><h3>重新开始</h3><p class="mini">这一局的进度会被清掉。</p><div class="row">${ui.confirmReset ? '<button class="btn hot" data-act="reset-yes">确定重开</button> <button class="btn ghost" data-act="reset-no">算了</button>' : '<button class="btn" data-act="reset">重开一局</button>'}</div></section>`;
 }
 
@@ -670,12 +677,12 @@ interface Tip { id: string; target: string; title: string; text: string; when: (
 const DAY1 = (s: GameState) => s.phase === 'day' && s.day === 1;
 
 export const TIPS: Tip[] = [
-  { id: 'people', when: DAY1, target: '.cards .card', title: '驿站里的人', text: '这些就是和你一起困在驿站里的人。头顶的气泡是他们自己想干的活；点人像，能看他们的底细和心事。' },
+  { id: 'people', when: DAY1, target: '.scene-box', title: '驿站里的人', text: '这就是你们落脚的驿站，画里和下面卡片上的，是和你一起困在这里的人。每个人在画里干着你派的活；点画里的人就能给他派活。' },
   { id: 'assign', when: DAY1, target: '.adopt-all .btn, .card .task-btn', title: '派活', text: '点卡片下面的按钮给每个人派活，也可以一键「按大家的意思派活」。照他们的意思派，信任会涨。' },
   { id: 'res', when: DAY1, target: '.caps', title: '家底', text: '柴火保暖，食物果腹，物资用来营建，药品治病。数字旁边是今天预计的增减。点任何一个数字，都有说明。' },
   { id: 'end', when: DAY1, target: '.dock .go', title: '结束今天', text: '派完活点这里。白天会结算收成；要是安排有风险，会先提醒你。' },
   { id: 'evening', when: (s) => s.phase === 'evening', target: '.dock .go', title: '傍晚', text: '上面是今天的收成和发生的事。准备好了，就「围炉夜话」。' },
-  { id: 'night', when: (s) => s.phase === 'night', target: '.campfire', title: '围炉夜话', text: '点火边的人和他们说说话，每人每晚最多聊四句。信任够了，他们会说出藏在心里的事——那往往会改变很多。人像旁有红点的，有话想对你说。' },
+  { id: 'night', when: (s) => s.phase === 'night', target: '.scene-box', title: '围炉夜话', text: '点火边的人和他们说说话，每人每晚最多聊四句。信任够了，他们会说出藏在心里的事——那往往会改变很多。头上冒着「…」的人，有话想对你说。' },
   {
     id: 'build', target: ".dock-tabs [data-v='build']", title: '营建',
     when: (s) => s.phase === 'day' && s.day >= 2 && !s.project && BUILD_ORDER.some((id) => canAfford(s, id)),

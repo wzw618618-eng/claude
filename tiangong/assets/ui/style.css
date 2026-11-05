@@ -243,25 +243,6 @@ button.task-btn:hover { border-color: var(--dim); }
   mask-image: linear-gradient(to bottom, #000 30%, transparent 85%);
 }
 .campfire > :not(.campfire-art) { position: relative; z-index: 1; }
-.ring { display: flex; align-items: flex-end; justify-content: center; gap: 4px; padding-top: 6px; flex-wrap: nowrap; min-width: 0; }
-.seat {
-  position: relative; flex: 1 1 0; min-width: 0; max-width: 64px;
-  border-radius: 50% 50% 14px 14px;
-  background: radial-gradient(70% 60% at 50% 70%, rgba(255, 196, 140, 0.55), rgba(255, 196, 140, 0.12) 70%, transparent 72%);
-}
-.seat .pt { width: 100%; filter: drop-shadow(0 0 6px rgba(255, 170, 100, 0.35)); animation: sway 3.6s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -0.7s); }
-@keyframes sway { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
-.fire .embers { position: absolute; left: 0; right: 0; top: -26px; height: 40px; pointer-events: none; }
-.fire .embers::before, .fire .embers::after {
-  content: ""; position: absolute; bottom: 0; left: 44%; width: 3px; height: 3px; background: #ffb070; opacity: 0;
-  box-shadow: 9px 7px 0 #ff9050, -8px 13px 0 #ffd090; animation: ember 2.3s linear infinite;
-}
-.fire .embers::after { left: 58%; animation-delay: -1.15s; }
-@keyframes ember { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(4px, -34px); opacity: 0; } }
-.seat .dot { position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 0 2px var(--ink-2), 0 0 10px var(--ember); }
-.fire { position: relative; display: grid; place-items: center; width: 48px; height: 54px; flex: none; margin-bottom: 4px; }
-.fire .ico { width: 48px; height: 48px; margin: 0; color: var(--ember); filter: drop-shadow(0 0 14px rgba(238, 141, 74, 0.9)); animation: flicker 2.6s ease-in-out infinite alternate; }
-@keyframes flicker { 0% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.07) translateY(-1px); opacity: 1; } 100% { transform: scale(0.97); opacity: 0.9; } }
 .lines { display: grid; gap: 8px; }
 .lines p { display: flex; gap: 8px; align-items: flex-start; font-family: var(--font-story); font-size: 14.5px; line-height: 1.75; }
 .lines .faces { display: flex; flex: none; padding-top: 2px; }
@@ -499,6 +480,17 @@ button.task-btn:hover { border-color: var(--dim); }
   .card-body { padding: 8px; }
   .go { min-width: 112px; padding: 8px 12px; }
 }
+/* ───── 驿站场景：整数倍放大的像素画，手机上铺满整个宽度 ───── */
+.scene-box { position: relative; overflow: hidden; border-radius: 16px; border: 1px solid var(--rule); background: #0b1018; }
+.scene-box canvas { display: block; image-rendering: pixelated; touch-action: manipulation; }
+.scene-hint {
+  position: absolute; right: 8px; bottom: 6px; padding: 2px 8px; border-radius: 999px; pointer-events: none;
+  font-size: 11px; color: var(--paper); background: rgba(10, 12, 16, 0.55); letter-spacing: 0.06em;
+}
+@media (max-width: 600px) {
+  .scene-box { margin: -14px calc(-1 * max(16px, env(safe-area-inset-left, 0px))) 0; border-radius: 0; border-width: 0 0 1px; }
+}
+
 /* ───── 按下去的手感 ───── */
 :where(.hanyi) button:not(:disabled):active { transform: translateY(1px) scale(0.98); }
 
