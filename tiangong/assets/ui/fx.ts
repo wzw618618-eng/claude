@@ -249,8 +249,8 @@ export function createFx(app: HTMLElement, layer: HTMLElement, win: Window | nul
     if (!cvs.length && !scenes.length) return;
     cvs.forEach(drawSnow);
     const t = clock();
-    // 场景按 30 帧画就够了：像素动画本来就是一格一格跳的
-    if (scenes.length && (still || t - lastScene > 32)) {
+    // 场景按 20 帧画就够了：像素动画本来就是一格一格跳的
+    if (scenes.length && (still || t - lastScene > 48)) {
       lastScene = t;
       scenes.forEach((cv) => paintScene(cv, still ? 0 : t));
     }

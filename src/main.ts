@@ -7,7 +7,7 @@ import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject
 import { adoptAll, adoptIntent, openChat } from '../tiangong/assets/hanyi/ai/intent';
 import { createSound, CUE_FOR_ACT } from '../tiangong/assets/ui/audio';
 import { createFx } from '../tiangong/assets/ui/fx';
-import { endingScreen, gameScreen, hasOverlay, TIPS, titleScreen, UI } from '../tiangong/assets/ui/view';
+import { endingScreen, gameScreen, hasOverlay, storyTotal, TIPS, titleScreen, UI } from '../tiangong/assets/ui/view';
 
 declare global {
   interface Window { claude?: any }
@@ -16,6 +16,7 @@ declare global {
 const KEY = 'hanyi.save.v1';
 const TIPS_KEY = 'hanyi.tips.v1';
 const SOUND_KEY = 'hanyi.sound.v1';
+const HEART_KEY = 'hanyi.heart.v1';
 const app = document.getElementById('app')!;
 const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* 存不了不影响游玩 */ } };
@@ -42,6 +43,7 @@ const ui: UI = {
   hasSave: false,
   tips: (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]'); } catch { return []; } })(),
   sound: read(SOUND_KEY) !== 'off',
+  heartSeen: Number(read(HEART_KEY) ?? 0) || 0,
 };
 const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
 
@@ -109,6 +111,8 @@ app.addEventListener('click', (e) => {
 
   if (a === 'new') {
     s = newGame();
+    ui.heartSeen = 0;
+    write(HEART_KEY, '0');
     Object.assign(ui, { screen: 'game', tab: 'people', sheet: null, outcome: null, confirmReset: false, reportOpen: false, aiNote: null });
     top = true;
   } else if (a === 'continue') {
@@ -121,6 +125,11 @@ app.addEventListener('click', (e) => {
     case 'tab':
       ui.tab = v as UI['tab']; ui.confirmReset = false; top = true;
       if (v === 'build' && !ui.tips!.includes('build')) { ui.tips!.push('build'); saveTips(); }
+      if (v === 'heart') {
+        if (!ui.tips!.includes('heart')) { ui.tips!.push('heart'); saveTips(); }
+        ui.heartSeen = storyTotal(s);
+        write(HEART_KEY, String(ui.heartSeen));
+      }
       break;
     case 'info': ui.sheet = { kind: 'info', id: v }; break;
     case 'end-check': ui.sheet = { kind: 'end', id: '' }; break;
@@ -153,6 +162,8 @@ app.addEventListener('click', (e) => {
     case 'reset-no': ui.confirmReset = false; break;
     case 'reset-yes':
       s = newGame();
+      ui.heartSeen = 0;
+      write(HEART_KEY, '0');
       Object.assign(ui, { tab: 'people', sheet: null, outcome: null, confirmReset: false });
       top = true;
       break;
@@ -222,7 +233,7 @@ async function talk(id: string, topic: Topic | null, text?: string) {
     result = scriptedReply(game, id, topic, rng);
     game.rng = rng.state();
   }
-  applyTalk(game, id, result);
+  applyTalk(game, id, result, { topic, said });
   log.push({ from: 'them', text: result.reply });
   save();
   render({ chatBottom: true });

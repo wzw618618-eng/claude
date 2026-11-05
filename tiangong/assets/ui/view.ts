@@ -12,6 +12,9 @@ import {
   blocked, buildOut, cookSave, cookScore, huntOut, injuryRisk, preview, scavOut, taskMood, woodOut,
 } from '../hanyi/systems/work';
 import { MAX_TALKS, TOPICS } from '../hanyi/ai/dialogue';
+import { memoriesOf } from '../hanyi/ai/memory';
+import { PAIR_STORIES } from '../hanyi/data/events-story';
+import { progress } from '../hanyi/data/stories';
 import { icon } from './icons';
 
 /** 每个人的画：用在他的登记页上 */
@@ -47,7 +50,7 @@ export interface EngineView {
 
 export interface UI {
   screen: 'title' | 'game';
-  tab: 'people' | 'build' | 'log';
+  tab: 'people' | 'build' | 'heart' | 'log';
   sheet: null | { kind: 'task' | 'person' | 'chat' | 'info' | 'end'; id: string };
   outcome: null | { title: string; text: string };
   confirmReset: boolean;
@@ -60,6 +63,8 @@ export interface UI {
   tips?: string[];
   /** 声音开着没有 */
   sound?: boolean;
+  /** 上次打开「人心」页时，大家的故事一共走到了第几章（有新章节时菜单上亮红点） */
+  heartSeen?: number;
   engine?: EngineView;
 }
 
@@ -389,9 +394,9 @@ function dock(s: GameState, ui: UI) {
   const busy = s.pending.length > 0;
   const canBuild = !s.project && s.phase === 'day' && BUILD_ORDER.some((id) => canAfford(s, id));
   const tab = (id: UI['tab'], label: string, ic: string, badge = false) =>
-    `<button role="tab" aria-selected="${ui.tab === id}" data-act="tab" data-v="${id}">${icon(ic)}<span>${label}</span>${badge ? '<i class="badge" aria-label="有可开工的工程"></i>' : ''}</button>`;
+    `<button role="tab" aria-selected="${ui.tab === id}" data-act="tab" data-v="${id}">${icon(ic)}<span>${label}</span>${badge ? `<i class="badge" aria-label="${id === 'build' ? '有可开工的工程' : '有新的故事'}"></i>` : ''}</button>`;
   return `<nav class="dock" aria-label="菜单"><div class="wrap">
-  <div class="dock-tabs" role="tablist">${tab('people', '众人', 'nav_people')}${tab('build', '营建', 'nav_build', canBuild)}${tab('log', '日志', 'nav_log')}</div>
+  <div class="dock-tabs" role="tablist">${tab('people', '众人', 'nav_people')}${tab('build', '营建', 'nav_build', canBuild)}${tab('heart', '人心', 'heart', storyTotal(s) > (ui.heartSeen ?? 0))}${tab('log', '日志', 'nav_log')}</div>
   <button class="go ${risky ? 'risky' : ''}" data-act="${a}" ${busy ? 'disabled' : ''}><b>${label}</b><small>${hint}</small></button>
 </div></nav>`;
 }
@@ -488,6 +493,8 @@ function personSheet(s: GameState, c: CharState, ui?: UI) {
     ${heard ? `<div class="kv"><h3>${d.gender === 'f' ? '她' : '他'}对你说过的心事</h3><p class="secret">${d.secret}</p></div>` : ''}
     <div class="kv"><h3>性子</h3><div class="traits">${d.traits.map((t) => `<div><b>${TRAITS[t].name}</b>${TRAITS[t].desc}</div>`).join('')}</div></div>
     <div class="kv"><h3>本事</h3><div class="skills">${(Object.keys(SKILLS) as (keyof typeof SKILLS)[]).map((k) => `<div><small>${SKILLS[k]}</small><b>${lvl(c, k)}</b></div>`).join('')}</div></div>
+    <div class="kv"><h3>心路</h3>${pathList(s, c.id)}</div>
+    ${memoryList(s, c.id)}
     ${rels.length ? `<div class="kv"><h3>和大家的关系</h3><div class="rels">${rels.join('')}</div></div>` : ''}
     ${ui?.engine ? soulPanel(ui.engine, c) : ''}
     ${talkBtn}
@@ -540,6 +547,82 @@ function overlay(s: GameState, ui: UI) {
   if (ui.sheet.kind === 'chat' && s.phase === 'night' && c.status === 'active') return chatSheet(s, ui, c);
   if (ui.sheet.kind === 'person') return personSheet(s, c, ui);
   return '';
+}
+
+// ───────────── 人心：关系图、他们之间的事、各人的心路 ─────────────
+
+/** 大家的故事一共走到了第几章 */
+export function storyTotal(s: GameState) {
+  return s.chars.reduce((n, c) => n + progress(s, c.id).reached, 0);
+}
+
+function pathList(s: GameState, id: string) {
+  const p = progress(s, id);
+  const next = p.done.indexOf(false);
+  return `<ol class="path">${p.chapters.map((c, i) => {
+    if (p.done[i]) return `<li class="done"><b>${c.title}</b></li>`;
+    if (i === next) return `<li class="next"><b>？？？</b><small>${c.hint}</small></li>`;
+    return '<li class="later"><b>？？？</b></li>';
+  }).join('')}</ol>`;
+}
+
+function memoryList(s: GameState, id: string) {
+  const list = memoriesOf(s, id).slice().reverse().slice(0, 6);
+  if (!list.length) return '';
+  const who = def(id).gender === 'f' ? '她' : '他';
+  return `<div class="kv"><h3>${who}记得的事</h3><ul class="memories">${list.map((m) => `<li class="${m.tone ?? ''}"><small>第${cnDay(m.day)}日</small>${esc(m.text)}</li>`).join('')}</ul></div>`;
+}
+
+function tieMap(s: GameState) {
+  const cs = s.chars;
+  const n = cs.length;
+  const pos = cs.map((c, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return { c, x: 50 + Math.cos(a) * 38, y: 40 + Math.sin(a) * 30 };
+  });
+  const lines: string[] = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const A = pos[i], B = pos[j];
+    if (A.c.status !== 'active' || B.c.status !== 'active') continue;
+    const r = rel(s, A.c.id, B.c.id);
+    if (Math.abs(r) < 12) continue;
+    const w = (1.2 + Math.abs(r) / 28).toFixed(1);
+    const o = (0.35 + Math.abs(r) / 160).toFixed(2);
+    lines.push(`<line x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${B.x.toFixed(1)}" y2="${B.y.toFixed(1)}" class="${r > 0 ? 'good' : 'bad'}" stroke-width="${w}" stroke-opacity="${o}"${Math.abs(r) < 30 ? ' stroke-dasharray="3 3"' : ''}/>`);
+  }
+  const nodes = pos.map(({ c, x, y }) => `<button class="tie-node ${c.status !== 'active' ? 'gone' : ''}" style="left:${x.toFixed(1)}%;top:${((y / 80) * 100).toFixed(1)}%;--c:${def(c.id).color}" data-act="person" data-id="${c.id}" aria-label="${def(c.id).short}">${portrait(c.id, c, 'mini')}<span>${def(c.id).short}</span></button>`).join('');
+  return `<div class="tie-map"><svg viewBox="0 0 100 80" preserveAspectRatio="none" aria-hidden="true">${lines.join('')}</svg>${nodes}</div>`;
+}
+
+function heartView(s: GameState) {
+  const A = act(s);
+  const pairs: [string, string, number][] = [];
+  for (let i = 0; i < A.length; i++) for (let j = i + 1; j < A.length; j++) pairs.push([A[i].id, A[j].id, rel(s, A[i].id, A[j].id)]);
+  pairs.sort((a, b) => Math.abs(b[2]) - Math.abs(a[2]));
+  const strong = pairs.filter((p) => Math.abs(p[2]) >= 12).slice(0, 6);
+  const happened = PAIR_STORIES.filter((p) => s.fired[p.id]).sort((a, b) => s.fired[a.id] - s.fired[b.id]);
+  const present = (p: (typeof PAIR_STORIES)[number]) => s.chars.some((c) => c.id === p.a) && s.chars.some((c) => c.id === p.b);
+  const waiting = PAIR_STORIES.filter((p) => !s.fired[p.id] && present(p)).length;
+  const cards = s.chars.map((c) => {
+    const d = def(c.id);
+    const p = progress(s, c.id);
+    const tag = c.status === 'dead' ? '<span class="chip bad">已离世</span>' : c.status === 'left' ? '<span class="chip warn">已离开</span>' : s.flags[d.arcFlag] ? '<span class="chip good">心结已解</span>' : '';
+    return `<article class="path-card ${c.status !== 'active' ? 'gone' : ''}" style="--c:${d.color}">
+      <button class="path-face" data-act="person" data-id="${c.id}" aria-label="查看${d.short}">${portrait(c.id, c, 'mini')}</button>
+      <div><div class="path-head"><b>${d.short}</b><span>${p.reached} / ${p.chapters.length} 章</span>${tag}</div>${pathList(s, c.id)}</div>
+    </article>`;
+  });
+  return `<section class="note ties"><h3>人和人之间</h3>
+    ${tieMap(s)}
+    <p class="legend"><span><i class="good"></i>要好</span><span><i class="bad"></i>不和</span><span>线越粗，交情（或者积怨）越深</span></p>
+    ${strong.length ? `<ul class="tie-list">${strong.map(([a, b, r]) => `<li><b>${nm(a)}</b><span class="${r > 0 ? 'good' : 'bad'}">${relWord(r)}</span><b>${nm(b)}</b></li>`).join('')}</ul>` : '<p class="mini">大家还不太熟。一起干活、围着火说话，关系会慢慢变。</p>'}
+  </section>
+  <section class="note"><h3>他们之间的事</h3>
+    ${happened.length ? `<ul class="pair-list">${happened.map((p) => `<li><small>第${cnDay(s.fired[p.id])}日</small><b>${p.title}</b><span>${nm(p.a)}、${nm(p.b)}</span><em class="${p.kind === '恩怨' ? 'bad' : 'good'}">${p.kind}</em></li>`).join('')}</ul>` : ''}
+    <p class="mini">${waiting ? `还有 ${waiting} 段故事没有发生。关系、信任和每个人的处境，会让它们在某个傍晚找上门。` : happened.length ? '眼下能发生的，都发生过了。' : '还没有。'}</p>
+  </section>
+  <h2 class="sec">各人的心路</h2>
+  <section class="paths">${cards.join('')}</section>`;
 }
 
 // ───────────── 结束今天之前：看看有什么风险 ─────────────
@@ -684,6 +767,11 @@ export const TIPS: Tip[] = [
   { id: 'evening', when: (s) => s.phase === 'evening', target: '.dock .go', title: '傍晚', text: '上面是今天的收成和发生的事。准备好了，就「围炉夜话」。' },
   { id: 'night', when: (s) => s.phase === 'night', target: '.scene-box', title: '围炉夜话', text: '点火边的人和他们说说话，每人每晚最多聊四句。信任够了，他们会说出藏在心里的事——那往往会改变很多。头上冒着「…」的人，有话想对你说。' },
   {
+    id: 'heart', target: ".dock-tabs [data-v='heart']", title: '人心',
+    when: (s) => s.phase !== 'evening' && storyTotal(s) >= 2,
+    text: '有人的故事往前走了一步。「人心」页能看到大家之间的关系、他们之间发生过的事，和每个人的心路走到了哪一章。',
+  },
+  {
     id: 'build', target: ".dock-tabs [data-v='build']", title: '营建',
     when: (s) => s.phase === 'day' && s.day >= 2 && !s.project && BUILD_ORDER.some((id) => canAfford(s, id)),
     text: '材料够了。去「营建」挑个工程开工，再派人去「营建」推进。封窗堵缝能让每天少烧一捆柴。',
@@ -709,7 +797,7 @@ function coach(s: GameState, ui: UI) {
 }
 
 export function gameScreen(s: GameState, ui: UI) {
-  const body = ui.tab === 'people' ? people(s, ui) : ui.tab === 'build' ? works(s) : logView(s, ui);
+  const body = ui.tab === 'people' ? people(s, ui) : ui.tab === 'build' ? works(s) : ui.tab === 'heart' ? heartView(s) : logView(s, ui);
   return `${hud(s, ui)}<main><div class="wrap">${body}</div></main>${coach(s, ui)}${dock(s, ui)}${overlay(s, ui)}`;
 }
 

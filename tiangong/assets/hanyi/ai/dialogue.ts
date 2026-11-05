@@ -8,6 +8,7 @@ import {
   act, addMood, addTrust, ch, clamp, def, has, insulation, moodWord, nm, rel, relWord, trustWord,
 } from '../core/world';
 import { SKILLS, TRAITS } from '../data/rules';
+import { memoryBlock, recall, remember, talkedTonight } from './memory';
 
 export type Topic = 'chat' | 'past' | 'cheer' | 'others';
 export const TOPICS: { id: Topic; label: string; ask: string }[] = [
@@ -19,16 +20,24 @@ export const TOPICS: { id: Topic; label: string; ask: string }[] = [
 
 export const MAX_TALKS = 4;
 
-export interface TalkResult { reply: string; trust: number; mood: number; revealed: boolean }
+export interface TalkResult {
+  reply: string;
+  trust: number;
+  mood: number;
+  revealed: boolean;
+  /** AI 写下的「这次会记住的事」 */
+  remember?: string;
+}
 
 export function canTalk(s: GameState, id: string) {
   const c = ch(s, id);
   return !!c && c.status === 'active' && s.phase === 'night' && c.talks < MAX_TALKS;
 }
 
-/** 把一次谈话的结果记到角色身上（每晚有上限） */
-export function applyTalk(s: GameState, id: string, r: TalkResult) {
+/** 把一次谈话的结果记到角色身上（每晚有上限），并记下这次聊了什么 */
+export function applyTalk(s: GameState, id: string, r: TalkResult, about: { topic?: Topic | null; said?: string } = {}) {
   const c = ch(s, id)!;
+  const knew = !!s.flags[`heard_${id}`];
   const first = c.talks === 0;
   c.talks++;
   const dt = clamp(r.trust + (first ? 1 : 0), -3, 4);
@@ -39,6 +48,18 @@ export function applyTalk(s: GameState, id: string, r: TalkResult) {
   addMood(c, nmood - c.moodTonight);
   c.moodTonight = nmood;
   if (r.revealed && c.trust >= def(id).secretTrust - 5) s.flags[`heard_${id}`] = true;
+  if (!knew && s.flags[`heard_${id}`]) remember(s, id, { kind: 'secret', text: `你听我说了${def(id).secretShort}` });
+  else if (!talkedTonight(s, id)) {
+    const text = r.remember?.trim() || talkMemory(about.topic ?? null, about.said ?? '');
+    if (text) remember(s, id, { kind: 'talk', text, tone: dt > 0 ? 'good' : dt < 0 ? 'bad' : '' });
+  }
+}
+
+function talkMemory(topic: Topic | null, said: string) {
+  if (topic === 'past') return '你问起我的过去';
+  if (topic === 'cheer') return '你给我打气，说我们一定能出去';
+  if (!topic && said) return `你对我说：「${said.length > 18 ? said.slice(0, 18) + '…' : said}」`;
+  return '';
 }
 
 // ───────────── 手写台词 ─────────────
@@ -49,6 +70,9 @@ export function scriptedReply(s: GameState, id: string, topic: Topic, rng: Rng):
   const L = d.lines;
   switch (topic) {
     case 'chat': {
+      // 偶尔提起前几天的事
+      const back = recall(s, c, rng);
+      if (back) return { reply: back, trust: 1, mood: 1, revealed: false };
       let reply: string;
       if (c.injured || c.sick) reply = L.hurt;
       else if (c.hungerDays > 0) reply = L.hungry;
@@ -140,6 +164,8 @@ ${personaBlock(s, id)}
 
 ${situationBlock(s, id)}
 
+${memoryBlock(s, id)}
+
 【刚才的对话】
 ${convo || '（今晚第一次说话）'}
 主事人：${said}
@@ -149,8 +175,9 @@ ${convo || '（今晚第一次说话）'}
 - 要符合你的性格、处境和你对主事人的信任程度，不要总是很配合；冷淡、回避、发牢骚都可以。
 - 不要跳出角色，不要提到AI、游戏、玩家、数值。
 - 只回复一个JSON对象，不要别的文字：
-{"reply":"你说的话","trust":整数-3到3,"mood":整数-5到5,"revealed":true或false}
-trust是这次对话让你对主事人的信任变化，mood是你心情的变化，revealed表示你这句话有没有说出心底的秘密。`;
+{"reply":"你说的话","trust":整数-3到3,"mood":整数-5到5,"revealed":true或false,"remember":"这次你会记住的一件事"}
+trust是这次对话让你对主事人的信任变化，mood是你心情的变化，revealed表示你这句话有没有说出心底的秘密。
+remember用一句话写下这次对话里你会记住的事，用「你」指主事人，不超过24个字（比如"你说开春后要陪我去看秦川走过的路"）；没什么值得记的就写空字符串。`;
 }
 
 function ta(d: { gender: 'm' | 'f' }) {
@@ -163,5 +190,6 @@ export function parseAI(raw: unknown): TalkResult | null {
   const reply = typeof o.reply === 'string' ? o.reply.trim().slice(0, 200) : '';
   if (!reply) return null;
   const num = (v: unknown, lo: number, hi: number) => clamp(Math.round(Number(v) || 0), lo, hi);
-  return { reply, trust: num(o.trust, -3, 3), mood: num(o.mood, -5, 5), revealed: o.revealed === true };
+  const mem = typeof o.remember === 'string' ? o.remember.trim().slice(0, 40) : '';
+  return { reply, trust: num(o.trust, -3, 3), mood: num(o.mood, -5, 5), revealed: o.revealed === true, ...(mem ? { remember: mem } : {}) };
 }

@@ -9,6 +9,7 @@ import { act, addRel, addTrust, ch, clamp, def, eats, has, heatNeed, lvl, nm, re
 import { BUILDINGS, TASKS, TASK_ORDER } from '../data/rules';
 import { blocked, injuryRisk, preview } from '../systems/work';
 import { personaBlock, situationBlock, WORLD_BLOCK } from './dialogue';
+import { memoryBlock, remember } from './memory';
 
 // ───────────── 营地需要 ─────────────
 
@@ -169,7 +170,10 @@ export function openChat(s: GameState, id: string): boolean {
   w.done = true;
   (s.chat[id] ??= []).push({ from: 'them', text: w.opener });
   addTrust(c, 1);
-  if (w.reveals && c.trust >= def(id).secretTrust - 5) s.flags[`heard_${id}`] = true;
+  if (w.reveals && c.trust >= def(id).secretTrust - 5 && !s.flags[`heard_${id}`]) {
+    s.flags[`heard_${id}`] = true;
+    remember(s, id, { kind: 'secret', text: `你听我说了${def(id).secretShort}` });
+  }
   return true;
 }
 
@@ -222,6 +226,8 @@ ${WORLD_BLOCK}
 ${personaBlock(s, id)}
 
 ${situationBlock(s, id)}
+
+${memoryBlock(s, id)}
 
 【这一刻】你主动走到主事人身边，想说点什么，因为：${w.reason}。
 

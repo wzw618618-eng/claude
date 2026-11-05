@@ -12,6 +12,7 @@ import { setRescue } from '../systems/camp';
 import { recruit } from '../systems/work';
 import { Rng } from '../core/rng';
 import { SkillKey } from '../core/types';
+import { STORY_EVENTS } from './events-story';
 
 export interface Choice {
   label: string;
@@ -1118,5 +1119,6 @@ const OFFERS: { text: string; give: ['food' | 'wood' | 'mat' | 'med', number]; g
   { text: '用 3 件铁器零件，换 3 份食物。', give: ['food', 3], get: ['mat', 3] },
 ];
 
-export const EVENTS: Record<string, EventDef> = Object.fromEntries(list.map((e) => [e.id, e]));
-export const SCHEDULED = list.filter((e) => e.slot);
+const all = [...list, ...STORY_EVENTS];
+export const EVENTS: Record<string, EventDef> = Object.fromEntries(all.map((e) => [e.id, e]));
+export const SCHEDULED = all.filter((e) => e.slot);

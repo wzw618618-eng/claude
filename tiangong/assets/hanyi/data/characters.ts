@@ -35,6 +35,8 @@ export interface CharDef {
   secret: string;
   /** 信任达到多少才肯说出秘密 */
   secretTrust: number;
+  /** 秘密的简称，用在记忆里：「你听我说了___」 */
+  secretShort: string;
   lines: Lines;
   epilogue: { good: string; ok: string; dead: string; left: string };
   /** 什么条件下算「心结已解」，用于结局 */
@@ -62,6 +64,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '退休前是这一带的护林员，这座驿站以前就是护林站，他在这里住过十几年。熟悉每一条沟、每一片林子。',
     secret: '八年前的冬天，他的儿子秦川从这个护林站出发去搜救迷路的驴友，再也没有回来。他一直觉得是自己没拦住儿子。驿站地窖里还存着他当年囤下的物资。',
     secretTrust: 55,
+    secretShort: '秦川的事',
     lines: {
       greet: {
         low: ['……别问了，干活去。', '这天，熬一天算一天。'],
@@ -107,6 +110,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '离婚后独自带女儿朵朵（6岁）。朵朵平时住在山下镇子的外婆家，她每周末回去。',
     secret: '她答应过朵朵这周末一定回去过生日。她一直在盘算一个人走下山的路线，哪怕她知道这很可能会死。',
     secretTrust: 58,
+    secretShort: '想一个人下山的打算',
     lines: {
       greet: {
         low: ['我没事……你先去忙吧。', '朵朵现在肯定在哭。对不起，我……'],
@@ -152,6 +156,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '和父亲大吵一架后离家，"进山写生"只是借口。父亲是工地包工头，一心想让他学土木。',
     secret: '他其实是离家出走的。手机里有几十条父亲的未接来电和消息，他一条都没敢点开。',
     secretTrust: 68,
+    secretShort: '离家出走的事',
     lines: {
       greet: {
         low: ['哈……没事，我就是有点想家。不是，不想。', '我画不出来了，手冻得握不住笔。'],
@@ -197,6 +202,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '客运公司的老司机，年轻时当过厨子。老婆在县城开小卖部，儿子在外地打工。',
     secret: '车坏在半路，是因为他为了省钱推迟了保养，刹车和电路早就有毛病。他一直不敢说。',
     secretTrust: 60,
+    secretShort: '客车没保养的事',
     lines: {
       greet: {
         low: ['都怪我……要是车不坏……算了，不说了。', '今天没胃口，你们吃吧。'],
@@ -242,6 +248,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '一家投资公司的合伙人。公司刚刚暴雷，她背上了巨额债务，舆论缠身。',
     secret: '她包里有一部卫星电话，只是电池耗尽了。她谁都没告诉——因为她根本不想被找到，她是来山里"消失"的。',
     secretTrust: 60,
+    secretShort: '卫星电话的事',
     lines: {
       greet: {
         low: ['别跟我说话。我需要安静。', '这个营地的管理方式，效率低得令人发指。'],
@@ -287,6 +294,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '和妈妈开车回外婆家，路上车子滑下了桥边的坡。',
     secret: '妈妈让她在车里等，她却因为害怕跑了出来。她觉得妈妈找不到她，是因为自己没听话。',
     secretTrust: 62,
+    secretShort: '没听妈妈话的事',
     lines: {
       greet: {
         low: ['我想妈妈了……', '豆豆说它冷。'],
@@ -332,6 +340,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '专业登山向导，在这片山区带过上百次队。',
     secret: '雪崩前，她判断天气还能撑两天，坚持带队继续往前走。三名队员至今下落不明。',
     secretTrust: 50,
+    secretShort: '雪崩前的那个决定',
     lines: {
       greet: {
         low: ['别管我，我能干活。', '……我不该带他们上去的。'],
@@ -377,6 +386,7 @@ export const CHARS: Record<string, CharDef> = {
     background: '在山上道班干了二十多年，负责铲雪和养护这段山路。',
     secret: '十年前一次铲雪作业，他驾驶的铲雪车出了事故，一个同事因此丧生。从那以后，他就再也没开口说过话。',
     secretTrust: 60,
+    secretShort: '十年前那场事故',
     lines: {
       greet: {
         low: ['（他坐在角落里，盯着自己的手。）', '（他摇了摇头，没有看你。）'],

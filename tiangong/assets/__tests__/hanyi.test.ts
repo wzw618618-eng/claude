@@ -10,6 +10,11 @@ import { AssetGuid } from '@forgeax/engine/pack/guid';
 import { CampSession } from '../camp/session.ts';
 import type { ToHost } from '../camp/protocol.ts';
 import { EVENTS } from '../hanyi/data/events.ts';
+import { progress } from '../hanyi/data/stories.ts';
+import { MEMORY_CAP, memoriesOf, remember } from '../hanyi/ai/memory.ts';
+import { applyTalk, buildPrompt, parseAI, scriptedReply } from '../hanyi/ai/dialogue.ts';
+import { makeRng } from '../hanyi/core/rng.ts';
+import { resolveChoice } from '../hanyi/systems/story.ts';
 import { ch } from '../hanyi/core/world.ts';
 import { CAMP_PACKAGE, UI_PACKAGE } from '../ids.ts';
 import { acceptReply, replySoFar } from '../souls/envelope.ts';
@@ -293,5 +298,80 @@ describe('寒驿 · 角色自己拿主意', () => {
     ch(session.s, 'su')!.mood = 5;
     ruleWants(session.s);
     expect(session.s.wants!.su!.opener).toBeTruthy();
+  });
+});
+
+describe('寒驿 · 记忆、心路和人与人之间的故事', () => {
+  it('AI 写下的「会记住的事」进了记忆，下一次提示词里会带上', () => {
+    const reply = '{"reply":"开春了，你陪我去后山看看。","trust":2,"mood":2,"revealed":false,"remember":"你答应开春陪我去后山"}';
+    const provider = createFakeIntelligenceProvider({ script: () => ({ deltas: [reply], output: reply }) });
+    const session = new CampSession(() => undefined, 31);
+    void session.connect(createIntelligenceRuntime(provider, { limits: TALK_LIMITS }), '测试');
+    toFirstNight(session);
+    session.talk('qin', 'chat');
+    for (let i = 0; i < 3; i++) { provider.advance(); session.poll(); }
+    expect(memoriesOf(session.s, 'qin').map((m) => m.text)).toContain('你答应开春陪我去后山');
+    expect(buildPrompt(session.s, 'qin', [], '还冷吗？')).toContain('你答应开春陪我去后山');
+    expect(parseAI({ reply: '嗯', remember: 'x'.repeat(80) })!.remember!.length).toBe(40);
+  });
+
+  it('事件里替谁做了主，当事人都会记住，信任涨跌决定记忆的好坏；离线聊天会提起它', () => {
+    const session = new CampSession(() => undefined, 32);
+    const s = session.s;
+    s.pending = [{ id: 'feud_ma_su', actors: ['ma', 'su'], vars: {} }];
+    resolveChoice(s, 0); // "苏蔓，这话过分了。"
+    const ma = memoriesOf(s, 'ma').at(-1)!;
+    const su = memoriesOf(s, 'su').at(-1)!;
+    expect(ma.text).toBe('「旧账」：你说「苏蔓，这话过分了。」');
+    expect(ma.tone).toBe('good');
+    expect(su.tone).toBe('bad');
+    // 第二天夜里聊天，苏蔓会提起这件事
+    s.day += 1;
+    s.phase = 'night';
+    let line = '';
+    for (let seed = 1; seed < 40 && !line.includes('旧账'); seed++) {
+      su.recalled = false;
+      line = scriptedReply(s, 'su', 'chat', makeRng(seed)).reply;
+    }
+    expect(line).toContain('「旧账」');
+  });
+
+  it('说出心事会记成一件不会被忘掉的事', () => {
+    const session = new CampSession(() => undefined, 33);
+    const s = session.s;
+    s.phase = 'night';
+    ch(s, 'lin')!.trust = 70;
+    for (let i = 0; i < 20; i++) remember(s, 'lin', { kind: 'talk', text: `第${i}件小事` });
+    applyTalk(s, 'lin', { reply: '……', trust: 1, mood: 1, revealed: true }, { topic: 'past' });
+    for (let i = 20; i < 40; i++) remember(s, 'lin', { kind: 'talk', text: `第${i}件小事` });
+    const list = memoriesOf(s, 'lin');
+    expect(list.length).toBe(MEMORY_CAP);
+    expect(list.some((m) => m.kind === 'secret' && m.text === '你听我说了想一个人下山的打算')).toBe(true);
+  });
+
+  it('心路按章节走：后面的章完成了，前面没触发的也算走过', () => {
+    const session = new CampSession(() => undefined, 34);
+    const s = session.s;
+    expect(progress(s, 'qin').reached).toBe(0);
+    s.flags.heard_qin = true;
+    expect(progress(s, 'qin').reached).toBe(2);
+    expect(progress(s, 'qin').done).toEqual([true, true, false, false]);
+    s.flags.arc_qin = true;
+    expect(progress(s, 'qin').reached).toBe(4);
+  });
+
+  it('胖叔和苏蔓：先结下旧账，几天后（胖叔说出心事或者关系缓和了）才会和解', () => {
+    const session = new CampSession(() => undefined, 35);
+    const s = session.s;
+    s.day = 5;
+    const rng = { next: () => 0, chance: () => true } as never;
+    expect(EVENTS.feud_ma_su.bind!(s, rng)).toEqual({ actors: ['ma', 'su'] });
+    expect(EVENTS.peace_ma_su.bind!(s, rng)).toBeNull();
+    s.fired.feud_ma_su = 5;
+    s.day = 7;
+    s.flags.arc_ma = true;
+    expect(EVENTS.peace_ma_su.bind!(s, rng)).toBeNull();
+    s.day = 8;
+    expect(EVENTS.peace_ma_su.bind!(s, rng)).toEqual({ actors: ['ma', 'su'] });
   });
 });

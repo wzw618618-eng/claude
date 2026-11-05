@@ -22,6 +22,7 @@ import { act, ch, def, has, moodWord, nm, rel, relWord, trustWord } from '../han
 import { SKILLS, TASKS, TASK_ORDER } from '../hanyi/data/rules.ts';
 import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../hanyi/game.ts';
 import { blocked } from '../hanyi/systems/work.ts';
+import { memoriesOf } from '../hanyi/ai/memory.ts';
 import { acceptReply, encodeEnvelope, replySoFar } from '../souls/envelope.ts';
 import { TALK_LIMITS } from '../souls/providers.ts';
 import { type Affordance, type Perception, SoulClient, charIdOf, soulIdOf } from '../souls/soul-client.ts';
@@ -188,7 +189,7 @@ export class CampSession {
       body: `健康 ${c.health} · 体力 ${c.stamina}${marks.length ? ' · ' + marks.join('、') : ''} · 最拿手：${SKILLS[best]}`,
       heart: `心情${moodWord(c.mood)}（${c.mood}）· 对你${trustWord(c.trust)}（${c.trust}）${has(c, 'mute') ? ' · 不说话' : ''}`,
       ties: ties || '营地里只剩自己',
-      recent: s.log.filter((l) => l.day >= s.day - 1).slice(-3).map((l) => l.text),
+      recent: memoriesOf(s, c.id).slice(-3).map((m) => `第${m.day}天：${m.text}`),
     };
   }
 
@@ -354,7 +355,7 @@ export class CampSession {
     const log = s.chat[p.id];
     if (ch(s, p.id) && log) {
       if (r && canTalk(s, p.id)) {
-        applyTalk(s, p.id, r);
+        applyTalk(s, p.id, r, { topic: p.topic ?? null, said: log[log.length - 1]?.from === 'me' ? log[log.length - 1].text : '' });
         log.push({ from: 'them', text: r.reply });
       } else if (!r && log[log.length - 1]?.from === 'me') {
         log.pop();

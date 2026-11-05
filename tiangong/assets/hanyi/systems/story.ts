@@ -2,7 +2,8 @@
 
 import { commit, Ctx, makeCtx, Plugin } from '../core/engine';
 import { GameState } from '../core/types';
-import { act, addHealth, has, nm } from '../core/world';
+import { act, addHealth, ch, has, nm } from '../core/world';
+import { eventMemory, remember } from '../ai/memory';
 import { EVENTS, SCHEDULED } from '../data/events';
 import { checkDeaths } from './survival';
 import { blocked, guardPower } from './work';
@@ -137,7 +138,16 @@ export function resolveChoice(s: GameState, idx: number): { title: string; text:
   if (!choice || choice.disabled) return null;
   s.pending.shift();
   const ctx = makeCtx(s);
+  // 事件里的人会记住你这次替他们做了什么主
+  const actors = cur.ev.actors.filter((id) => ch(s, id)?.status === 'active');
+  const before = Object.fromEntries(actors.map((id) => [id, ch(s, id)!.trust]));
   const text = choice.run(ctx, cur.ev);
+  for (const id of actors) {
+    const c = ch(s, id);
+    if (!c || c.status === 'dead') continue;
+    const d = c.trust - before[id];
+    remember(s, id, { kind: 'event', title: cur.title, text: eventMemory(cur.title, choice.label), tone: d > 0 ? 'good' : d < 0 ? 'bad' : '' });
+  }
   s.log.push({ day: s.day, text: `【${cur.title}】${choice.label}——${text.replace(/\n+/g, ' ')}`, tone: 'story' });
   checkDeaths(ctx);
   commit(ctx);

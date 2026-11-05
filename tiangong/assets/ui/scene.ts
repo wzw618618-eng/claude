@@ -134,6 +134,9 @@ export interface SceneRuntime {
   hits: { id: string; x: number; y: number; w: number; h: number }[];
   /** 光照图：傍晚和夜里先画一张「哪里亮」的图，再乘到画面上 */
   light?: HTMLCanvasElement;
+  /** 缓存的背景，和它对应的（宽度、时辰、天气） */
+  bg?: HTMLCanvasElement;
+  bgKey?: string;
 }
 
 export const newRuntime = (): SceneRuntime => ({
@@ -178,16 +181,12 @@ const TOOL_AT: Record<string, Record<string, [number, number]>> = {
   pack: { work0: [-3, 9], work1: [-3, 9] },
 };
 
-export function drawScene(g: CanvasRenderingContext2D, img: CanvasImageSource, s: GameState, W: number, t: number, rt: SceneRuntime) {
-  const ox = Math.floor((W - CORE_W) / 2);
+/** 背景：天、星星、远山、远处的小松树、雪地和小路、近处的大松树、翻车 */
+function drawBackdrop(g: CanvasRenderingContext2D, img: CanvasImageSource, s: GameState, W: number, ox: number) {
   const night = s.phase === 'night';
   const evening = s.phase === 'evening';
   const wk = s.weather.kind;
-  const lit = s.res.wood > 0;
-  g.imageSmoothingEnabled = false;
-  g.globalCompositeOperation = 'source-over';
-  g.globalAlpha = 1;
-
+  const t = 0;
   // 天
   const [top, bot] = night ? SKY.night : evening ? SKY.evening : SKY[`day.${wk}`];
   const sky = g.createLinearGradient(0, 0, 0, 56);
@@ -246,6 +245,31 @@ export function drawScene(g: CanvasRenderingContext2D, img: CanvasImageSource, s
   for (let wx = 192; wx < W - ox + 10; wx += 13) blit(g, img, 'pine', ox + wx, 31);
   // 翻车（搜寻的地方）
   blit(g, img, 'car', ox + 112, 49);
+}
+
+export function drawScene(g: CanvasRenderingContext2D, img: CanvasImageSource, s: GameState, W: number, t: number, rt: SceneRuntime) {
+  const ox = Math.floor((W - CORE_W) / 2);
+  const night = s.phase === 'night';
+  const evening = s.phase === 'evening';
+  const wk = s.weather.kind;
+  const lit = s.res.wood > 0;
+  g.imageSmoothingEnabled = false;
+  g.globalCompositeOperation = 'source-over';
+  g.globalAlpha = 1;
+
+  // 天、远山、松林、雪地、翻车：不随时间变，按（宽度、时辰、天气）画一次缓存起来，每帧直接贴上
+  const key = `${W}|${s.phase}|${wk}`;
+  if (rt.bgKey !== key || !rt.bg) {
+    rt.bg ??= (g.canvas as HTMLCanvasElement).ownerDocument.createElement('canvas');
+    rt.bg.width = W;
+    rt.bg.height = SCENE_H;
+    const b = rt.bg.getContext('2d')!;
+    b.imageSmoothingEnabled = false;
+    b.clearRect(0, 0, W, SCENE_H);
+    drawBackdrop(b, img, s, W, ox);
+    rt.bgKey = key;
+  }
+  g.drawImage(rt.bg, 0, 0);
   // 柴火堆：柴火越多堆得越高
   const logs = Math.min(12, Math.ceil(s.res.wood / 2));
   for (let i = 0; i < logs; i++) {

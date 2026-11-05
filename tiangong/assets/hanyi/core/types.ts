@@ -63,6 +63,19 @@ export interface Want {
   reveals?: boolean;
 }
 
+/** 一个人记得的、和主事人之间发生过的事（文字里的「你」指主事人） */
+export interface Memory {
+  day: number;
+  text: string;
+  kind: 'event' | 'talk' | 'secret';
+  /** 事件的标题，用于以后提起 */
+  title?: string;
+  /** 这件事让他对你更信任（good）还是更寒心（bad） */
+  tone?: 'good' | 'bad' | '';
+  /** 已经在聊天里提起过 */
+  recalled?: boolean;
+}
+
 export interface GameState {
   v: number;
   seed: number;
@@ -89,4 +102,6 @@ export interface GameState {
   ending: { kind: 'rescued' | 'wiped'; day: number } | null;
   intents?: Record<string, Intent>;
   wants?: Record<string, Want>;
+  /** 每个人的记忆（旧存档没有） */
+  memory?: Record<string, Memory[]>;
 }

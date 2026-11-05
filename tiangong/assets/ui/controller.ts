@@ -12,12 +12,13 @@ import artCss from './art.css?raw';
 import css from './style.css?raw';
 import { createSound, CUE_FOR_ACT } from './audio.ts';
 import { createFx } from './fx.ts';
-import { endingScreen, type EngineView, gameScreen, hasOverlay, TIPS, titleScreen, type UI } from './view.ts';
+import { endingScreen, type EngineView, gameScreen, hasOverlay, storyTotal, TIPS, titleScreen, type UI } from './view.ts';
 
 const SAVE_KEY = 'hanyi.engine.save.v1';
 const AI_KEY = 'hanyi.engine.ai.v1';
 const TIPS_KEY = 'hanyi.tips.v1';
 const SOUND_KEY = 'hanyi.sound.v1';
+const HEART_KEY = 'hanyi.heart.v1';
 const FONTS = 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap';
 
 type Kind = EngineView['settings']['kind'];
@@ -61,6 +62,7 @@ export function mountHanyi(host: HanyiHost) {
     thinking: null, aiNote: null, reportOpen: false, ai: cfg.kind !== 'offline', hasSave: !!read(SAVE_KEY),
     tips: (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]') as string[]; } catch { return []; } })(),
     sound: read(SOUND_KEY) !== 'off',
+    heartSeen: Number(read(HEART_KEY) ?? 0) || 0,
     engine: {
       souls: [], provider: '连接中', sessions: {}, stream: null,
       settings: { kind: cfg.kind, baseUrl: cfg.baseUrl, model: cfg.model, hasKey: !!cfg.apiKey, claude: false, editing: false },
@@ -152,6 +154,8 @@ export function mountHanyi(host: HanyiHost) {
       case 'new':
       case 'reset-yes':
         actOn({ type: 'new' });
+        ui.heartSeen = 0;
+        write(HEART_KEY, '0');
         Object.assign(ui, { screen: 'game', tab: 'people', sheet: null, outcome: null, confirmReset: false, reportOpen: false });
         top = true;
         break;
@@ -159,6 +163,11 @@ export function mountHanyi(host: HanyiHost) {
       case 'tab':
         ui.tab = v as UI['tab']; ui.confirmReset = false; top = true;
         if (v === 'build' && !ui.tips!.includes('build')) { ui.tips!.push('build'); saveTips(); }
+        if (v === 'heart') {
+          if (!ui.tips!.includes('heart')) { ui.tips!.push('heart'); saveTips(); }
+          ui.heartSeen = s ? storyTotal(s) : 0;
+          write(HEART_KEY, String(ui.heartSeen));
+        }
         break;
       case 'pick': ui.sheet = { kind: 'task', id }; break;
       case 'set': actOn({ type: 'setTask', id, task: v as TaskId }); ui.sheet = null; break;
