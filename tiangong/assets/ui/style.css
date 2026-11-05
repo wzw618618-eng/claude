@@ -635,3 +635,14 @@ button.task-btn:hover { border-color: var(--dim); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ───────── 玩法改版：够几天、今日情况、摸脾气 ───────── */
+.cap small em { font-style: normal; margin-left: 4px; color: var(--frost); letter-spacing: 0; }
+.cap small em.low { color: var(--bad); font-weight: 700; }
+.note.today { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.note.today h3 { color: var(--warn); justify-content: flex-start; }
+.note.today h3 .ico { width: 16px; height: 16px; margin: 0; }
+.note.today p { margin: 6px 0 0; font-size: 14px; line-height: 1.55; }
+.topics button i { font-style: normal; margin-left: 4px; font-size: 12px; }
+.topics button.like i { color: var(--good); }
+.topics button.dislike i { color: var(--bad); }

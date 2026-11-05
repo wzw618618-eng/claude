@@ -415,7 +415,7 @@ export const STORY_EVENTS: EventDef[] = [
     once: true,
     priority: 5,
     bind: (s) => {
-      if (!ok(ch(s, 'qin')) || !ok(ch(s, 'gesang')) || s.day < 6) return null;
+      if (!ok(ch(s, 'qin')) || !ok(ch(s, 'gesang')) || s.day < 4) return null;
       return heard(s, 'qin') || heard(s, 'gesang') || rel(s, 'qin', 'gesang') >= 20 ? { actors: ['qin', 'gesang'] } : null;
     },
     title: () => '同一座山',

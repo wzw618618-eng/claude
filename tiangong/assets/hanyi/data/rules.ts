@@ -93,4 +93,4 @@ export const BUILD_ORDER = ['door', 'smoke', 'hearth', 'clinic', 'tower', 'radio
 export const RES_NAMES = { food: '食物', wood: '柴火', mat: '物资', med: '药品' } as const;
 export const RES_UNITS = { food: '份', wood: '捆', mat: '件', med: '盒' } as const;
 
-export const LAST_DAY = 30;
+export const LAST_DAY = 20;

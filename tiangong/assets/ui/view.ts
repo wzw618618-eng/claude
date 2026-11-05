@@ -11,7 +11,8 @@ import { currentEvent } from '../hanyi/systems/story';
 import {
   blocked, buildOut, cookSave, cookScore, huntOut, injuryRisk, preview, scavOut, taskMood, woodOut,
 } from '../hanyi/systems/work';
-import { MAX_TALKS, TOPICS } from '../hanyi/ai/dialogue';
+import { canSit, knownTaste, MAX_TALKS, satWith, seats, TOPICS } from '../hanyi/ai/dialogue';
+import { todayText } from '../hanyi/data/situations';
 import { memoriesOf } from '../hanyi/ai/memory';
 import { PAIR_STORIES } from '../hanyi/data/events-story';
 import { progress } from '../hanyi/data/stories';
@@ -106,8 +107,8 @@ export function titleScreen(ui: UI) {
   <canvas class="snowfx title-snow" data-snow="title" data-n="70" aria-hidden="true"></canvas>
   ${soundBtn(ui, 'title-snd')}
   <div class="wrap">
-    <h1>寒驿<span>三十个冬夜</span></h1>
-    <p class="story">寒潮来得毫无征兆。客车在山道上抛锚，五个陌生人躲进了半山腰一座废弃的驿站。广播里最后一条消息说：大雪封山，道路至少一个月才能打通。<br><br>你成了那个拿主意的人。</p>
+    <h1>寒驿<span>二十个冬夜</span></h1>
+    <p class="story">寒潮来得毫无征兆。客车在山道上抛锚，五个陌生人躲进了半山腰一座废弃的驿站。广播里最后一条消息说：大雪封山，道路至少二十天才能打通。<br><br>你成了那个拿主意的人。</p>
     <div class="cast" aria-label="驿站里的人">${CHAR_ORDER.map((id) => (CHARS[id].starter
       ? `<figure>${portrait(id)}<figcaption>${CHARS[id].short}</figcaption></figure>`
       : '<figure class="unknown"><i class="pt pt-unknown-0" aria-hidden="true"></i><figcaption>？</figcaption></figure>')).join('')}</div>
@@ -150,7 +151,11 @@ function hud(s: GameState, ui: UI) {
     const net = inc - out;
     const short = day && out > 0 && v + inc < out;
     const delta = day && (inc || out) ? `<i class="${net < 0 ? 'neg' : net > 0 ? 'pos' : ''}">${net > 0 ? '+' : ''}${net}</i>` : '';
-    return `<button class="cap ${short ? 'short' : ''}" data-act="info" data-v="${k}" data-res="${k}" aria-label="${label} ${v}，点开看说明">${icon(k)}<b>${v}</b>${delta}<small>${label}</small></button>`;
+    // 照每天的消耗，家底还够几天
+    const use = k === 'food' ? f.eat : k === 'wood' ? f.burn : 0;
+    const days = use ? Math.floor(v / use) : -1;
+    const left = days >= 0 ? `<em class="${days <= 2 ? 'low' : ''}">够${days}天</em>` : '';
+    return `<button class="cap ${short || (days >= 0 && days <= 1) ? 'short' : ''}" data-act="info" data-v="${k}" data-res="${k}" aria-label="${label} ${v}${days >= 0 ? `，够${days}天` : ''}，点开看说明">${icon(k)}<b>${v}</b>${delta}<small>${label}${left}</small></button>`;
   };
   const rescue = s.rescueBy !== 'road' ? `救援约 ${Math.max(0, s.rescueDay - s.day)} 日后到` : `撑到开路 · 约${cnDay(LAST_DAY)}日`;
   return `<header class="hud" data-phase="${s.phase}"><div class="hud-art" aria-hidden="true"></div>${snowCanvas('hud', s)}<div class="wrap">
@@ -213,11 +218,14 @@ function card(s: GameState, c: CharState) {
   } else if (s.phase === 'night') {
     const left = MAX_TALKS - c.talks;
     const wants = want && !want.done;
+    const sat = satWith(s).includes(c.id);
+    const free = canSit(s, c.id);
     if (wants) {
       bubble = '<span class="say-bubble want">有话想说</span>';
-      say = `<div class="card-say"><p>${esc(want.reason)}。</p></div>`;
+      say = `<div class="card-say"><p>${esc(want.reason)}。${free ? '' : '今晚没等到你，会寒心。'}</p></div>`;
     }
-    action = `<button class="task-btn talk ${left ? '' : 'done'} ${wants ? 'want' : ''}" data-act="chat" data-id="${c.id}">${icon('talk')}<b>${wants ? '听听' + (d.gender === 'f' ? '她' : '他') + '说' : '说说话'}</b><small>${left ? (c.talks ? `还能聊 ${left} 句` : '围着火聊聊') : '已经困了'}</small></button>`;
+    const small = !free ? '今晚顾不上了' : sat ? (left ? `还能说 ${left} 句` : '夜深了') : wants ? '没人陪，会寒心' : '今晚陪他坐坐';
+    action = `<button class="task-btn talk ${free && left ? '' : 'done'} ${wants && free ? 'want' : ''}" data-act="chat" data-id="${c.id}">${icon('talk')}<b>${sat ? '接着聊' : wants ? '听听' + (d.gender === 'f' ? '她' : '他') + '说' : '坐过去'}</b><small>${small.replace('他', d.gender === 'f' ? '她' : '他')}</small></button>`;
   } else {
     action = `<div class="task-btn static">${icon(`t_${c.task}`)}<b>${TASKS[c.task].name}</b><small>今天的活</small></div>`;
   }
@@ -253,15 +261,29 @@ function campfire(s: GameState, ui: UI) {
   const faces = (line: string) => A.filter((c) => line.includes(nm(c.id))).slice(0, 2).map((c) => portrait(c.id, c, 'mini')).join('');
   return `<section class="campfire" data-phase="${s.phase}"><div class="campfire-art" aria-hidden="true"></div>
   <div class="lines">${lines.map((l) => `<p class="${l.includes('\n') ? 'talkline' : ''}"><span class="faces">${faces(l)}</span><span class="text">${esc(l)}</span></p>`).join('')}</div>
-  <p class="ai">${ui.engine ? `天工引擎 · ${ui.engine.souls.filter((x) => x.lod !== 'offstage').length} 个 NPC 灵魂在场 · 由「${esc(ui.engine.provider)}」来演 · 每人每晚最多聊四句。` : ui.ai ? '夜谈由 Claude 即兴扮演，每人每晚最多聊四句。' : '点火边的人和他们说话。每人每晚最多聊四句。'}</p>
+  <p class="ai">${nightRule(s)}${ui.engine ? ` 天工引擎 · 由「${esc(ui.engine.provider)}」来演。` : ui.ai ? ' 夜谈由 Claude 即兴扮演。' : ''}</p>
 </section>`;
 }
 
+/** 今晚能陪几个人 */
+function nightRule(s: GameState) {
+  const n = seats(s), used = satWith(s).length;
+  return used >= n ? '今晚顾不上别人了。' : `今晚还能陪 ${n - used} 个人坐坐${n > 1 ? '（火塘砌好了，多陪一个）' : ''}，每人说两句。`;
+}
+
+/** 今日情况：一件让今天和昨天不一样的事 */
+function todayCard(s: GameState) {
+  const t = todayText(s);
+  return t ? `<section class="note today"><h3>${icon('warn')}${esc(t.title)}</h3><p>${esc(t.text)}</p></section>` : '';
+}
+
+/** 收成和发生的事：先给三条要紧的，坏消息在前 */
 function reportCard(s: GameState, ui: UI, title: string) {
   if (!s.report.length) return '';
-  const lines = s.report;
-  const show = ui.reportOpen ? lines : lines.slice(0, 6);
-  const more = lines.length > 6 ? `<button data-act="report">${ui.reportOpen ? '收起' : `全部 ${lines.length} 条`}</button>` : '';
+  const rank = { bad: 0, story: 1, good: 2, info: 3 } as const;
+  const lines = s.report.slice().sort((a, b) => rank[a.tone] - rank[b.tone]);
+  const show = ui.reportOpen ? lines : lines.slice(0, 3);
+  const more = lines.length > 3 ? `<button data-act="report">${ui.reportOpen ? '收起' : `全部 ${lines.length} 条`}</button>` : '';
   return `<section class="note"><h3>${title}${more}</h3><ul>${show.map((l) => `<li class="${l.tone}">${esc(l.text)}</li>`).join('')}</ul></section>`;
 }
 
@@ -269,6 +291,7 @@ function people(s: GameState, ui: UI) {
   const parts: string[] = [scenePanel(s)];
   const A = act(s);
   if (s.phase === 'day') {
+    parts.push(todayCard(s));
     if (s.day > 1) parts.push(reportCard(s, ui, '昨夜'));
     const f = forecast(s);
     const foodWarn = s.res.food + f.food < f.eat;
@@ -284,6 +307,7 @@ function people(s: GameState, ui: UI) {
   } else if (s.phase === 'evening') {
     parts.push(reportCard(s, ui, `第${cnDay(s.day)}日 · 收工`));
   } else if (s.phase === 'night') {
+    parts.push(reportCard(s, ui, `第${cnDay(s.day)}日 · 收工`));
     parts.push(campfire(s, ui));
   }
   const gone = s.chars.filter((c) => c.status !== 'active');
@@ -510,8 +534,15 @@ function chatSheet(s: GameState, ui: UI, c: CharState) {
   const streamed = ui.engine?.stream?.id === c.id ? ui.engine.stream.text : '';
   if (thinking) bubbles.push(streamed ? `<p class="bubble them">${esc(streamed)}</p>` : `<p class="bubble them wait">${d.short}想了想……</p>`);
   if (!log.length && !thinking) bubbles.push(`<p class="bubble them wait">${esc(opening(s, c))}</p>`);
-  const disabled = left <= 0 || thinking || !!ui.thinking;
-  const topics = TOPICS.map((t) => `<button data-act="topic" data-id="${c.id}" data-v="${t.id}" ${disabled ? 'disabled' : ''}>${t.label.replace('TA', d.gender === 'f' ? '她' : '他')}</button>`).join('');
+  const free = canSit(s, c.id);
+  const disabled = !free || left <= 0 || thinking || !!ui.thinking;
+  // 上次这样聊时他的反应：摸清了脾气，就知道该怎么聊
+  const MARK = { like: ['like', '♥'], meh: ['', ''], dislike: ['dislike', '✕'] } as const;
+  const topics = TOPICS.map((t) => {
+    const k = knownTaste(s, c.id, t.id);
+    const [cls, mk] = k ? MARK[k] : ['', ''];
+    return `<button class="${cls}" data-act="topic" data-id="${c.id}" data-v="${t.id}" ${disabled ? 'disabled' : ''}>${t.label.replace('TA', d.gender === 'f' ? '她' : '他')}${mk ? `<i aria-label="${cls === 'like' ? '上次很受用' : '上次不吃这套'}">${mk}</i>` : ''}</button>`;
+  }).join('');
   const input = ui.ai
     ? `<form class="say" data-id="${c.id}"><input id="say-${c.id}" name="say" maxlength="120" autocomplete="off" placeholder="${left > 0 ? `想对${d.short}说什么？` : '夜深了'}" ${disabled ? 'disabled' : ''}><button class="btn hot" ${disabled ? 'disabled' : ''}>说</button></form>`
     : '';
@@ -523,7 +554,7 @@ function chatSheet(s: GameState, ui: UI, c: CharState) {
     <div class="chat" id="chatlog">${bubbles.join('')}</div>
     <div class="topics">${topics}</div>
     ${input}
-    <p class="mini ${ui.aiNote ? 'err' : ''}">${ui.aiNote ? esc(ui.aiNote) : left > 0 ? `今晚还能聊 ${left} 句。` : `${d.short}打了个哈欠。明晚再聊吧。`}</p>
+    <p class="mini ${ui.aiNote ? 'err' : ''}">${ui.aiNote ? esc(ui.aiNote) : !free ? `今晚你陪着${satWith(s).map(nm).join('、')}，顾不上${d.short}了。` : left > 0 ? `今晚还能说 ${left} 句。♥ 是${d.short}吃这一套，✕ 是不吃。` : `${d.short}打了个哈欠。明晚再聊吧。`}</p>
   </section></div>`;
 }
 
@@ -671,9 +702,21 @@ export function risks(s: GameState): Risk[] {
   if (idle.length) {
     out.push({ level: 'warn', short: '营建还没开工', text: `${names(idle)}被派去营建，可还没选工程，只能闲着。先去「营建」页开工。` });
   }
+  const t = s.today;
+  if (t?.id === 'wolves' && !A.some((c) => eff(c) === 'guard')) {
+    out.push({ level: 'bad', short: '狼要来了，没人守夜', text: '门外有狼的脚印，今晚狼群多半会来。没人守夜，会被叼走好几份粮食，还可能有人被咬伤。' });
+  }
+  if (t?.id === 'feud') {
+    const [a, b] = t.actors.map((id) => A.find((c) => c.id === id));
+    if (a && b && eff(a) === eff(b) && eff(a) !== 'rest') out.push({ level: 'warn', short: `${nm(a.id)}和${nm(b.id)}在一起干活`, text: `${nm(a.id)}和${nm(b.id)}今天正在气头上，又被派去一起${TASKS[eff(a)].name}，准要吵翻。` });
+  }
+  if (t?.id === 'fever') {
+    const c = A.find((x) => x.id === t.actors[0]);
+    if (c && !c.sick && eff(c) !== 'rest' && !carers.length) out.push({ level: 'warn', short: `${nm(c.id)}要发烧`, text: `${nm(c.id)}有发烧的前兆，今天还在干活，又没人照料，晚上就会病倒。` });
+  }
   if (s.policy.ration === 'half') out.push({ level: 'info', short: '口粮减半', text: '口粮减半：每人每天健康 −2、心情 −4。' });
   if (s.policy.heat === 'save') out.push({ level: 'info', short: '省着烧', text: '省着烧柴：每天少烧 1 捆，但屋里偏冷，大家每天掉一点健康，也更容易发烧。' });
-  if (s.day >= 4 && !A.some((c) => c.task === 'guard' && !blocked(s, c, 'guard'))) {
+  if (s.day >= 3 && t?.id !== 'wolves' && !A.some((c) => c.task === 'guard' && !blocked(s, c, 'guard'))) {
     out.push({ level: 'info', short: '没人守夜', text: '今晚没人守夜：狼群摸过来会叼走粮食，也可能有人偷东西。' });
   }
   return out;
@@ -764,11 +807,11 @@ export const TIPS: Tip[] = [
   { id: 'assign', when: DAY1, target: '.adopt-all .btn, .card .task-btn', title: '派活', text: '点卡片下面的按钮给每个人派活，也可以一键「按大家的意思派活」。照他们的意思派，信任会涨。' },
   { id: 'res', when: DAY1, target: '.caps', title: '家底', text: '柴火保暖，食物果腹，物资用来营建，药品治病。数字旁边是今天预计的增减。点任何一个数字，都有说明。' },
   { id: 'end', when: DAY1, target: '.dock .go', title: '结束今天', text: '派完活点这里。白天会结算收成；要是安排有风险，会先提醒你。' },
-  { id: 'evening', when: (s) => s.phase === 'evening', target: '.dock .go', title: '傍晚', text: '上面是今天的收成和发生的事。准备好了，就「围炉夜话」。' },
-  { id: 'night', when: (s) => s.phase === 'night', target: '.scene-box', title: '围炉夜话', text: '点火边的人和他们说说话，每人每晚最多聊四句。信任够了，他们会说出藏在心里的事——那往往会改变很多。头上冒着「…」的人，有话想对你说。' },
+  { id: 'night', when: (s) => s.phase === 'night', target: '.scene-box', title: '围炉夜话', text: '每晚你只顾得上一个人。挑一个坐过去，说两句。每个人吃的那一套不一样：有人要人陪，有人要听实话，有人想笑一笑。聊对了信任涨得快，聊错了反而寒心。有话想说的人没等到你，也会寒心。' },
+  { id: 'today', when: (s) => s.phase === 'day' && !!s.today, target: '.note.today', title: '今日情况', text: '每天早上都会出点状况。照着它调整派活：鹿群下山就多派人打猎，看见狼的脚印就留人守夜。' },
   {
     id: 'heart', target: ".dock-tabs [data-v='heart']", title: '人心',
-    when: (s) => s.phase !== 'evening' && storyTotal(s) >= 2,
+    when: (s) => storyTotal(s) >= 2,
     text: '有人的故事往前走了一步。「人心」页能看到大家之间的关系、他们之间发生过的事，和每个人的心路走到了哪一章。',
   },
   {

@@ -8,7 +8,8 @@ import type { CharState, GameState, Intent, TaskId, Want } from '../core/types';
 import { act, addRel, addTrust, ch, clamp, def, eats, has, heatNeed, lvl, nm, rel, relWord } from '../core/world';
 import { BUILDINGS, TASKS, TASK_ORDER } from '../data/rules';
 import { blocked, injuryRisk, preview } from '../systems/work';
-import { personaBlock, situationBlock, WORLD_BLOCK } from './dialogue';
+import { personaBlock, situationBlock, sitWith, WORLD_BLOCK } from './dialogue';
+import { todayYield } from '../data/situations';
 import { memoryBlock, remember } from './memory';
 
 // ───────────── 营地需要 ─────────────
@@ -41,6 +42,14 @@ function sayFor(s: GameState, c: CharState, t: TaskId): string {
     };
     return kid[t] ?? '我也想帮忙！';
   }
+  // 今天的情况，大家看在眼里
+  const td = s.today?.id;
+  if (td === 'deer' && t === 'hunt') return '雪地上全是鹿蹄印，今天我去追！';
+  if (td === 'pines' && t === 'wood') return '林子里倒了一大片枯松，我去拖回来。';
+  if (td === 'wreck' && t === 'scavenge') return '下面露出来一辆车，我去翻翻。';
+  if (td === 'wolves' && t === 'guard') return '门口全是狼爪印，今晚我来守。';
+  if (td === 'fever' && t === 'rest' && s.today!.actors[0] === c.id) return '我头有点烫……今天歇一天吧。';
+  if (td === 'storm' && (t === 'wood' || t === 'hunt')) return '明天要变天，趁今天多弄点回来。';
   switch (t) {
     case 'wood': return n.woodDays < 2 ? '柴快烧完了，我去砍。' : '我去多砍几捆，省得晚上挨冻。';
     case 'hunt': return n.foodDays < 3 ? '粮不多了，我去下几个套子。' : '我去山里转转，看能不能逮点东西。';
@@ -64,9 +73,16 @@ function score(s: GameState, c: CharState, t: TaskId, taken: Record<string, numb
   if (t === 'care') v += n.patients.length ? (c.skills.med >= 3 ? 4 : 1) : -5;
   if (t === 'build') v += s.project ? 1.5 : -9;
   if (t === 'comfort' && n.lowMood) v += 2;
-  if (t === 'guard') v += s.day >= 4 ? 0.5 : -3;
-  if (t === 'explore') v += s.day <= 12 ? 2.5 : 0;
+  if (t === 'guard') v += s.day >= 3 ? 0.5 : -3;
+  if (t === 'explore') v += s.day <= 8 ? 2.5 : 0;
   if (t === 'rest') v = c.stamina < 30 || c.mood < 20 ? 6 : 0;
+  const td = s.today;
+  if (td) {
+    if (todayYield(s, t) > 1) v += 3;
+    if (td.id === 'wolves' && t === 'guard') v += 4;
+    if (td.id === 'storm' && (t === 'wood' || t === 'hunt')) v += 1.5;
+    if (td.id === 'fever' && td.actors[0] === c.id && t === 'rest') v = 8;
+  }
   if (TASKS[t].danger) v -= injuryRisk(s, c, t) * 10;
   if (has(c, 'timid') && TASKS[t].danger) v -= 4;
   if (has(c, 'reckless') && (t === 'explore' || t === 'scavenge')) v += 2;
@@ -166,7 +182,7 @@ export function ruleWants(s: GameState) {
 export function openChat(s: GameState, id: string): boolean {
   const w = s.wants?.[id];
   const c = ch(s, id);
-  if (!w || w.done || !c || c.status !== 'active' || s.phase !== 'night') return false;
+  if (!w || w.done || !c || c.status !== 'active' || s.phase !== 'night' || !sitWith(s, id)) return false;
   w.done = true;
   (s.chat[id] ??= []).push({ from: 'them', text: w.opener });
   addTrust(c, 1);

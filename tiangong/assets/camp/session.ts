@@ -11,7 +11,7 @@ import {
   NPC_COGNITIVE_LOD_SPOTLIGHT,
   NpcBrain,
 } from '@forgeax/engine/npc';
-import { applyTalk, buildPrompt, canTalk, scriptedReply, type TalkResult, type Topic, TOPICS } from '../hanyi/ai/dialogue.ts';
+import { applyTalk, askText, buildPrompt, canTalk, scriptedReply, type TalkResult, type Topic, TOPICS, withRule } from '../hanyi/ai/dialogue.ts';
 import {
   acceptBanter, acceptIntent, acceptOpener, adoptAll, adoptIntent, applyBanter, banterPair,
   buildBanterPrompt, buildIntentPrompt, buildOpenerPrompt, openChat,
@@ -100,7 +100,7 @@ export class CampSession {
       case 'adopt': if (a.id) adoptIntent(s, a.id); else adoptAll(s); break;
     }
     this.align();
-    if (a.type === 'new' || a.type === 'endNight' || a.type === 'toNight') this.think();
+    if (a.type === 'new' || a.type === 'endNight' || a.type === 'toNight' || a.type === 'endDay' || a.type === 'choose') this.think();
     return outcome;
   }
 
@@ -213,24 +213,24 @@ export class CampSession {
   talk(id: string, topic?: Topic, text?: string) {
     const s = this.s;
     if (!canTalk(s, id) || this.thinking) return;
-    const said = (text ?? TOPICS.find((t) => t.id === topic)?.ask ?? '').slice(0, 120);
+    const said = (text ?? (topic ? askText(s, topic) : '')).slice(0, 120);
     if (!said) return;
     const log = (s.chat[id] ??= []);
     const history = log.slice();
     log.push({ from: 'me', text: said });
     const rng = makeRng(s.rng);
-    const fallback = scriptedReply(s, id, topic ?? 'chat', rng);
+    const fallback = scriptedReply(s, id, topic ?? 'sit', rng);
     s.rng = rng.state();
     this.focus = id;
     this.note = null;
     this.align();
-    const p: Pending = { kind: 'talk', id, topic: topic ?? (text ? undefined : 'chat'), fallback, raw: '', shown: '' };
+    const p: Pending = { kind: 'talk', id, topic: topic ?? (text ? undefined : 'sit'), fallback, raw: '', shown: '' };
     if (!this.intel) {
       this.finish(p, fallback, null);
       return;
     }
     const submitted = this.intel.submit({
-      input: encodeEnvelope({ v: 1, soul: soulIdOf(id), prompt: buildPrompt(s, id, history, said), fallback }),
+      input: encodeEnvelope({ v: 1, soul: soulIdOf(id), prompt: buildPrompt(s, id, history, said, p.topic), fallback }),
       session: this.sessions[id],
     });
     if (!submitted.ok) {
@@ -353,6 +353,8 @@ export class CampSession {
     this.note = note;
     const s = this.s;
     const log = s.chat[p.id];
+    // AI 写台词，数值照规则
+    if (r && p.topic && r !== p.fallback) r = withRule(r, p.fallback);
     if (ch(s, p.id) && log) {
       if (r && canTalk(s, p.id)) {
         applyTalk(s, p.id, r, { topic: p.topic ?? null, said: log[log.length - 1]?.from === 'me' ? log[log.length - 1].text : '' });

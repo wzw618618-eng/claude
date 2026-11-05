@@ -110,13 +110,13 @@ describe('寒驿 · 夜谈走引擎的 Intelligence Activity', () => {
     void session.connect(createIntelligenceRuntime(provider, { limits: TALK_LIMITS }), '测试');
     toFirstNight(session);
     const before = ch(session.s, 'qin')!.trust;
-    session.talk('qin', 'chat');
+    session.talk('qin', 'sit');
     for (let i = 0; i < 6; i++) { provider.advance(); session.poll(); }
     const streams = out.filter((m) => m.kind === 'stream').map((m) => (m as { text: string }).text);
     expect(streams.at(-1)).toBe('嗯。火别烧太旺。');
     const log = session.s.chat.qin!;
     expect(log.at(-1)).toEqual({ from: 'them', text: '嗯。火别烧太旺。' });
-    // 第一次聊天 +1，AI 给 +3，单次上限 4
+    // 数值照规则：老秦吃「陪着坐」这一套 +3，第一次聊天再 +1（AI 给的 +3 不算数）
     expect(ch(session.s, 'qin')!.trust).toBe(before + 4);
   });
 
@@ -150,7 +150,7 @@ describe('寒驿 · 夜谈走引擎的 Intelligence Activity', () => {
     const session = new CampSession(() => undefined, 11);
     void session.connect(createIntelligenceRuntime(createOfflineProvider({ delayMs: 0, chunk: 50 }), { limits: TALK_LIMITS }), '离线台词');
     toFirstNight(session);
-    session.talk('jie', 'cheer');
+    session.talk('jie', 'comfort');
     for (let i = 0; i < 20 && session.s.chat.jie!.length < 2; i++) {
       await new Promise((r) => setTimeout(r, 5));
       session.poll();
@@ -185,7 +185,7 @@ describe('寒驿 · DeepSeek 等 OpenAI 兼容接口', () => {
     const session = new CampSession(() => undefined, 13);
     void session.connect(runtime, 'DeepSeek');
     toFirstNight(session);
-    session.talk('ma', 'chat');
+    session.talk('ma', 'sit');
     for (let i = 0; i < 40 && session.s.chat.ma!.length < 2; i++) {
       await new Promise((r) => setTimeout(r, 5));
       session.poll();
@@ -308,7 +308,7 @@ describe('寒驿 · 记忆、心路和人与人之间的故事', () => {
     const session = new CampSession(() => undefined, 31);
     void session.connect(createIntelligenceRuntime(provider, { limits: TALK_LIMITS }), '测试');
     toFirstNight(session);
-    session.talk('qin', 'chat');
+    session.talk('qin', 'sit');
     for (let i = 0; i < 3; i++) { provider.advance(); session.poll(); }
     expect(memoriesOf(session.s, 'qin').map((m) => m.text)).toContain('你答应开春陪我去后山');
     expect(buildPrompt(session.s, 'qin', [], '还冷吗？')).toContain('你答应开春陪我去后山');
@@ -331,7 +331,7 @@ describe('寒驿 · 记忆、心路和人与人之间的故事', () => {
     let line = '';
     for (let seed = 1; seed < 40 && !line.includes('旧账'); seed++) {
       su.recalled = false;
-      line = scriptedReply(s, 'su', 'chat', makeRng(seed)).reply;
+      line = scriptedReply(s, 'su', 'sit', makeRng(seed)).reply;
     }
     expect(line).toContain('「旧账」');
   });

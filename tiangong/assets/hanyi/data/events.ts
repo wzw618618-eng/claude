@@ -235,7 +235,7 @@ const list: EventDef[] = [
     once: true,
     priority: 6,
     chance: 0.35,
-    bind: (s) => (s.day >= 8 && fine(ch(s, 'jie')) ? { actors: ['jie'] } : null),
+    bind: (s) => (s.day >= 5 && fine(ch(s, 'jie')) ? { actors: ['jie'] } : null),
     title: () => '山脊上的一格信号',
     text: () =>
       '阿杰清早爬上了后山的山脊，回来时脸冻得通红，手里攥着手机："有信号！就一格！"\n\n可电量只剩 3%，大概只够发出一条短信。他的屏幕上，是几十条没读的消息，全是他爸发来的。',
@@ -311,8 +311,8 @@ const list: EventDef[] = [
     priority: 9,
     bind: (s, rng) => {
       const l = ch(s, 'lin');
-      if (!fine(l) || s.day < 9) return null;
-      if (s.day >= 13 || rng.chance(0.35)) return { actors: ['lin'] };
+      if (!fine(l) || s.day < 6) return null;
+      if (s.day >= 9 || rng.chance(0.35)) return { actors: ['lin'] };
       return null;
     },
     title: () => '林晚要走',
@@ -401,7 +401,7 @@ const list: EventDef[] = [
     priority: 6,
     bind: (s) => {
       const m = ch(s, 'ma');
-      return ok(m) && s.flags.busFound && (s.flags.heard_ma || m!.trust >= 65 || s.day >= 16) ? { actors: ['ma'] } : null;
+      return ok(m) && s.flags.busFound && (s.flags.heard_ma || m!.trust >= 65 || s.day >= 11) ? { actors: ['ma'] } : null;
     },
     title: () => '胖叔的心事',
     text: () =>
@@ -515,7 +515,7 @@ const list: EventDef[] = [
     priority: 6,
     bind: (s, rng) => {
       const u = ch(s, 'su');
-      if (!ok(u) || s.day < 10 || s.flags.phoneUnlocked) return null;
+      if (!ok(u) || s.day < 7 || s.flags.phoneUnlocked) return null;
       if (s.flags.heard_su || u!.trust >= 60) return { actors: ['su'], vars: { open: true } };
       if (s.flags.suPhoneSeen || !rng.chance(0.3)) return null;
       const w = adults(s, 'su');
@@ -1082,7 +1082,7 @@ const list: EventDef[] = [
     cooldown: 6,
     chance: 0.18,
     priority: 3,
-    bind: (s, rng) => (s.day >= 5 ? { actors: [], vars: { offer: rng.int(0, 2) } } : null),
+    bind: (s, rng) => (s.day >= 4 ? { actors: [], vars: { offer: rng.int(0, 2) } } : null),
     title: () => '过路的猎户',
     text: (_s, ev) => {
       const o = OFFERS[Number(ev.vars.offer)];

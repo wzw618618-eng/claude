@@ -1,6 +1,6 @@
 // 入口：持有游戏状态，处理点击，存档，接上 AI 对话。
 
-import { applyTalk, buildPrompt, canTalk, parseAI, scriptedReply, TalkResult, Topic, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
+import { applyTalk, askText, buildPrompt, canTalk, parseAI, scriptedReply, TalkResult, Topic, withRule } from '../tiangong/assets/hanyi/ai/dialogue';
 import { makeRng } from '../tiangong/assets/hanyi/core/rng';
 import { GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
 import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
@@ -195,7 +195,7 @@ const OFF_CODES = ['not_granted', 'sampling_disabled', 'not_declared', 'capabili
 async function talk(id: string, topic: Topic | null, text?: string) {
   if (!s || !canTalk(s, id) || ui.thinking) return;
   const game = s;
-  const said = text ?? TOPICS.find((t) => t.id === topic)!.ask;
+  const said = text ?? askText(game, topic!);
   const log = (game.chat[id] ??= []);
   const history = log.slice();
   log.push({ from: 'me', text: said });
@@ -206,7 +206,7 @@ async function talk(id: string, topic: Topic | null, text?: string) {
     ui.aiNote = null;
     render({ chatBottom: true });
     try {
-      const raw = await sample.json(buildPrompt(game, id, history, said), { modelTier: 'quick', cache: false });
+      const raw = await sample.json(buildPrompt(game, id, history, said, topic), { modelTier: 'quick', cache: false });
       result = parseAI(raw);
       if (!result) ui.aiNote = '没听清。换个说法试试？';
     } catch (err: any) {
@@ -223,15 +223,16 @@ async function talk(id: string, topic: Topic | null, text?: string) {
     if (s !== game) return;
   }
 
-  if (!result) {
-    if (!topic) {
-      log.pop();
-      render({ chatBottom: true });
-      return;
-    }
+  if (topic) {
     const rng = makeRng(game.rng);
-    result = scriptedReply(game, id, topic, rng);
+    const rule = scriptedReply(game, id, topic, rng);
     game.rng = rng.state();
+    result = result ? withRule(result, rule) : rule;
+  }
+  if (!result) {
+    log.pop();
+    render({ chatBottom: true });
+    return;
   }
   applyTalk(game, id, result, { topic, said });
   log.push({ from: 'them', text: result.reply });

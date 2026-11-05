@@ -1,24 +1,82 @@
 // 围炉夜话：夜里和角色说话。
 // 有 AI 时，由 Claude 根据角色设定和当前处境即兴回答；没有 AI 时，用手写台词。
-// 两种模式走同一套规则：每晚聊天带来的信任/心情有上限，说出秘密会解锁对应的故事线。
+// 两种模式走同一套规则：每晚只顾得上一两个人；用对了路子才聊得进去；说出秘密会解锁对应的故事线。
 
 import { Rng } from '../core/rng';
 import { GameState } from '../core/types';
 import {
-  act, addMood, addTrust, ch, clamp, def, has, insulation, moodWord, nm, rel, relWord, trustWord,
+  act, addMood, addTrust, ch, clamp, def, eats, has, heatNeed, insulation, moodWord, nm, rel, relWord, trustWord,
 } from '../core/world';
-import { SKILLS, TRAITS } from '../data/rules';
+import { LAST_DAY, SKILLS, TRAITS } from '../data/rules';
 import { memoryBlock, recall, remember, talkedTonight } from './memory';
 
-export type Topic = 'chat' | 'past' | 'cheer' | 'others';
+// 每个人吃哪一套：陪着坐、安慰、逗乐、说实话、问起过去。摸清了才聊得进去，聊错了反而寒心。
+export type Topic = 'sit' | 'comfort' | 'joke' | 'straight' | 'past';
 export const TOPICS: { id: Topic; label: string; ask: string }[] = [
-  { id: 'chat', label: '闲聊几句', ask: '最近怎么样？' },
+  { id: 'sit', label: '陪着坐', ask: '（你在旁边坐下，陪着烤火。）' },
+  { id: 'comfort', label: '安慰几句', ask: '别太往心里去，有我们在呢。' },
+  { id: 'joke', label: '逗TA笑', ask: '给你讲个笑话——' },
+  { id: 'straight', label: '说实在的', ask: '跟你说句实话。' },
   { id: 'past', label: '问起过去', ask: '能说说你以前的事吗？' },
-  { id: 'cheer', label: '给TA打气', ask: '撑住，我们一定能出去的。' },
-  { id: 'others', label: '聊聊别人', ask: '你觉得营地里的其他人怎么样？' },
 ];
 
-export const MAX_TALKS = 4;
+/** 每人每晚最多说两句；每晚只顾得上一个人（砌了火塘能多顾一个） */
+export const MAX_TALKS = 2;
+export const seats = (s: GameState) => 1 + (s.built.includes('hearth') ? 1 : 0);
+export const satWith = (s: GameState) => s.sat ?? [];
+
+const TASTE: Record<string, { like: Topic[]; dislike: Topic[] }> = {
+  qin: { like: ['sit', 'straight'], dislike: ['joke', 'comfort'] },
+  lin: { like: ['comfort', 'past'], dislike: ['joke'] },
+  jie: { like: ['joke', 'sit'], dislike: ['straight'] },
+  ma: { like: ['joke', 'comfort'], dislike: ['straight'] },
+  su: { like: ['straight'], dislike: ['comfort', 'joke'] },
+  man: { like: ['joke', 'comfort'], dislike: ['straight'] },
+  gesang: { like: ['sit', 'straight'], dislike: ['comfort'] },
+  wu: { like: ['sit'], dislike: ['joke', 'past'] },
+};
+
+export type Reaction = 'like' | 'meh' | 'dislike';
+
+/** 他此刻吃不吃这一套：底子是性子，心情会改：心情很糟时谁都不想听笑话，只想有人陪 */
+export function reaction(s: GameState, id: string, t: Topic): Reaction {
+  const c = ch(s, id)!;
+  const tt = TASTE[id] ?? { like: [], dislike: [] };
+  if (t === 'past' && c.trust < 30) return tt.dislike.includes('past') ? 'dislike' : 'meh';
+  if (c.mood < 30) {
+    if (t === 'joke' && !has(c, 'child')) return 'dislike';
+    if (t === 'sit' && !tt.dislike.includes('sit')) return 'like';
+  }
+  if (tt.like.includes(t)) return 'like';
+  if (tt.dislike.includes(t)) return 'dislike';
+  if (c.mood >= 65 && t === 'joke') return 'like';
+  return 'meh';
+}
+
+/** 你摸清的他的脾气（上一次这样聊时他的反应） */
+export const knownTaste = (s: GameState, id: string, t: Topic) => s.flags[`taste_${id}_${t}`] as Reaction | undefined;
+
+export function canSit(s: GameState, id: string) {
+  const c = ch(s, id);
+  if (!c || c.status !== 'active' || s.phase !== 'night') return false;
+  return satWith(s).includes(id) || satWith(s).length < seats(s);
+}
+export function sitWith(s: GameState, id: string) {
+  if (!canSit(s, id)) return false;
+  if (!satWith(s).includes(id)) (s.sat ??= []).push(id);
+  return true;
+}
+export function canTalk(s: GameState, id: string) {
+  return canSit(s, id) && ch(s, id)!.talks < MAX_TALKS;
+}
+
+/** 说出口的那句话：「说实在的」会把营地的实底说出来 */
+export function askText(s: GameState, t: Topic) {
+  if (t !== 'straight') return TOPICS.find((x) => x.id === t)!.ask;
+  const eat = act(s).reduce((n, c) => n + eats(c), 0) || 1;
+  const food = Math.floor(s.res.food / eat), wood = Math.floor(s.res.wood / heatNeed(s));
+  return `跟你说实话：粮食还够${food}天，柴火够${wood}天。${s.rescueBy === 'road' ? `路要到第${LAST_DAY}天才通` : `救援大概${Math.max(0, s.rescueDay - s.day)}天后到`}。`;
+}
 
 export interface TalkResult {
   reply: string;
@@ -27,85 +85,100 @@ export interface TalkResult {
   revealed: boolean;
   /** AI 写下的「这次会记住的事」 */
   remember?: string;
-}
-
-export function canTalk(s: GameState, id: string) {
-  const c = ch(s, id);
-  return !!c && c.status === 'active' && s.phase === 'night' && c.talks < MAX_TALKS;
+  react?: Reaction;
 }
 
 /** 把一次谈话的结果记到角色身上（每晚有上限），并记下这次聊了什么 */
 export function applyTalk(s: GameState, id: string, r: TalkResult, about: { topic?: Topic | null; said?: string } = {}) {
   const c = ch(s, id)!;
+  sitWith(s, id);
   const knew = !!s.flags[`heard_${id}`];
   const first = c.talks === 0;
   c.talks++;
+  if (about.topic && r.react) s.flags[`taste_${id}_${about.topic}`] = r.react;
   const dt = clamp(r.trust + (first ? 1 : 0), -3, 4);
-  const nt = clamp(c.trustTonight + dt, -5, 5);
+  const nt = clamp(c.trustTonight + dt, -5, 7);
   addTrust(c, nt - c.trustTonight);
   c.trustTonight = nt;
-  const nmood = clamp(c.moodTonight + r.mood, -6, 8);
+  const nmood = clamp(c.moodTonight + r.mood, -6, 10);
   addMood(c, nmood - c.moodTonight);
   c.moodTonight = nmood;
   if (r.revealed && c.trust >= def(id).secretTrust - 5) s.flags[`heard_${id}`] = true;
   if (!knew && s.flags[`heard_${id}`]) remember(s, id, { kind: 'secret', text: `你听我说了${def(id).secretShort}` });
   else if (!talkedTonight(s, id)) {
-    const text = r.remember?.trim() || talkMemory(about.topic ?? null, about.said ?? '');
+    const text = r.remember?.trim() || talkMemory(about.topic ?? null, about.said ?? '', r.react);
     if (text) remember(s, id, { kind: 'talk', text, tone: dt > 0 ? 'good' : dt < 0 ? 'bad' : '' });
   }
 }
 
-function talkMemory(topic: Topic | null, said: string) {
+function talkMemory(topic: Topic | null, said: string, react?: Reaction) {
   if (topic === 'past') return '你问起我的过去';
-  if (topic === 'cheer') return '你给我打气，说我们一定能出去';
+  if (topic === 'sit' && react === 'like') return '那晚你什么也没说，就陪我烤火';
+  if (topic === 'straight' && react === 'like') return '你跟我说了实话';
+  if (topic === 'comfort' && react === 'like') return '你安慰我，说有你们在';
+  if (topic === 'joke' && react === 'like') return '你讲笑话把我逗乐了';
+  if (react === 'dislike') return topic === 'joke' ? '那种时候你还跟我说笑' : topic === 'comfort' ? '你拿哄小孩的话哄我' : topic === 'straight' ? '你非要跟我说那些丧气的数' : '';
   if (!topic && said) return `你对我说：「${said.length > 18 ? said.slice(0, 18) + '…' : said}」`;
   return '';
 }
 
+/** AI 写台词，数值照规则：聊对了路子才涨，免得变成刷好感 */
+export function withRule(ai: TalkResult, rule: TalkResult): TalkResult {
+  return { ...ai, trust: rule.trust, mood: rule.mood, react: rule.react, revealed: ai.revealed || rule.revealed };
+}
+
 // ───────────── 手写台词 ─────────────
+
+const DELTA: Record<Reaction, { trust: number; mood: number }> = {
+  like: { trust: 3, mood: 6 },
+  meh: { trust: 1, mood: 1 },
+  dislike: { trust: -2, mood: -4 },
+};
+
+const LIKE: Record<Exclude<Topic, 'past' | 'comfort'>, string[]> = {
+  sit: ['（{n}往你这边挪了挪。两个人就这么烤着火，谁也没说话，{n}的肩膀慢慢松了下来。）', '（{n}没说话，把手里的热水递给你一半。）'],
+  joke: ['（{n}噗嗤一声笑出来。）……你这人，真是。', '（{n}笑得直咳嗽。）好久没这么笑过了。'],
+  straight: ['……嗯。你肯跟我说实话，我心里反倒踏实了。', '好。知道了底，就知道该怎么熬。'],
+};
+const DISLIKE: Record<Exclude<Topic, 'past'>, string[]> = {
+  sit: ['（{n}坐立不安，过了一会儿起身去添柴，走开了。）'],
+  comfort: ['……别安慰我了。说这些有什么用。', '你不用哄我。'],
+  joke: ['……现在不是说笑的时候。', '（{n}看了你一眼，没笑。）'],
+  straight: ['……你非得现在跟我说这些吗？', '（{n}的脸一下子白了，半天没吭声。）'],
+};
+const KID = { like: '（{n}咯咯地笑起来。）再讲一个嘛！', dislike: '（{n}的眼圈一下子红了。）……我们是不是出不去了？' };
+const MUTE = { like: '（{n}看了你一眼，嘴角动了动。）', dislike: '（{n}别过头去。）' };
 
 export function scriptedReply(s: GameState, id: string, topic: Topic, rng: Rng): TalkResult {
   const c = ch(s, id)!;
   const d = def(id);
   const L = d.lines;
-  switch (topic) {
-    case 'chat': {
-      // 偶尔提起前几天的事
-      const back = recall(s, c, rng);
-      if (back) return { reply: back, trust: 1, mood: 1, revealed: false };
-      let reply: string;
-      if (c.injured || c.sick) reply = L.hurt;
-      else if (c.hungerDays > 0) reply = L.hungry;
-      else if (s.res.wood < 2 || s.temp <= -24) reply = L.cold;
-      else if (c.mood < 30) reply = rng.pick(L.greet.low);
-      else if (c.trust >= 60 && c.mood >= 45) reply = rng.pick(L.greet.high);
-      else reply = rng.pick(L.greet.mid);
-      return { reply, trust: 1, mood: 2, revealed: false };
-    }
-    case 'past': {
-      const tier = c.trust < 30 ? 0 : c.trust < d.secretTrust ? 1 : 2;
-      return { reply: L.past[tier], trust: tier === 0 ? 0 : 1, mood: tier === 2 ? 4 : 0, revealed: tier === 2 };
-    }
-    case 'cheer': {
-      const low = c.mood < 40;
-      return { reply: rng.pick(L.cheer), trust: low ? 2 : 1, mood: low ? 8 : 3, revealed: false };
-    }
-    case 'others': {
-      const os = act(s).filter((o) => o.id !== id);
-      if (!os.length) return { reply: has(c, 'mute') ? '（他看着空荡荡的屋子，摇了摇头。）' : '……就剩我们了。', trust: 1, mood: 0, revealed: false };
-      const o = os.sort((a, b) => Math.abs(rel(s, id, b.id)) - Math.abs(rel(s, id, a.id)))[0];
-      const r = rel(s, id, o.id);
-      const B = nm(o.id);
-      let reply: string;
-      if (has(c, 'mute')) reply = r >= 15 ? `（提到${B}，他点了点头，嘴角动了一下。）` : r <= -15 ? `（提到${B}，他皱了皱眉。）` : `（提到${B}，他没什么表情。）`;
-      else if (has(c, 'child')) reply = r >= 15 ? `${B}对我可好了！` : r <= -15 ? `${B}有点凶……` : `${B}？我还不太认识。`;
-      else if (r >= 40) reply = `${B}啊……这种时候能碰上${B}，算是运气。`;
-      else if (r >= 15) reply = `${B}人不错。`;
-      else if (r > -15) reply = `${B}？不太熟。`;
-      else reply = `别跟我提${B}。`;
-      return { reply, trust: 1, mood: 0, revealed: false };
-    }
+  const react = reaction(s, id, topic);
+  const fill = (t: string) => t.replace(/\{n\}/g, d.short);
+  const out = (reply: string, extra: Partial<TalkResult> = {}): TalkResult => ({ reply: fill(reply), ...DELTA[react], revealed: false, react, ...extra });
+
+  if (topic === 'past') {
+    const tier = c.trust < 30 ? 0 : c.trust < d.secretTrust ? 1 : 2;
+    return out(L.past[tier], tier === 2 ? { revealed: true, mood: DELTA[react].mood + 4 } : {});
   }
+  // 陪着坐的时候，他偶尔会提起前几天的事
+  if (topic === 'sit' && react !== 'dislike') {
+    const back = recall(s, c, rng);
+    if (back) return out(back);
+  }
+  if (react !== 'meh') {
+    if (has(c, 'mute')) return out(MUTE[react]);
+    if (has(c, 'child') && (topic === 'joke' || topic === 'straight')) return out(KID[react]);
+    if (react === 'like') return out(topic === 'comfort' ? rng.pick(L.cheer) : rng.pick(LIKE[topic]));
+    return out(rng.pick(DISLIKE[topic]));
+  }
+  // 不咸不淡：说些家常，偶尔提起前几天的事
+  const back = recall(s, c, rng);
+  if (back) return out(back);
+  if (c.injured || c.sick) return out(L.hurt);
+  if (c.hungerDays > 0) return out(L.hungry);
+  if (s.res.wood < 2 || s.temp <= -24) return out(L.cold);
+  return out(rng.pick(c.mood < 30 ? L.greet.low : c.trust >= 60 && c.mood >= 45 ? L.greet.high : L.greet.mid));
 }
 
 // ───────────── AI 对话 ─────────────
@@ -152,8 +225,15 @@ ${recent || '（没什么特别的）'}`;
 
 export const WORLD_BLOCK = `【世界】寒潮突至，大雪封山。一群陌生人被困在半山腰一座废弃的驿站（以前是护林站），断电断路，要靠砍柴、打猎、搜寻物资撑到救援。玩家是这群人里拿主意的"主事人"。`;
 
-export function buildPrompt(s: GameState, id: string, history: { from: 'me' | 'them'; text: string }[], said: string) {
+const FEEL: Record<Reaction, string> = {
+  like: '你吃这一套，心里会松动一些，语气可以软下来',
+  meh: '你没什么特别的感觉，照常回应',
+  dislike: '你不吃这一套，会有点抵触或者不耐烦',
+};
+
+export function buildPrompt(s: GameState, id: string, history: { from: 'me' | 'them'; text: string }[], said: string, topic?: Topic | null) {
   const d = def(id);
+  const how = topic ? `\n【这一句】主事人的方式是「${TOPICS.find((x) => x.id === topic)!.label.replace('TA', ta(d))}」。${FEEL[reaction(s, id, topic)]}。` : '';
   const convo = history.slice(-8).map((h) => (h.from === 'me' ? `主事人：${h.text}` : `${d.short}：${h.text}`)).join('\n');
 
   return `你在为一款叫《寒驿》的中文生存经营游戏扮演一个角色，和玩家对话。
@@ -168,7 +248,7 @@ ${memoryBlock(s, id)}
 
 【刚才的对话】
 ${convo || '（今晚第一次说话）'}
-主事人：${said}
+主事人：${said}${how}
 
 【要求】
 - 用${d.short}的口吻回一句话，中文口语，1到3句，不超过80个字。可以带一个括号里的简短动作。

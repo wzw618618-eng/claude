@@ -85,7 +85,7 @@ export const bodyPlugin: Plugin = {
       if ((tmp.fed ?? 1) >= 1 && (tmp.cold ?? 0) <= 0.01 && !c.injured && !c.sick) addHealth(c, 3);
 
       // 心情：困得越久越压抑；好事带来的提振在心情已经不错时会打折扣
-      let down = s.day <= 7 ? 2 : 3;
+      let down = s.day <= 5 ? 2 : 3;
       if (s.weather.kind === 'blizzard') down += 2;
       if (has(c, 'optimist')) down = Math.ceil(down / 2);
       if (has(c, 'pessimist')) down *= 2;

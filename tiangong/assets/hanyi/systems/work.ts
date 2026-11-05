@@ -6,6 +6,7 @@ import {
   act, addHealth, addMood, addSkill, addStamina, addTrust, clamp, has, lvl, nm, rel, join,
 } from '../core/world';
 import { SKILLS, TASKS } from '../data/rules';
+import { todayRisk, todayYield } from '../data/situations';
 
 const OUTDOOR: TaskId[] = ['wood', 'hunt', 'scavenge', 'explore'];
 const DANGER: TaskId[] = ['scavenge', 'explore', 'guard'];
@@ -31,7 +32,7 @@ export function efficiency(s: GameState, c: CharState, t: TaskId) {
   if (has(c, 'lazy')) e *= 0.85;
   if (has(c, 'child') && ['wood', 'build'].includes(t)) e *= 0.5;
   if (OUTDOOR.includes(t)) e *= s.weather.kind === 'blizzard' ? 0.5 : s.weather.kind === 'snow' ? 0.85 : 1;
-  return e;
+  return e * todayYield(s, t);
 }
 
 export function injuryRisk(s: GameState, c: CharState, t: TaskId) {
@@ -44,7 +45,7 @@ export function injuryRisk(s: GameState, c: CharState, t: TaskId) {
   if (has(c, 'reckless')) p *= 1.6;
   if (has(c, 'timid')) p *= 0.5;
   if (t === 'explore' && s.built.includes('tower')) p *= 0.6;
-  return clamp(p, 0, 0.6);
+  return clamp(p * todayRisk(s, t), 0, 0.6);
 }
 
 /** 干这个活对心情的直接影响（特质决定） */
@@ -60,7 +61,7 @@ export function taskMood(c: CharState, t: TaskId, solo: boolean) {
 
 export const woodOut = (s: GameState, c: CharState) => (2 + c.skills.str * 0.8) * efficiency(s, c, 'wood');
 /** 附近的猎物会越打越少 */
-export const gameLeft = (s: GameState) => Math.max(0.55, 1 - (s.day - 1) * 0.018);
+export const gameLeft = (s: GameState) => Math.max(0.55, 1 - (s.day - 1) * 0.027);
 export const huntOut = (s: GameState, c: CharState) => (0.6 + c.skills.wild * 0.7) * efficiency(s, c, 'hunt') * gameLeft(s);
 export const scavOut = (s: GameState, c: CharState) =>
   (1 + c.skills.wild * 0.5) * efficiency(s, c, 'scavenge') * (has(c, 'reckless') ? 1.3 : 1);
@@ -99,10 +100,10 @@ function explore(ctx: Ctx, c: CharState) {
   const f = s.flags;
   const tower = s.built.includes('tower');
   const table: [string, number][] = [];
-  if (!f.busFound) table.push(['bus', s.day <= 8 ? 30 : 18]);
-  if (!f.manFound && s.day >= 3) table.push(['man', 24]);
-  if (!f.gesangFound && s.day >= 5) table.push(['gesang', 20]);
-  if (!f.wuFound && s.day >= 7) table.push(['wu', 20]);
+  if (!f.busFound) table.push(['bus', s.day <= 6 ? 30 : 18]);
+  if (!f.manFound && s.day >= 2) table.push(['man', 24]);
+  if (!f.gesangFound && s.day >= 3) table.push(['gesang', 20]);
+  if (!f.wuFound && s.day >= 5) table.push(['wu', 20]);
   table.push(['deer', 14], ['car', 14], ['hut', 9], ['nothing', 16]);
   table.push(['lost', (s.weather.kind === 'blizzard' ? 22 : 7) * (tower ? 0.5 : 1)]);
   const r = rng.weighted(table)!;

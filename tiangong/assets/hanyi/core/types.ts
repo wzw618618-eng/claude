@@ -104,4 +104,8 @@ export interface GameState {
   wants?: Record<string, Want>;
   /** 每个人的记忆（旧存档没有） */
   memory?: Record<string, Memory[]>;
+  /** 今天早上的情况（旧存档没有） */
+  today?: { id: string; actors: string[] } | null;
+  /** 今晚陪着坐过的人 */
+  sat?: string[];
 }

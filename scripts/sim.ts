@@ -1,16 +1,16 @@
 // 无头模拟：用简单的策略连玩几百局，看平衡性（存活率、死亡时间、各结局占比、事件触发频率）。
 // 用法：npm run sim
 
-import { GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
-import { act, heatNeed, eats, ended } from '../tiangong/assets/hanyi/core/world';
+import { CharState, GameState, TaskId } from '../tiangong/assets/hanyi/core/types';
+import { act, def, heatNeed, eats, ended } from '../tiangong/assets/hanyi/core/world';
 
 declare const process: { argv: string[] };
 import { makeRng } from '../tiangong/assets/hanyi/core/rng';
 import { BUILD_ORDER, BUILDINGS } from '../tiangong/assets/hanyi/data/rules';
 import { choose, endDay, endNight, newGame, setTask, startProject, toNight } from '../tiangong/assets/hanyi/game';
 import { currentEvent } from '../tiangong/assets/hanyi/systems/story';
-import { applyTalk, canTalk, scriptedReply, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
-import { adoptAll } from '../tiangong/assets/hanyi/ai/intent';
+import { applyTalk, canTalk, knownTaste, satWith, scriptedReply, seats, sitWith, Topic, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
+import { adoptAll, openChat } from '../tiangong/assets/hanyi/ai/intent';
 import { blocked, careScore, cookScore, huntOut, woodOut, scavOut } from '../tiangong/assets/hanyi/systems/work';
 
 type Policy = 'smart' | 'random' | 'idle' | 'listen';
@@ -49,11 +49,17 @@ function plan(s: GameState, policy: Policy, r: ReturnType<typeof makeRng>) {
   };
   const foodNeed = A.reduce((n, c) => n + eats(c), 0);
   const hn = heatNeed(s);
+  const td = s.today;
+  if (td?.id === 'fever' && free.has(td.actors[0])) { setTask(s, td.actors[0], 'rest'); free.delete(td.actors[0]); }
+  if (td?.id === 'wolves') take('guard', (c) => c.skills.str);
+  if (td?.id === 'deer') take('hunt', (c) => huntOut(s, c), 2);
+  if (td?.id === 'pines') take('wood', (c) => woodOut(s, c), 2);
+  if (td?.id === 'wreck') take('scavenge', (c) => scavOut(s, c), 2);
   if (A.some((c) => c.sick || c.injured || c.health < 60)) take('care', (c) => careScore(s, c));
   if (s.res.wood < hn * 3) take('wood', (c) => woodOut(s, c), s.res.wood < hn ? 2 : 1);
   if (s.res.food < foodNeed * 4) take('hunt', (c) => huntOut(s, c), s.res.food < foodNeed * 2 ? 2 : 1);
   if (A.length >= 4) take('cook', (c) => cookScore(s, c));
-  if (s.day >= 2 && s.day <= 14) take('explore', (c) => c.skills.wild + c.stamina / 50);
+  if (s.day >= 2 && s.day <= 10) take('explore', (c) => c.skills.wild + c.stamina / 50);
   if (s.project) take('build', (c) => c.skills.craft);
   if (s.day >= 4 && A.length >= 5) take('guard', (c) => c.skills.str);
   if (A.some((c) => c.mood < 30)) take('comfort', (c) => c.skills.talk);
@@ -61,6 +67,41 @@ function plan(s: GameState, policy: Policy, r: ReturnType<typeof makeRng>) {
   if (s.res.wood < hn * 5) take('wood', (c) => woodOut(s, c));
   take('hunt', (c) => huntOut(s, c), 9);
   for (const id of free) setTask(s, id, 'rest');
+  if (td?.id === 'feud') {
+    const [a, b] = td.actors.map((id) => A.find((c) => c.id === id));
+    if (a && b && a.task === b.task && a.task !== 'rest') setTask(s, b.id, b.task === 'wood' ? 'hunt' : 'wood');
+  }
+}
+
+/** 夜里：聪明的玩家先去找有话想说的人，再找快说出心事或者心情最差的人；记得谁吃哪一套 */
+function nightTalk(s: GameState, policy: Policy, r: ReturnType<typeof makeRng>) {
+  for (let k = 0; k < seats(s); k++) {
+    const A = act(s).filter((c) => canTalk(s, c.id) && !satWith(s).includes(c.id));
+    if (!A.length) return;
+    let c: CharState;
+    if (policy === 'random') c = r.pick(A);
+    else {
+      const score = (x: CharState) => {
+        const w = s.wants?.[x.id];
+        const near = !s.flags[`heard_${x.id}`] ? Math.max(0, 20 - Math.abs(def(x.id).secretTrust - x.trust)) : 0;
+        return (w && !w.done ? 100 : 0) + near + (x.mood < 30 ? 30 - x.mood : 0) + r.next();
+      };
+      c = A.sort((a, b) => score(b) - score(a))[0];
+    }
+    openChat(s, c.id);
+    sitWith(s, c.id);
+    while (canTalk(s, c.id)) {
+      let t: Topic;
+      if (policy === 'random') t = r.pick(TOPICS).id;
+      else if (!s.flags[`heard_${c.id}`] && c.trust >= def(c.id).secretTrust) t = 'past';
+      else {
+        const liked = TOPICS.filter((x) => knownTaste(s, c.id, x.id) === 'like' && x.id !== 'past');
+        const fresh = TOPICS.filter((x) => !knownTaste(s, c.id, x.id) && x.id !== 'past');
+        t = liked.length && (!fresh.length || r.chance(0.7)) ? r.pick(liked).id : fresh.length ? r.pick(fresh).id : 'sit';
+      }
+      applyTalk(s, c.id, scriptedReply(s, c.id, t, r), { topic: t });
+    }
+  }
 }
 
 function play(seed: number, policy: Policy) {
@@ -78,15 +119,11 @@ function play(seed: number, policy: Policy) {
     }
     if (ended(s)) break;
     if (s.phase === 'day') { plan(s, policy, r); endDay(s); for (const c of act(s)) minH = Math.min(minH, c.health); }
-    else if (s.phase === 'evening') {
-      toNight(s);
-      if (policy !== 'idle') {
-        for (const c of r.shuffle(act(s).slice()).slice(0, 3)) {
-          for (let k = 0; k < 2 && canTalk(s, c.id); k++) applyTalk(s, c.id, scriptedReply(s, c.id, r.pick(TOPICS).id, r));
-        }
-      }
+    else if (s.phase === 'evening') toNight(s);
+    else if (s.phase === 'night') {
+      if (policy !== 'idle') nightTalk(s, policy, r);
+      endNight(s);
     }
-    else if (s.phase === 'night') endNight(s);
   }
   return { s, fired, minH };
 }

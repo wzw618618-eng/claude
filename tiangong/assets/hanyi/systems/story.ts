@@ -46,7 +46,8 @@ export const storyPlugin: Plugin = {
     const tower = s.built.includes('tower');
 
     // 狼群
-    const wolfP = s.day >= 4 ? (0.1 + (s.weather.kind === 'blizzard' ? 0.08 : 0)) * (s.flags.fence ? 0.5 : 1) : 0;
+    const tracks = s.today?.id === 'wolves';
+    const wolfP = s.day >= 3 ? (tracks ? 0.85 : 0.1 + (s.weather.kind === 'blizzard' ? 0.08 : 0)) * (s.flags.fence ? 0.5 : 1) : 0;
     if (rng.chance(wolfP)) {
       let text: string;
       if (power >= (tower ? 1.5 : 2)) {

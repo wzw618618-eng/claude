@@ -110,7 +110,7 @@ export function insulation(s: GameState) {
 }
 
 export function baseTemp(day: number) {
-  const x = Math.min(1, ((day - 1) / 29) * 1.1);
+  const x = Math.min(1, ((day - 1) / 19) * 1.1);
   return Math.round(-8 - 18 * Math.sin(Math.PI * x));
 }
 export function heatNeed(s: GameState) {
@@ -160,7 +160,7 @@ export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0): Game
     rng: seed,
     day: 1,
     phase: 'day',
-    res: { food: 18, wood: 14, mat: 6, med: 3 },
+    res: { food: 15, wood: 12, mat: 6, med: 3 },
     policy: { ration: 'normal', heat: 'normal' },
     chars: [],
     rel: { ...START_REL },
@@ -175,14 +175,14 @@ export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0): Game
     pending: [],
     ambient: [],
     chat: {},
-    rescueDay: 31,
+    rescueDay: 21,
     rescueBy: 'road',
     ending: null,
   };
   for (const id of CHAR_ORDER) if (def(id).starter) s.chars.push(newChar(id, 1));
   const preset: Record<string, CharState['task']> = { qin: 'hunt', lin: 'care', jie: 'wood', ma: 'cook', su: 'scavenge' };
   for (const c of s.chars) c.task = preset[c.id] ?? 'rest';
-  s.log.push({ day: 1, text: '寒潮来得毫无征兆。客车在山道上抛锚，五个陌生人躲进了半山腰一座废弃的驿站。广播里最后一条消息说：大雪封山，道路至少一个月才能打通。', tone: 'story' });
+  s.log.push({ day: 1, text: '寒潮来得毫无征兆。客车在山道上抛锚，五个陌生人躲进了半山腰一座废弃的驿站。广播里最后一条消息说：大雪封山，道路至少二十天才能打通。', tone: 'story' });
   return s;
 }
 
