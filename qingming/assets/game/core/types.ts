@@ -28,6 +28,8 @@ export interface Memory {
   from?: string;
   /** 已经讲给别人听过几次（传得太多就不再讲） */
   told?: number;
+  /** 谈话里记下的一句话（AI 写的），站在记的人角度；这种记忆不往外传 */
+  note?: string;
 }
 
 export type GoalKind = 'revenge' | 'throne' | 'seekmaster' | 'love' | 'treasure' | 'longevity' | 'join';
@@ -88,10 +90,23 @@ export interface Npc extends Being {
   mind: Mind;
   /** 今年打算干什么（年初定下，年末结算） */
   plan: Plan;
+  /** 后起之秀的来历和说话方式（开局的十二人写在 people.ts 里） */
+  bio?: string;
+  voice?: string;
 }
 
 /** 一年的打算：干什么、去哪、为什么；scheme 是谋划手段，target 是冲着谁 */
-export interface Plan { act: string; place: PlaceId; why: string; by: 'rule' | 'ai'; scheme?: string; target?: string }
+export interface Plan { act: string; place: PlaceId; why: string; by: 'rule' | 'ai'; scheme?: string; target?: string; /** AI 正在替他想 */ asking?: boolean }
+
+/** 和某人说过的话（按年记，me 是主角，them 是对方，note 是旁白） */
+export interface ChatLine { y: number; from: 'me' | 'them' | 'note'; text: string }
+
+/** 今年和某人谈了几句、AI 让看法变了多少（有上限）、提过哪些事 */
+export interface TalkUse { lines: number; aff: number; trust: number; offers: string[] }
+
+/** 谈话里对方提出的事：指点、收徒、请你帮忙、切磋、卖丹药、结为道侣 */
+export type OfferKind = 'teach' | 'master' | 'ally' | 'spar' | 'trade' | 'partner';
+export interface Offer { who: string; kind: OfferKind; y: number; item?: string }
 
 export interface News { y: number; text: string; tone: 'good' | 'bad' | 'story' | 'info'; about: string[]; big?: boolean }
 
@@ -115,8 +130,12 @@ export interface World {
   knows: string[];
   news: News[];
   pending: Encounter[];
-  /** 这一年主角做了什么：去了哪、主事做了没、还能打几次交道 */
-  turn: { moved: boolean; main: boolean; social: number };
+  /** 这一年主角做了什么：去了哪、主事做了没、还能打几次交道、和谁谈了几句 */
+  turn: { moved: boolean; main: boolean; social: number; talk: Record<string, TalkUse> };
+  /** 和每个人说过的话 */
+  chat: Record<string, ChatLine[]>;
+  /** 对方在谈话里提出、等你答复的事 */
+  offer: Offer | null;
   flags: Record<string, number | string | boolean>;
   ending: { kind: 'age' | 'dead' | 'ascend'; y: number } | null;
   /** 主角的经历（写小传用） */

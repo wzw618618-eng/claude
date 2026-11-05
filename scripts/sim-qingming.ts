@@ -1,15 +1,26 @@
 // 《青冥录》无头模拟：自动玩几百个世界，看世界是不是「活的」——每年发生多少事，报仇、道侣、背叛、争位、陨落各有多少。
-// 用法：npm run sim:qm [-- 局数]
+// 用法：npm run sim:qm [-- 局数]          只走规则
+//       npm run sim:qm -- 200 ai           主角身边的人由一个「乱选合法选项」的假 AI 定打算，看世界会不会被 AI 搞乱
 
 import { makeRng } from '../qingming/assets/game/core/rng';
 import type { World } from '../qingming/assets/game/core/types';
 import { npcs, newWorld } from '../qingming/assets/game/core/world';
 import { canBreak } from '../qingming/assets/game/systems/body';
 import { buy, choose, doMain, endTurn, moveTo, social, viewEncounter } from '../qingming/assets/game/player';
+import { applyDecision, whoDecides, yearChoices } from '../qingming/assets/game/ai/decide';
 
 declare const process: { argv: string[] };
 
-function playYear(w: World, r: ReturnType<typeof makeRng>) {
+/** 假 AI：年初，主角身边最多三个人从合法选项里随便挑一件 */
+function fakeAI(w: World, r: ReturnType<typeof makeRng>) {
+  for (const n of whoDecides(w, null)) {
+    const c = r.pick(yearChoices(w, n));
+    applyDecision(w, n, { ...c.want, by: 'ai' });
+  }
+}
+
+function playYear(w: World, r: ReturnType<typeof makeRng>, ai?: ReturnType<typeof makeRng>) {
+  if (ai) fakeAI(w, ai);
   const me = w.me;
   const place = me.stones >= 60 && !me.items.includes('pill') && r.chance(0.3) ? 'market'
     : r.chance(0.15) ? r.pick(['forest', 'village', 'market', 'cave'] as const) : me.sect || 'vein';
@@ -30,7 +41,7 @@ function playYear(w: World, r: ReturnType<typeof makeRng>) {
   endTurn(w);
 }
 
-function run(n: number) {
+function run(n: number, useAI: boolean) {
   const stat: Record<string, number> = {};
   const add = (k: string, v = 1) => { stat[k] = (stat[k] ?? 0) + v; };
   const endings: Record<string, number> = {};
@@ -38,8 +49,9 @@ function run(n: number) {
   for (let i = 0; i < n; i++) {
     const w = newWorld(5000 + i, { root: (['heaven', 'dual', 'mixed'] as const)[i % 3] });
     const r = makeRng(i * 7919 + 1);
+    const ai = useAI ? makeRng(i * 104729 + 3) : undefined;
     let guard = 0;
-    while (w.phase === 'year' && guard++ < 200) playYear(w, r);
+    while (w.phase === 'year' && guard++ < 200) playYear(w, r, ai);
     years += w.year;
     endings[`${w.ending?.kind ?? 'cap'}`] = (endings[`${w.ending?.kind ?? 'cap'}`] ?? 0) + 1;
     add(`主角最终境界:${w.me.realm}`);
@@ -67,7 +79,7 @@ function run(n: number) {
     add('主角的人情（有好感的 NPC）', Object.values(w.people).filter((p) => (p.mind.op.me?.aff ?? 0) >= 40).length);
     add('主角的仇人（恨你的 NPC）', Object.values(w.people).filter((p) => (p.mind.op.me?.aff ?? 0) <= -40).length);
   }
-  console.log(`== ${n} 个世界 ==`);
+  console.log(`== ${n} 个世界${useAI ? '（身边的人由乱选的假 AI 定打算）' : ''} ==`);
   console.log(`平均玩到第 ${(years / n).toFixed(1)} 年；每年 ${(newsN / worldYears).toFixed(2)} 条传闻，其中大事 ${(bigN / worldYears).toFixed(2)} 条`);
   console.log('主角结局', endings);
   const per = (k: string) => (stat[k] ?? 0) / n;
@@ -79,4 +91,4 @@ if (process.argv[3] === 'story') {
   const r = makeRng(1);
   while (w.phase === 'year' && w.year <= 40) playYear(w, r);
   for (const x of w.news) console.log(`${x.big ? '★' : ' '} ${x.y}年 ${x.text}`);
-} else run(Number(process.argv[2] ?? 200));
+} else run(Number(process.argv[2] ?? 200), process.argv[3] === 'ai');

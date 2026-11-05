@@ -102,7 +102,8 @@ export function newWorld(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0, opts
     sects: { qinglan: { id: 'qinglan', name: '青岚宗', master: 'wen' }, chixiao: { id: 'chixiao', name: '赤霄门', master: 'li' } },
     treasure: { sword: 'cave', letter: 'cave' },
     knows: [], news: [], pending: [],
-    turn: { moved: false, main: false, social: 2 },
+    turn: { moved: false, main: false, social: 2, talk: {} },
+    chat: {}, offer: null,
     flags: {}, ending: null, life: [], nextId: 1,
   };
   for (const d of PEOPLE) w.people[d.id] = makeNpc(d, 1);

@@ -1,0 +1,9 @@
+{
+  "id": "qingming",
+  "name": "青冥录",
+  "schemaVersion": "3.0.0",
+  "roots": {
+    "engine": "70011bfd-a5f1-5e72-97a7-78ffd3973490",
+    "frontend": "680c9bf1-8280-5cc5-acff-f0b38b9e8211"
+  }
+}

@@ -143,117 +143,118 @@ export function tellables(w: World, id: string) {
 
 export function social(w: World, id: string, kind: SocialKind, arg = ''): SocialResult {
   if (!canSocial(w, id)) return { text: '', ok: false };
-  const n = w.people[id];
   w.turn.social--;
-  op(n, ME);
-  return withRng(w, (rng) => {
-    const o = op(n, ME);
-    switch (kind) {
-      case 'chat': {
-        const good = o.aff >= 0 || has(n, 'bold') || has(n, 'kind');
-        remember(w, n, { k: good ? 'talk_good' : 'talk_bad', a: ME, b: n.id, tone: good ? 1 : -1, at: n.place });
-        return { ok: good, text: reply(w, n, chatLine(w, n)) };
-      }
-      case 'news': {
-        if (o.trust < 15 && !has(n, 'bold')) return { ok: false, text: reply(w, n, '我跟你不熟。') };
-        // 交情深的人，可能把知道的秘密告诉你
-        const secret = n.mind.knows.find((k) => k.startsWith('secret:') && !w.knows.includes(k) && k !== `secret:${n.id}`);
-        if (secret && o.aff >= 45 && o.trust >= 50) {
-          w.knows.push(secret);
-          const who = secret.slice(7);
-          return { ok: true, text: reply(w, n, `这话我只跟你说……${secretLine(w, who)}`) };
-        }
-        const m = n.mind.mem.filter((x) => x.a !== ME && x.b !== ME && Math.abs(x.tone) >= 1 && !(x.a === n.id && x.tone < 0)).sort((a, b) => b.y - a.y)[0];
-        if (!m) return { ok: true, text: reply(w, n, '最近没听说什么。') };
-        return { ok: true, text: reply(w, n, `${describe(w, m, n.id).replace(/^我/, '我')}。`) };
-      }
-      case 'goal': {
-        const g = n.mind.goal;
-        if (!g) return { ok: true, text: reply(w, n, '没什么打算，好好修炼罢了。') };
-        const honest = !g.secret || w.knows.includes(`goal:${n.id}`) || (o.trust >= 70 && o.aff >= 50);
-        if (honest) {
-          if (!w.knows.includes(`goal:${n.id}`)) w.knows.push(`goal:${n.id}`);
-          return { ok: true, text: reply(w, n, honestGoal(w, n)) };
-        }
-        return { ok: true, text: reply(w, n, g.cover ?? '没什么打算。') };
-      }
-      case 'teach': {
-        const higher = n.realm > w.me.realm || (n.realm === w.me.realm && n.stage > w.me.stage);
-        if (!higher) return { ok: false, text: reply(w, n, '我的修为还不如你，哪敢指点。') };
-        if (o.aff < 10 && n.master !== ME && w.me.master !== n.id) return { ok: false, text: reply(w, n, '凭什么指点你？') };
-        gainExp(w.me, yearExp(w, w.me, w.me.place, 0.35));
-        remember(w, n, { k: 'teach', a: n.id, b: ME, tone: 1 });
-        adjust(n, ME, { aff: 3 });
-        return { ok: true, text: `${n.name}指点了你几句，你受益匪浅。` };
-      }
-      case 'gift': {
-        const item = arg && w.me.items.includes(arg) ? arg : '';
-        if (!item && w.me.stones < 20) return { ok: false, text: '你身上没什么拿得出手的东西。' };
-        if (item) { takeItem(w.me, item); n.items.push(item); if (item === 'letter') { w.treasure.letter = n.id; if (!n.mind.knows.includes('secret:wen')) n.mind.knows.push('secret:wen'); } }
-        else { w.me.stones -= 20; n.stones += 20; }
-        const tone = has(n, 'greedy') ? 2 : 1;
-        remember(w, n, { k: 'gift', a: ME, b: n.id, tone: item === 'life' || item === 'sword' ? 3 : tone });
-        return { ok: true, text: `你把${item ? ITEMS[item].name : '二十块灵石'}送给了${n.name}。${has(n, 'greedy') ? `${ta(w, n.id)}眼睛一亮。` : ''}` };
-      }
-      case 'spar':
-      case 'provoke': {
-        if (kind === 'provoke') remember(w, n, { k: 'insult', a: ME, b: n.id, tone: -2, at: n.place });
-        const r = fight(w, w.me, n, rng, { lethal: false });
-        const won = r.win === w.me;
-        gainExp(w.me, 10);
-        gainExp(n, 10);
-        if (won) {
-          adjust(n, ME, { fear: 10, aff: has(n, 'proud') ? -8 : 2 });
-          witness(w, n.place, { k: 'spar', a: ME, b: n.id, tone: 0 });
-        } else adjust(n, ME, { aff: has(n, 'proud') ? 3 : 0 });
-        if (kind === 'provoke' && !won) remember(w, n, { k: 'hurt', a: n.id, b: ME, tone: 0 });
-        return { ok: won, text: `${kind === 'provoke' ? '你当众挑衅，' : ''}和${n.name}过了几招，${won ? '你赢了' : '你输了'}。${won && has(n, 'proud') ? `${ta(w, n.id)}脸色很难看。` : ''}` };
-      }
-      case 'master': {
-        const ok = n.realm > w.me.realm && o.aff >= 40 && o.trust >= 40 && !has(n, 'lonely') && !w.me.master;
-        if (!ok) return { ok: false, text: reply(w, n, o.aff >= 40 ? '你我缘分还不到这一步。' : '我不收徒。') };
-        w.me.master = n.id;
-        remember(w, n, { k: 'master', a: n.id, b: ME, tone: 2 });
-        adjust(n, ME, { aff: 10, trust: 10 });
-        news(w, `${n.name}收${w.me.name}为徒。`, 'good', [ME, n.id], true);
-        return { ok: true, text: `${n.name}收你为徒。和师父在一处修炼，会快不少。` };
-      }
-      case 'partner': {
-        const ok = o.aff >= 70 && o.trust >= 50 && !n.partner && !w.me.partner && !(n.mind.goal?.kind === 'love' && n.mind.goal.target !== ME);
-        if (!ok) {
-          remember(w, n, { k: 'talk_bad', a: ME, b: n.id, tone: o.aff >= 40 ? 0 : -1 });
-          return { ok: false, text: reply(w, n, o.aff >= 40 ? '……你让我想想。' : '你在说什么胡话。') };
-        }
-        n.partner = ME; w.me.partner = n.id;
-        remember(w, n, { k: 'partner', a: ME, b: n.id, tone: 3 });
-        if (n.mind.goal?.kind === 'love') finish(w, n, 'ok');
-        news(w, `${w.me.name}与${n.name}结为道侣。`, 'good', [ME, n.id], true);
-        return { ok: true, text: `${n.name}点了头。你们结为道侣。` };
-      }
-      case 'join': {
-        const sect = n.sect;
-        if (!sect || w.me.sect) return { ok: false, text: reply(w, n, '这事我做不了主。') };
-        const ok = o.aff >= 30 || rng.chance(0.25 + w.me.talent * 0.15);
-        if (!ok) return { ok: false, text: reply(w, n, `想入${SECT_NAME[sect]}？先让人看看你的本事。`) };
-        w.me.sect = sect;
-        news(w, `${w.me.name}拜入了${SECT_NAME[sect]}。`, 'good', [ME]);
-        return { ok: true, text: `${n.name}替你引荐，你拜入了${SECT_NAME[sect]}。在宗门修炼更快，也能替宗门办事。` };
-      }
-      case 'ally': {
-        const g = n.mind.goal;
-        if (!g || g.ally || !((g.kind === 'revenge' && g.step === 2) || (g.kind === 'treasure' && g.step === 1))) return { ok: false, text: reply(w, n, '我眼下用不着帮手。') };
-        g.ally = ME; g.step++; g.stuck = 0;
-        remember(w, n, { k: 'ally', a: ME, b: n.id, tone: 1 });
-        return { ok: true, text: `${n.name}答应和你一起${GOALS[g.kind].name}。到了动手那年，${ta(w, n.id)}会来找你。` };
-      }
-      case 'tell':
-        return { ok: true, text: tell(w, n, arg, rng) };
-    }
-    return { ok: false, text: '' };
-  });
+  return withRng(w, (rng) => socialEffect(w, w.people[id], kind, arg, rng));
 }
 
-function chatLine(w: World, n: Npc) {
+/** 打交道的效果本身，不花次数：谈话里对方提出、你答应下来的事也走这里 */
+export function socialEffect(w: World, n: Npc, kind: SocialKind, arg: string, rng: Rng): SocialResult {
+  const o = op(n, ME);
+  switch (kind) {
+    case 'chat': {
+      const good = o.aff >= 0 || has(n, 'bold') || has(n, 'kind');
+      remember(w, n, { k: good ? 'talk_good' : 'talk_bad', a: ME, b: n.id, tone: good ? 1 : -1, at: n.place });
+      return { ok: good, text: reply(w, n, chatLine(w, n)) };
+    }
+    case 'news': {
+      if (o.trust < 15 && !has(n, 'bold')) return { ok: false, text: reply(w, n, '我跟你不熟。') };
+      // 交情深的人，可能把知道的秘密告诉你
+      const secret = n.mind.knows.find((k) => k.startsWith('secret:') && !w.knows.includes(k) && k !== `secret:${n.id}`);
+      if (secret && o.aff >= 45 && o.trust >= 50) {
+        w.knows.push(secret);
+        const who = secret.slice(7);
+        return { ok: true, text: reply(w, n, `这话我只跟你说……${secretLine(w, who)}`) };
+      }
+      const m = n.mind.mem.filter((x) => x.a !== ME && x.b !== ME && Math.abs(x.tone) >= 1 && !(x.a === n.id && x.tone < 0)).sort((a, b) => b.y - a.y)[0];
+      if (!m) return { ok: true, text: reply(w, n, '最近没听说什么。') };
+      return { ok: true, text: reply(w, n, `${describe(w, m, n.id).replace(/^我/, '我')}。`) };
+    }
+    case 'goal': {
+      const g = n.mind.goal;
+      if (!g) return { ok: true, text: reply(w, n, '没什么打算，好好修炼罢了。') };
+      const honest = !g.secret || w.knows.includes(`goal:${n.id}`) || (o.trust >= 70 && o.aff >= 50);
+      if (honest) {
+        if (!w.knows.includes(`goal:${n.id}`)) w.knows.push(`goal:${n.id}`);
+        return { ok: true, text: reply(w, n, honestGoal(w, n)) };
+      }
+      return { ok: true, text: reply(w, n, g.cover ?? '没什么打算。') };
+    }
+    case 'teach': {
+      const higher = n.realm > w.me.realm || (n.realm === w.me.realm && n.stage > w.me.stage);
+      if (!higher) return { ok: false, text: reply(w, n, '我的修为还不如你，哪敢指点。') };
+      if (o.aff < 10 && n.master !== ME && w.me.master !== n.id) return { ok: false, text: reply(w, n, '凭什么指点你？') };
+      gainExp(w.me, yearExp(w, w.me, w.me.place, 0.35));
+      remember(w, n, { k: 'teach', a: n.id, b: ME, tone: 1 });
+      adjust(n, ME, { aff: 3 });
+      return { ok: true, text: `${n.name}指点了你几句，你受益匪浅。` };
+    }
+    case 'gift': {
+      const item = arg && w.me.items.includes(arg) ? arg : '';
+      if (!item && w.me.stones < 20) return { ok: false, text: '你身上没什么拿得出手的东西。' };
+      if (item) { takeItem(w.me, item); n.items.push(item); if (item === 'letter') { w.treasure.letter = n.id; if (!n.mind.knows.includes('secret:wen')) n.mind.knows.push('secret:wen'); } }
+      else { w.me.stones -= 20; n.stones += 20; }
+      const tone = has(n, 'greedy') ? 2 : 1;
+      remember(w, n, { k: 'gift', a: ME, b: n.id, tone: item === 'life' || item === 'sword' ? 3 : tone });
+      return { ok: true, text: `你把${item ? ITEMS[item].name : '二十块灵石'}送给了${n.name}。${has(n, 'greedy') ? `${ta(w, n.id)}眼睛一亮。` : ''}` };
+    }
+    case 'spar':
+    case 'provoke': {
+      if (kind === 'provoke') remember(w, n, { k: 'insult', a: ME, b: n.id, tone: -2, at: n.place });
+      const r = fight(w, w.me, n, rng, { lethal: false });
+      const won = r.win === w.me;
+      gainExp(w.me, 10);
+      gainExp(n, 10);
+      if (won) {
+        adjust(n, ME, { fear: 10, aff: has(n, 'proud') ? -8 : 2 });
+        witness(w, n.place, { k: 'spar', a: ME, b: n.id, tone: 0 });
+      } else adjust(n, ME, { aff: has(n, 'proud') ? 3 : 0 });
+      if (kind === 'provoke' && !won) remember(w, n, { k: 'hurt', a: n.id, b: ME, tone: 0 });
+      return { ok: won, text: `${kind === 'provoke' ? '你当众挑衅，' : ''}和${n.name}过了几招，${won ? '你赢了' : '你输了'}。${won && has(n, 'proud') ? `${ta(w, n.id)}脸色很难看。` : ''}` };
+    }
+    case 'master': {
+      const ok = n.realm > w.me.realm && o.aff >= 40 && o.trust >= 40 && !has(n, 'lonely') && !w.me.master;
+      if (!ok) return { ok: false, text: reply(w, n, o.aff >= 40 ? '你我缘分还不到这一步。' : '我不收徒。') };
+      w.me.master = n.id;
+      remember(w, n, { k: 'master', a: n.id, b: ME, tone: 2 });
+      adjust(n, ME, { aff: 10, trust: 10 });
+      news(w, `${n.name}收${w.me.name}为徒。`, 'good', [ME, n.id], true);
+      return { ok: true, text: `${n.name}收你为徒。和师父在一处修炼，会快不少。` };
+    }
+    case 'partner': {
+      const ok = o.aff >= 70 && o.trust >= 50 && !n.partner && !w.me.partner && !(n.mind.goal?.kind === 'love' && n.mind.goal.target !== ME);
+      if (!ok) {
+        remember(w, n, { k: 'talk_bad', a: ME, b: n.id, tone: o.aff >= 40 ? 0 : -1 });
+        return { ok: false, text: reply(w, n, o.aff >= 40 ? '……你让我想想。' : '你在说什么胡话。') };
+      }
+      n.partner = ME; w.me.partner = n.id;
+      remember(w, n, { k: 'partner', a: ME, b: n.id, tone: 3 });
+      if (n.mind.goal?.kind === 'love') finish(w, n, 'ok');
+      news(w, `${w.me.name}与${n.name}结为道侣。`, 'good', [ME, n.id], true);
+      return { ok: true, text: `${n.name}点了头。你们结为道侣。` };
+    }
+    case 'join': {
+      const sect = n.sect;
+      if (!sect || w.me.sect) return { ok: false, text: reply(w, n, '这事我做不了主。') };
+      const ok = o.aff >= 30 || rng.chance(0.25 + w.me.talent * 0.15);
+      if (!ok) return { ok: false, text: reply(w, n, `想入${SECT_NAME[sect]}？先让人看看你的本事。`) };
+      w.me.sect = sect;
+      news(w, `${w.me.name}拜入了${SECT_NAME[sect]}。`, 'good', [ME]);
+      return { ok: true, text: `${n.name}替你引荐，你拜入了${SECT_NAME[sect]}。在宗门修炼更快，也能替宗门办事。` };
+    }
+    case 'ally': {
+      const g = n.mind.goal;
+      if (!g || g.ally || !((g.kind === 'revenge' && g.step === 2) || (g.kind === 'treasure' && g.step === 1))) return { ok: false, text: reply(w, n, '我眼下用不着帮手。') };
+      g.ally = ME; g.step++; g.stuck = 0;
+      remember(w, n, { k: 'ally', a: ME, b: n.id, tone: 1 });
+      return { ok: true, text: `${n.name}答应和你一起${GOALS[g.kind].name}。到了动手那年，${ta(w, n.id)}会来找你。` };
+    }
+    case 'tell':
+      return { ok: true, text: tell(w, n, arg, rng) };
+  }
+  return { ok: false, text: '' };
+}
+
+export function chatLine(w: World, n: Npc) {
   const o = op(n, ME);
   const back = n.mind.mem.filter((m) => m.a === ME && Math.abs(m.tone) >= 2).sort((a, b) => b.y - a.y)[0];
   if (back && w.year - back.y <= 5) return back.tone > 0 ? `${describe(w, back, n.id).replace(/^你/, '你')}，这份情我记着。` : `${describe(w, back, n.id)}，这笔账我还没忘。`;
@@ -262,7 +263,7 @@ function chatLine(w: World, n: Npc) {
   return n.mind.goal && !n.mind.goal.secret ? `最近在忙${GOALS[n.mind.goal.kind].name}的事。` : PERSON[n.id]?.voice ? '嗯。' : '幸会。';
 }
 
-function honestGoal(w: World, n: Npc) {
+export function honestGoal(w: World, n: Npc) {
   const g = n.mind.goal!;
   const t = targetName(w, g);
   switch (g.kind) {
@@ -276,7 +277,7 @@ function honestGoal(w: World, n: Npc) {
   }
 }
 
-function secretLine(w: World, who: string) {
+export function secretLine(w: World, who: string) {
   const s = PERSON[who]?.secret;
   if (who === 'lu') return '十年前杀秦烈的，是陆沉舟。';
   if (who === 'wen') return '三十年前云鹤真人失踪，是温玄害的。';
@@ -323,7 +324,7 @@ function tell(w: World, n: Npc, key: string, rng: Rng) {
 // ───────────── 找上门的事 ─────────────
 
 export interface Choice { label: string; hint?: string; disabled?: boolean }
-export interface EncounterView { title: string; text: string; who: string; choices: Choice[] }
+export interface EncounterView { title: string; text: string; who: string; choices: Choice[]; /** AI 配了台词时，规则原本的那句 */ rule?: string }
 
 /** 到了一个地方：谁会来找你（最多两件，要命的事排前面） */
 export function encounters(w: World, rng: Rng): Encounter[] {
@@ -351,8 +352,15 @@ export function encounters(w: World, rng: Rng): Encounter[] {
   return out.slice(0, 2);
 }
 
-/** 找上门的事怎么显示 */
+/** 找上门的事怎么显示：AI 替来人说了话（vars.say），就用 AI 的话，选项照旧 */
 export function viewEncounter(w: World, e: Encounter): EncounterView {
+  const v = ruleEncounter(w, e);
+  const say = typeof e.vars.say === 'string' ? e.vars.say : '';
+  return say ? { ...v, text: `${w.people[e.who].name}：「${say}」`, rule: v.text } : v;
+}
+
+/** 规则写的那一版：AI 配台词时，按这个意思说 */
+export function ruleEncounter(w: World, e: Encounter): EncounterView {
   const n = w.people[e.who];
   const g = n.mind.goal;
   const N = n.name;

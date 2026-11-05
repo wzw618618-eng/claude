@@ -13,10 +13,19 @@ type Want = { act: string; place: PlaceId; why: string; scheme?: string; target?
 
 /** 没有要紧的目标时，按性子和处境挑一件事 */
 export function needWant(w: World, n: Npc, rng: Rng): Want {
-  const v = n.mind.values;
   const home = bestPlace(n);
   if (n.hp < 40) return { act: 'heal', place: home, why: '先把伤养好' };
   if (canBreak(n)) return { act: 'seclude', place: home, why: '修为圆满，闭关冲关' };
+  const opts = needOptions(w, n);
+  let best = opts[0][0], bv = -Infinity;
+  for (const [o, s] of opts) { const x = s + rng.range(0, 1.5); if (x > bv) { bv = x; best = o; } }
+  return best;
+}
+
+/** 平常能做的事和各自的分量（AI 定打算时也从这里挑） */
+export function needOptions(w: World, n: Npc): [Want, number][] {
+  const v = n.mind.values;
+  const home = bestPlace(n);
   const opts: [Want, number][] = [
     [{ act: 'cultivate', place: home, why: '静心修炼' }, 2.5 + v.power * 2],
     [{ act: 'adventure', place: 'forest', why: '去黑松林历练' }, 0.8 + v.wealth + v.power + (has(n, 'bold') || has(n, 'rash') ? 1 : 0) - (has(n, 'careful') ? 0.8 : 0)],
@@ -27,9 +36,7 @@ export function needWant(w: World, n: Npc, rng: Rng): Want {
   if (v.justice >= 0.5 || has(n, 'kind')) opts.push([{ act: 'help', place: 'village', why: '下山帮帮村里人' }, 0.5 + v.justice]);
   const friend = Object.entries(n.mind.op).filter(([id, o]) => o.aff >= 50 && id !== ME && w.people[id]?.alive).sort((a, b) => b[1].aff - a[1].aff)[0];
   if (friend && !has(n, 'lonely')) opts.push([{ act: 'visit', place: w.people[friend[0]].place, why: `去看看${nm(w, friend[0])}`, target: friend[0] }, 0.6 + v.love * 2]);
-  let best = opts[0][0], bv = -Infinity;
-  for (const [o, s] of opts) { const x = s + rng.range(0, 1.5); if (x > bv) { bv = x; best = o; } }
-  return best;
+  return opts;
 }
 
 /** 规则给出的今年打算：有目标就为目标奔走，偶尔也得顾顾修炼和伤 */
@@ -204,6 +211,8 @@ function newcomers(w: World, rng: Rng) {
   const id = `n${w.nextId++}`;
   const d = newcomer(id, rng.pick, rng.next);
   const n = makeNpc(d, w.year);
+  n.bio = d.bio;
+  n.voice = d.voice;
   w.people[id] = n;
   news(w, `${d.name}${d.sect ? `拜入了${SECT_NAME[d.sect]}` : '来到了云渡坊'}，是个${REALMS[d.realm]}期的年轻修士。`, 'info', [id]);
 }
@@ -230,8 +239,9 @@ export function endYear(w: World) {
   for (const n of npcs(w)) n.mind.mood = Math.round(n.mind.mood + (60 - n.mind.mood) * 0.2);
   for (const k of Object.keys(w.flags)) if (k.startsWith('clash:') && w.year - Number(w.flags[k]) >= 6) delete w.flags[k];
   w.year++;
-  w.turn = { moved: false, main: false, social: 2 };
+  w.turn = { moved: false, main: false, social: 2, talk: {} };
   w.pending = [];
+  w.offer = null;
   checkEnd(w);
   if (w.phase === 'year') planYear(w, rng);
   w.rng = rng.state();
