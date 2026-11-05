@@ -1,3 +1,4 @@
 node_modules/
 dist/sim.cjs
 dist/artifact.html
+dist/sim-qingming.cjs

@@ -8,7 +8,8 @@
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
     "sim": "node scripts/build.mjs --sim && node dist/sim.cjs",
-    "art": "node scripts/art.mjs"
+    "art": "node scripts/art.mjs",
+    "sim:qm": "esbuild scripts/sim-qingming.ts --bundle --platform=node --format=cjs --log-level=warning --outfile=dist/sim-qingming.cjs && node dist/sim-qingming.cjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",
