@@ -7,6 +7,7 @@ import { newcomer, PERSON } from '../data/people';
 import { REALMS, SECT_NAME } from '../data/world-data';
 import { advanceGoal, bestPlace, finish, goalWant, setGoal, supporters } from '../mind/goals';
 import { gossip, remember } from '../mind/memory';
+import { fadeBonds } from '../mind/bond';
 import { age, canBreak, fight, gainExp, tryBreak, yearExp } from './body';
 
 type Want = { act: string; place: PlaceId; why: string; scheme?: string; target?: string };
@@ -238,6 +239,7 @@ export function endYear(w: World) {
   if (rng.chance(0.15)) w.flags.lifeStock = Math.min(1, Number(w.flags.lifeStock ?? 0) + 1);
   for (const n of npcs(w)) n.mind.mood = Math.round(n.mind.mood + (60 - n.mind.mood) * 0.2);
   for (const k of Object.keys(w.flags)) if (k.startsWith('clash:') && w.year - Number(w.flags[k]) >= 6) delete w.flags[k];
+  fadeBonds(w);
   w.year++;
   w.turn = { moved: false, main: false, social: 2, talk: {} };
   w.pending = [];

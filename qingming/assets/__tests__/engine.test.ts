@@ -11,7 +11,8 @@ import { makeRng } from '../game/core/rng.ts';
 import { ME, npcs, op } from '../game/core/world.ts';
 import { PLACE_ORDER } from '../game/data/world-data.ts';
 import { viewEncounter } from '../game/player.ts';
-import { AI_DECISIONS_PER_YEAR, yearChoices } from '../game/ai/decide.ts';
+import { yearChoices } from '../game/ai/decide.ts';
+import { MODES } from '../game/mind/bond.ts';
 import { MAX_LINES, YEAR_AFF } from '../game/ai/talk.ts';
 import { UI_PACKAGE, WORLD_PACKAGE } from '../ids.ts';
 import { linkProvider } from '../souls/host.ts';
@@ -25,20 +26,24 @@ const ACTS = ['cultivate', 'seclude', 'adventure', 'task', 'trade', 'heal', 'hel
 
 type Asks = { decide?: (prompt: string) => string; talk?: (prompt: string) => string; voice?: (prompt: string) => string; encounter?: (prompt: string) => string };
 
-/** 假的大模型：按信封里的请求类型回不同的 JSON，并记下收到的提示词 */
+/** 假的大模型：按信封里的请求类型回不同的 JSON，并记下收到的提示词（system 和当下两段拼在一起） */
 function fakeAI(asks: Asks = {}) {
   const seen: { ask: string; prompt: string; soul: string }[] = [];
   const provider = createFakeIntelligenceProvider({
     id: 'fake-llm',
     script: (sub) => {
-      const env = JSON.parse(sub.input) as { ask: keyof Asks; prompt: string; soul: string };
-      seen.push(env);
-      const out = asks[env.ask]?.(env.prompt) ?? '{"reply":"嗯。"}';
+      const env = JSON.parse(sub.input) as { ask: keyof Asks; system: string; prompt: string; soul: string };
+      const full = `${env.system}\n\n${env.prompt}`;
+      seen.push({ ask: env.ask, soul: env.soul, prompt: full });
+      const out = asks[env.ask]?.(full) ?? '{"reply":"嗯。"}';
       return { deltas: [out.slice(0, 12), out.slice(12)], output: out };
     },
   });
   return { provider, seen };
 }
+
+/** 让这几个人和你相识（交情够第一档） */
+const acquaint = (s: WorldSession, ...ids: string[]) => { for (const id of ids) s.w.people[id].mind.bond = 10; };
 
 function connect(session: WorldSession, provider: FakeIntelligenceProvider) {
   void session.connect(createIntelligenceRuntime(provider, { limits: TALK_LIMITS }), '测试');
@@ -134,12 +139,15 @@ describe('青冥录 · 每个修士都是一个 NPC 灵魂', () => {
 });
 
 describe('青冥录 · 年初定打算走引擎的 Intelligence Activity', () => {
-  it('身边的人由 AI 从合法的选项里挑一件事；离场的人照旧走规则', () => {
+  it('身边相识的人由 AI 从合法的选项里挑一件事；陌路人和离场的人照旧走规则', () => {
     const { provider, seen } = fakeAI({ decide: (p) => JSON.stringify({ choice: pick(p, 'adventure:forest'), why: '去林子里练练拳脚。' }) });
     const s = new WorldSession(() => undefined, 31);
+    acquaint(s, 'aman', 'wen');
     connect(s, provider);
     const asked = seen.filter((x) => x.ask === 'decide').map((x) => x.soul);
-    expect(asked.sort()).toEqual(['qingming.aman', 'qingming.hua']);
+    // 花婆婆在身边但还是陌路人；温玄相识但不在身边
+    expect(asked).toEqual(['qingming.aman']);
+    expect(s.w.people.hua.plan.asking).toBeFalsy();
     expect(s.w.people.aman.plan.asking).toBe(true);
     drain(provider, s);
     const aman = s.w.people.aman;
@@ -153,6 +161,7 @@ describe('青冥录 · 年初定打算走引擎的 Intelligence Activity', () =>
     for (const bad of ['{"choice":"fly","why":"我要飞升"}', '{"choice":"cultivate","why":"   "}', '随便干点啥']) {
       const { provider } = fakeAI({ decide: () => bad });
       const s = new WorldSession(() => undefined, 32);
+      acquaint(s, 'aman');
       const before = JSON.stringify(s.w.people.aman.plan);
       connect(s, provider);
       drain(provider, s);
@@ -162,19 +171,24 @@ describe('青冥录 · 年初定打算走引擎的 Intelligence Activity', () =>
     }
   });
 
-  it('每年最多替三个人想；一年只想一次', () => {
-    const { provider, seen } = fakeAI({ decide: (p) => JSON.stringify({ choice: pick(p), why: '照旧。' }) });
-    const s = new WorldSession(() => undefined, 33);
-    for (const n of npcs(s.w)) n.place = 'village';
-    connect(s, provider);
-    expect(seen.filter((x) => x.ask === 'decide').length).toBe(AI_DECISIONS_PER_YEAR);
-    s.think();
-    expect(seen.filter((x) => x.ask === 'decide').length).toBe(AI_DECISIONS_PER_YEAR);
+  it('NPC 自己发起的请求每年有上限（看玩家选的用量）；一年只想一次', () => {
+    for (const [mode, want] of [['save', MODES.save.cap], ['normal', 12]] as const) {
+      const { provider, seen } = fakeAI({ decide: (p) => JSON.stringify({ choice: pick(p), why: '照旧。' }) });
+      const s = new WorldSession(() => undefined, 33);
+      // 省电档门槛高一些：交情 20 在两档下都是「相识」
+      for (const n of npcs(s.w)) { n.place = 'village'; n.mind.bond = 20; }
+      s.receive({ channel: 'qingming/world', kind: 'budget', mode });
+      connect(s, provider);
+      expect(seen.filter((x) => x.ask === 'decide').length).toBe(want);
+      s.think();
+      expect(seen.filter((x) => x.ask === 'decide').length).toBe(want);
+    }
   });
 
   it('你已经到了地方，AI 想让人走掉的打算不算；换了一年才回来的直接丢掉', () => {
     const { provider } = fakeAI({ decide: (p) => JSON.stringify({ choice: pick(p, 'adventure:forest'), why: '走了。' }) });
     const s = new WorldSession(() => undefined, 34);
+    acquaint(s, 'aman');
     connect(s, provider);
     arrive(s, 'village');
     drain(provider, s);
@@ -184,6 +198,7 @@ describe('青冥录 · 年初定打算走引擎的 Intelligence Activity', () =>
     // 第一年的主意到第二年才回来：不算数（第二年的请求故意回不合规的，好分清是哪一年的）
     const late = fakeAI({ decide: (p) => (p.includes('【此刻】第1年') ? JSON.stringify({ choice: pick(p, 'adventure:forest'), why: '去年的主意。' }) : '{"choice":"fly","why":"?"}') });
     const t = new WorldSession(() => undefined, 35);
+    acquaint(t, 'aman');
     connect(t, late.provider);
     t.act({ type: 'endTurn' });
     expect(t.w.year).toBe(2);
@@ -199,6 +214,7 @@ describe('青冥录 · 年初定打算走引擎的 Intelligence Activity', () =>
     const ids = yearChoices(s.w, lu).map((c) => c.id);
     expect(ids).toEqual(expect.arrayContaining(['goal:scandal', 'goal:wait']));
     lu.place = 'village';
+    acquaint(s, 'lu');
     const { provider } = fakeAI({ decide: () => '{"choice":"goal:wait","why":"让那老东西自己熬死。"}' });
     connect(s, provider);
     drain(provider, s);
@@ -328,6 +344,7 @@ describe('青冥录 · 选项对话和找上门的事：规则定后果，AI 配
     connect(s, provider);
     drain(provider, s);
     s.w.people.lu.place = 'village';
+    acquaint(s, 'lu');
     arrive(s, 'village');
     s.receive({ channel: 'qingming/world', kind: 'social', id: 'lu', topic: 'goal' });
     drain(provider, s);
@@ -377,6 +394,8 @@ describe('青冥录 · 存档和长跑', () => {
     const r = makeRng(7);
     const { provider } = fakeAI({ decide: (p) => JSON.stringify({ choice: r.pick([...p.split('【今年能做的事】')[1].matchAll(/^- ([^：\n]+)：/gm)].map((m) => m[1])), why: '就这么定了。' }) });
     const s = new WorldSession(() => undefined, 71);
+    const all = () => { for (const n of npcs(s.w)) n.mind.bond = 10; };
+    all();
     connect(s, provider);
     let byAI = 0;
     for (let y = 0; y < 30 && s.w.phase === 'year'; y++) {
@@ -389,6 +408,7 @@ describe('青冥录 · 存档和长跑', () => {
       }
       s.act({ type: 'move', place: r.pick(PLACE_ORDER) });
       while (s.w.pending.length && s.w.phase === 'year') s.act({ type: 'choose', i: 0 });
+      all();
       s.act({ type: 'endTurn' });
     }
     expect(byAI).toBeGreaterThan(20);

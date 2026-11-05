@@ -1,6 +1,6 @@
 // 《青冥录》无头模拟：自动玩几百个世界，看世界是不是「活的」——每年发生多少事，报仇、道侣、背叛、争位、陨落各有多少。
 // 用法：npm run sim:qm [-- 局数]          只走规则
-//       npm run sim:qm -- 200 ai           主角身边的人由一个「乱选合法选项」的假 AI 定打算，看世界会不会被 AI 搞乱
+//       npm run sim:qm -- 200 ai           和主角相识以上的人由一个「乱选合法选项」的假 AI 定打算，看世界会不会被 AI 搞乱
 
 import { makeRng } from '../qingming/assets/game/core/rng';
 import type { World } from '../qingming/assets/game/core/types';
@@ -11,7 +11,7 @@ import { applyDecision, whoDecides, yearChoices } from '../qingming/assets/game/
 
 declare const process: { argv: string[] };
 
-/** 假 AI：年初，主角身边最多三个人从合法选项里随便挑一件 */
+/** 假 AI：年初，身边相识以上的人、远处刻骨的人从合法选项里随便挑一件 */
 function fakeAI(w: World, r: ReturnType<typeof makeRng>) {
   for (const n of whoDecides(w, null)) {
     const c = r.pick(yearChoices(w, n));

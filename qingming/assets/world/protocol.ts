@@ -2,6 +2,7 @@
 
 import type { PlaceId, World } from '../game/core/types.ts';
 import type { RootId } from '../game/core/world.ts';
+import type { Mode } from '../game/mind/bond.ts';
 import type { MainAct, SocialKind } from '../game/player.ts';
 import type { SoulView } from '../souls/soul-client.ts';
 
@@ -29,8 +30,10 @@ export type ToEngine =
   | { channel: typeof CHANNEL; kind: 'talk'; id: string; text: string }
   /** 正在看谁（他的灵魂进入「聚光」） */
   | { channel: typeof CHANNEL; kind: 'focus'; id: string | null }
-  /** 附带一个 MessagePort：Host 侧 AI 运行时的另一端 */
-  | { channel: typeof CHANNEL; kind: 'intelligence'; providerId: string; label: string };
+  /** 附带一个 MessagePort：Host 侧 AI 运行时的另一端；mode 是玩家选的 AI 用量 */
+  | { channel: typeof CHANNEL; kind: 'intelligence'; providerId: string; label: string; mode?: Mode }
+  /** 只改 AI 用量 */
+  | { channel: typeof CHANNEL; kind: 'budget'; mode: Mode };
 
 export interface AiView {
   /** 正在等谁回话 */
@@ -44,6 +47,13 @@ export interface AiView {
   readonly sessions: Record<string, string>;
   /** 今年请 AI 定打算的人 */
   readonly decided: readonly string[];
+  /** 玩家选的 AI 用量 */
+  readonly mode: Mode;
+  /** 每个活着的人和主角的交情：陌路、相识、相熟、知己/宿敌 */
+  readonly tiers: Record<string, string>;
+  /** 今年 NPC 自己发起的 AI 请求用了几次、上限几次（你自己说的话不算） */
+  readonly used: number;
+  readonly cap: number;
 }
 
 export type ToHost =

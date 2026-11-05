@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["assets/**/*.ts", "assets/**/*.d.ts", "vitest.config.ts"]
+  "include": ["assets/**/*.ts", "assets/**/*.d.ts", "scripts/**/*.ts", "vitest.config.ts"]
 }

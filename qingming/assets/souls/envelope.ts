@@ -1,26 +1,48 @@
 // 一次 AI 请求的「信封」。它作为 Intelligence Activity 的 input 发给 AI 提供方：
-// - 大模型提供方只读 prompt；
+// - 大模型提供方读 system（稳定、可缓存）和 prompt（当下）；keep 为真时，把这一问一答记进这个 SessionRef 的对话历史，下次接着聊；
+// - think 是想多深（关思考 / 浅想 / 深想），由交情深浅决定；
 // - 离线提供方直接把 fallback（规则写好的回答）吐出来。
 // 所以无论接的是 DeepSeek、Claude 还是离线，游戏这一侧走的都是同一条 Activity 流程。
 
-export type AskKind = 'talk' | 'voice' | 'decide' | 'encounter';
+import type { Think } from '../game/ai/prompts.ts';
+import type { Tier } from '../game/mind/bond.ts';
+
+export type AskKind = 'talk' | 'voice' | 'decide' | 'encounter' | 'greet' | 'overhear' | 'reflect';
+export type { Think };
 
 export interface Envelope {
-  readonly v: 1;
+  readonly v: 2;
   readonly soul: string;
-  /** 这是哪一类请求：对话、给规则结果配台词、定年度打算、找上门时开口 */
+  /** 这是哪一类请求：对话、配台词、定打算、找上门时开口、主动开口、旁听、年底回想 */
   readonly ask: AskKind;
+  /** 交情深浅（0 陌路 … 3 刻骨），用来记账 */
+  readonly tier: Tier;
+  /** 稳定的前半段：世界、要求、人设；同一个人反复请求时一字不差，命中缓存 */
+  readonly system: string;
+  /** 当下：处境、记忆、刚说的话、回复格式 */
   readonly prompt: string;
+  /** 记进对话历史的那句短话（比如你说的话）；有它才会续上会话 */
+  readonly keep?: string;
+  readonly think: Think;
+  /** 输出上限（含思考），按想多深给 */
+  readonly maxTokens: number;
   /** 离线提供方直接用它；只在离线也要走流程的请求里有 */
   readonly fallback: unknown;
 }
+
+/** 想多深给多少输出额度：思考的字也算在里面 */
+export const MAX_TOKENS: Record<Think, number> = { off: 500, low: 2500, high: 8000 };
 
 export const encodeEnvelope = (e: Envelope) => JSON.stringify(e);
 
 export function decodeEnvelope(input: string): Envelope | null {
   try {
-    const o = JSON.parse(input) as Partial<Envelope>;
-    return o && o.v === 1 && typeof o.prompt === 'string' ? (o as Envelope) : null;
+    const o = JSON.parse(input) as Partial<Envelope> & { v?: number };
+    if (!o || typeof o.prompt !== 'string') return null;
+    if (o.v === 2) return o as Envelope;
+    // 第 2 阶段的信封：没有 system 和思考设置
+    if (o.v === 1) return { ...o, v: 2, tier: 1, system: '', think: 'off', maxTokens: MAX_TOKENS.off } as Envelope;
+    return null;
   } catch {
     return null;
   }

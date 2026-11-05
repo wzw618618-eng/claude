@@ -103,7 +103,7 @@ export function newWorld(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0, opts
     treasure: { sword: 'cave', letter: 'cave' },
     knows: [], news: [], pending: [],
     turn: { moved: false, main: false, social: 2, talk: {} },
-    chat: {}, offer: null,
+    chat: {}, offer: null, heard: [],
     flags: {}, ending: null, life: [], nextId: 1,
   };
   for (const d of PEOPLE) w.people[d.id] = makeNpc(d, 1);

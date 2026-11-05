@@ -13,7 +13,8 @@
     "preview": "forgeax project preview",
     "doctor": "forgeax project check",
     "test": "forgeax project test",
-    "typecheck": "pnpm exec tsc --noEmit"
+    "typecheck": "pnpm exec tsc --noEmit",
+    "live": "tsx scripts/live.ts"
   },
   "forgeax": {
     "metrics": {

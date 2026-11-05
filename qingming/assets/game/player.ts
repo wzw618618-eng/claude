@@ -10,6 +10,7 @@ import { ITEMS, REALMS, SECT_NAME } from './data/world-data';
 import { PERSON } from './data/people';
 import { delve, finish, GOALS, goalText, killed, moveTreasure, setGoal, targetName, useLife } from './mind/goals';
 import { describe, remember, witness } from './mind/memory';
+import { touch, TOUCH } from './mind/bond';
 import { beast, checkEnd, endYear } from './systems/year';
 import { canBreak, fight, gainExp, tryBreak, yearExp } from './systems/body';
 
@@ -144,6 +145,7 @@ export function tellables(w: World, id: string) {
 export function social(w: World, id: string, kind: SocialKind, arg = ''): SocialResult {
   if (!canSocial(w, id)) return { text: '', ok: false };
   w.turn.social--;
+  touch(w, id, TOUCH.social);
   return withRng(w, (rng) => socialEffect(w, w.people[id], kind, arg, rng));
 }
 
@@ -408,6 +410,7 @@ export function choose(w: World, idx: number): string {
   const view = viewEncounter(w, e);
   if (view.choices[idx]?.disabled) return '';
   w.pending.shift();
+  touch(w, e.who, TOUCH.encounter);
   const n = w.people[e.who];
   const g = n.mind.goal;
   return withRng(w, (rng) => {

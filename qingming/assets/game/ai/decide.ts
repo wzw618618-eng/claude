@@ -1,7 +1,7 @@
-// AI 定年度打算：年初，在主角身边的几个人由 AI 来想今年做什么。
+// AI 定年度打算：年初，由 AI 来想今年做什么的人——在主角身边、和主角相识以上的；和主角刻骨（知己或宿敌）的人不在身边也算。
 // - 选项全部来自规则：平常能做的事，加上为目标奔走的几种合法做法（比如争宗主时散布丑闻、静等、还是动手）；
 // - AI 只能从这些选项里挑一件，再用自己的口吻说一句理由；
-// - 不合规就退回规则定的打算。不在主角身边的人照旧只走规则，不花 AI 额度。
+// - 不合规就退回规则定的打算。陌路人和别处的人照旧只走规则，不花 AI 额度。
 
 import type { Npc, Plan, SectId, World } from '../core/types';
 import { aff, being, ME, nm, npcs, placeName, power } from '../core/world';
@@ -9,13 +9,11 @@ import { asJson } from '../../souls/envelope';
 import { bestPlace, GOALS, goalWant, targetName } from '../mind/goals';
 import { canBreak } from '../systems/body';
 import { follow, needOptions } from '../systems/year';
-import { goalBlock, memoryBlock, personaBlock, secretBlock, situationBlock, tiesBlock, WORLD_BLOCK } from './prompts';
+import { type Tier, tierOf } from '../mind/bond';
+import { type Ask, DEPTH, goalBlock, heartBlock, join, memoryBlock, newsBlock, secretBlock, situationBlock, soulSystem, tiesBlock } from './prompts';
 
 type Want = Omit<Plan, 'by' | 'asking'>;
 export interface YearChoice { id: string; want: Want; label: string; forGoal: boolean }
-
-/** 每年最多替几个人用 AI 定打算（省额度） */
-export const AI_DECISIONS_PER_YEAR = 3;
 
 const SCHEME: Record<string, string> = {
   ambush: '埋伏，亲自动手', scandal: '散布宗主的丑闻', wait: '按兵不动，等对方自己倒下', buy: '花钱买', steal: '暗中偷',
@@ -91,41 +89,41 @@ export function yearChoices(w: World, n: Npc): YearChoice[] {
 /** 陪别人出手的帮手已经答应了人家，不再另做打算 */
 export const committed = (n: Npc) => n.plan.act === 'help' && !!n.plan.target;
 
-/** 今年请 AI 替谁想：在主角身边、有得选的人；正和主角说话的、有目标的、和主角恩怨深的排前面 */
-export function whoDecides(w: World, focus: string | null, limit = AI_DECISIONS_PER_YEAR): Npc[] {
+/**
+ * 今年请 AI 替谁想：有得选的人里，在主角身边且相识以上的，或者和主角刻骨、人在别处的。
+ * 正和主角说话的、交情深的、有目标的、和主角恩怨深的排前面。
+ */
+export function whoDecides(w: World, focus: string | null, opts: { tier?: (n: Npc) => Tier; limit?: number } = {}): Npc[] {
+  const tier = opts.tier ?? ((n: Npc) => tierOf(w, n));
   return npcs(w)
-    .filter((n) => n.place === w.me.place && !committed(n) && yearChoices(w, n).length >= 2)
-    .map((n) => [n, (n.id === focus ? 100 : 0) + (n.mind.goal ? 2 : 0) + Math.abs(aff(n, ME)) / 30 + (n.mind.op[ME] ? 1 : 0)] as const)
+    .map((n) => [n, tier(n)] as const)
+    .filter(([n, t]) => (n.place === w.me.place ? t >= 1 : t >= 3) && !committed(n) && yearChoices(w, n).length >= 2)
+    .map(([n, t]) => [n, (n.id === focus ? 100 : 0) + t * 10 + (n.place === w.me.place ? 5 : 0) + (n.mind.goal ? 2 : 0) + Math.abs(aff(n, ME)) / 30] as const)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
+    .slice(0, opts.limit ?? Number.POSITIVE_INFINITY)
     .map(([n]) => n);
 }
 
-export function buildDecidePrompt(w: World, n: Npc) {
+export function buildDecidePrompt(w: World, n: Npc, tier: Tier = 1): Ask {
   const options = yearChoices(w, n).map((c) => `- ${c.id}：${c.label}`).join('\n');
-  return `你在为一款叫《青冥录》的中文修仙游戏扮演一个修士。新的一年开始了，你要决定今年做什么。
-
-${WORLD_BLOCK}
-
-${personaBlock(w, n)}
-
-${situationBlock(w, n, false)}
-
-${goalBlock(w, n, false)}
-
-${secretBlock(w, n, false)}
-
-${tiesBlock(w, n)}
-
-${memoryBlock(w, n, 8, false)}
-
-【今年能做的事】（只能从这里选一件）
-${options}
-
-【要求】
+  const d = DEPTH[tier];
+  return {
+    // 目标和秘密都是自己心里的事，不用瞒；这一段每年基本不变
+    system: soulSystem(w, n, [goalBlock(w, n, false), secretBlock(w, n, false)]),
+    prompt: join(
+      '新的一年开始了，你要决定今年做什么。',
+      situationBlock(w, n, false),
+      tiesBlock(w, n),
+      heartBlock(w, n, false),
+      memoryBlock(w, n, d.mem, false),
+      newsBlock(w, n, d.news),
+      `【今年能做的事】（只能从这里选一件）\n${options}`,
+      `【这次怎么选】
 - 按你的性格、看重的东西、处境、长远目标和你记得的事，选一件你今年真会去做的事。不一定选最稳妥的，要像这个人会做的选择：谨慎的人会等时机，莽撞的人会冒险，阴狠的人会下狠手，重情的人会先顾着在意的人。
 - 用你自己的口吻写一句心里话当理由，不超过30个字。不要提到AI、游戏、数值和代号。
-- 只回复一个JSON对象：{"choice":"上面的代号","why":"你的心里话"}`;
+- 只回复一个JSON对象：{"choice":"上面的代号","why":"你的心里话"}`,
+    ),
+  };
 }
 
 /** 校验 AI 的打算：代号必须在选项里，理由不能空 */

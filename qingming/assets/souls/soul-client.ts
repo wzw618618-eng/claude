@@ -15,10 +15,10 @@ import {
 
 export type LodName = 'spotlight' | 'ambient' | 'offstage';
 
-/** 灵魂「能做什么」：今年能选的事、谈话里能提的事、能说出口的秘密 */
+/** 灵魂「能做什么」：今年能选的事、谈话里能提的事、能说出口的秘密；交情深了，还有自己会做的事（主动开口、年底回想……） */
 export interface Affordance {
   readonly id: string;
-  readonly kind: 'plan' | 'offer' | 'reveal';
+  readonly kind: 'plan' | 'offer' | 'reveal' | 'soul';
   readonly label: string;
 }
 
@@ -30,6 +30,10 @@ export interface Perception {
   readonly heart: string;
   readonly ties: string;
   readonly recent: readonly string[];
+  /** 和主角的交情：陌路、相识、相熟、知己/宿敌 */
+  readonly bond: string;
+  /** 年底凝成的「心里的你」 */
+  readonly impression?: string;
 }
 
 /** 每档认知 LOD 多少秒重新感知一次 */

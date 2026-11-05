@@ -1,12 +1,18 @@
 // 拼提示词用的几块：世界、人设、处境、目标（要不要瞒着）、秘密、记忆、对主角的看法、最近的谈话。
 // 决策和对话共用。只读世界，不改世界。
+//
+// 每次请求分两段：
+// - system：世界、要求、人设（再加上这类请求固定要带的目标和秘密）。同一个人反复请求时一字不差，DeepSeek 会命中缓存，又快又便宜；
+// - prompt：此刻的处境、看法、记忆、刚说的话和回复格式，每次都变。
+// 交情越深（见 mind/bond.ts），记忆、谈话、传闻带得越多，想得也越深。
 
-import type { Npc, World } from '../core/types';
+import type { ChatLine, Npc, World } from '../core/types';
 import { being, isMaster, lifeLeft, ME, nm, op, placeName, realmText } from '../core/world';
 import { PERSON } from '../data/people';
 import { ITEMS, PLACES, SECT_NAME, TRAITS } from '../data/world-data';
 import { GOALS, goalText } from '../mind/goals';
 import { aboutMe, describe, feel } from '../mind/memory';
+import type { Tier } from '../mind/bond';
 import { honestGoal, secretLine } from '../player';
 
 export const WORLD_BLOCK = `【世界】青冥州，一个修仙的地方。七处地方：青岚宗（正道大宗）、赤霄门（强者为尊，和青岚宗世代不和）、云渡坊（坊市）、听泉谷（灵脉，修炼快）、玄冥洞府（上古洞府，机缘多也死人多）、黑松林（妖兽出没）、柳溪村（山脚的凡人村子）。
@@ -105,7 +111,7 @@ export function secretBlock(w: World, n: Npc, forMe = true) {
  * forMe 为假时（定打算，不是在跟主角说话）主角用名字称呼，「你」只指他自己。
  */
 export function memoryBlock(w: World, n: Npc, limit = 8, forMe = true) {
-  const mine = aboutMe(n).slice(0, 5);
+  const mine = aboutMe(n).slice(0, Math.max(3, Math.ceil(limit * 0.6)));
   const rest = n.mind.mem
     .filter((m) => m.a !== ME && m.b !== ME && Math.abs(m.tone) >= 2)
     .sort((a, b) => b.y - a.y)
@@ -139,12 +145,62 @@ export function tiesBlock(w: World, n: Npc) {
   return `【你在意的人】${t.length ? t.join('；') : '没什么特别在意的人'}`;
 }
 
+const chatLines = (log: readonly ChatLine[]) => log.map((l) => `第${l.y}年 ${l.from === 'me' ? '对方' : l.from === 'them' ? '你' : '旁白'}：${l.text}`).join('\n');
+
 /** 最近和主角说过的话 */
 export function chatBlock(w: World, n: Npc, max = 8) {
   const log = (w.chat[n.id] ?? []).slice(-max);
   if (!log.length) return '【你们之前说过的话】（这是第一次说话）';
-  return `【你们之前说过的话】\n${log.map((l) => `第${l.y}年 ${l.from === 'me' ? '对方' : l.from === 'them' ? '你' : '旁白'}：${l.text}`).join('\n')}`;
+  return `【你们之前说过的话】\n${chatLines(log)}`;
 }
+
+/** 接着上一轮谈话时：上次说完之后又发生的事（选项对话、旁白），之前的话已经在对话历史里了 */
+export function sinceBlock(lines: readonly ChatLine[]) {
+  return lines.length ? `【上次说完之后】\n${chatLines(lines)}` : '';
+}
+
+/** 心里的主角：年底凝成的一句话，长久记着 */
+export function heartBlock(w: World, n: Npc, forMe = true) {
+  const h = n.mind.heart;
+  if (!h) return '';
+  const who = forMe ? '对方' : w.me.name;
+  return `【你心里的${who}】「${forMe ? h : h.replace(/你/g, w.me.name)}」（第${n.mind.heartY ?? w.year}年时这么想）`;
+}
+
+/** 江湖上和他有关的事（交情深的人才带，让他知道世道变化） */
+export function newsBlock(w: World, n: Npc, max: number) {
+  if (max <= 0) return '';
+  const xs = w.news.filter((x) => x.about.includes(n.id) || x.big).slice(-max);
+  return xs.length ? `【这些年江湖上的事】\n${xs.map((x) => `- 第${x.y}年：${x.text}`).join('\n')}` : '';
+}
+
+/** 一次请求：system 稳定、可缓存；prompt 是当下 */
+export interface Ask { readonly system: string; readonly prompt: string }
+
+/** 想得多深：off 不思考，low 浅想，high 深想 */
+export type Think = 'off' | 'low' | 'high';
+
+/** 交情决定带多少记忆、谈话、传闻，自由对话和定打算想得多深 */
+export interface Depth { readonly mem: number; readonly chat: number; readonly news: number; readonly talk: Think; readonly decide: Think }
+export const DEPTH: Record<Tier, Depth> = {
+  0: { mem: 4, chat: 4, news: 0, talk: 'off', decide: 'off' },
+  1: { mem: 8, chat: 8, news: 0, talk: 'off', decide: 'off' },
+  2: { mem: 16, chat: 16, news: 4, talk: 'low', decide: 'low' },
+  3: { mem: 30, chat: 30, news: 10, talk: 'high', decide: 'high' },
+};
+
+export const INTRO = '你在为一款叫《青冥录》的中文修仙游戏扮演一个修士。';
+
+/**
+ * 同一个人各类请求共用的 system：最稳定的放最前（全局的世界和要求 → 这个人 → 这类请求固定要带的），
+ * 好让前缀尽量长地命中缓存。
+ */
+export function soulSystem(w: World, n: Npc, extra: string[] = []) {
+  return [INTRO, WORLD_BLOCK, RULES_BLOCK, personaBlock(w, n), ...extra].filter(Boolean).join('\n\n');
+}
+
+/** 把几块拼起来，空的跳过 */
+export const join = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join('\n\n');
 
 /** 让 AI 自己掂量对错：对方说的话可能是真的，也可能是在套话 */
 export const RULES_BLOCK = `【要求】

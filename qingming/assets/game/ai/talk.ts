@@ -13,10 +13,13 @@ import { ITEMS } from '../data/world-data';
 import { asJson } from '../../souls/envelope';
 import { GOALS, goalText, targetName } from '../mind/goals';
 import { keep, remember } from '../mind/memory';
+import { touch, TOUCH } from '../mind/bond';
 import { canSocial, chatLine, ruleEncounter, SHOP, social, socialEffect, type SocialKind, type SocialResult } from '../player';
 import { checkEnd } from '../systems/year';
+import type { Tier } from '../mind/bond';
 import {
-  canConfideGoal, chatBlock, goalBlock, memoryBlock, opinionBlock, personaBlock, RULES_BLOCK, secretBlock, situationBlock, tiesBlock, WORLD_BLOCK,
+  type Ask, canConfideGoal, chatBlock, DEPTH, goalBlock, heartBlock, join, memoryBlock, newsBlock, opinionBlock, secretBlock, sinceBlock,
+  situationBlock, soulSystem, tiesBlock,
 } from './prompts';
 
 /** 每人每年最多说几句（第一句花一次打交道） */
@@ -70,6 +73,7 @@ export function startLine(w: World, id: string, said: string): boolean {
     u = w.turn.talk[id] = { lines: 0, aff: 0, trust: 0, offers: [] };
   }
   u.lines++;
+  touch(w, id, TOUCH.line);
   pushChat(w, id, 'me', said);
   return true;
 }
@@ -134,43 +138,45 @@ export function talkAllow(w: World, n: Npc): TalkAllow {
   return { reveals: allowedReveals(w, n), offers: allowedOffers(w, n) };
 }
 
-export function buildTalkPrompt(w: World, n: Npc, said: string, allow: TalkAllow) {
+/** 当面说话（自由对话、主动开口）共用的 system：人设、目标该不该瞒、秘密。同一个人的谈话里基本不变，命中缓存 */
+export function faceSystem(w: World, n: Npc) {
+  return soulSystem(w, n, [goalBlock(w, n, true), secretBlock(w, n, true)]);
+}
+
+/** 当下的处境、在意的人、心里的你、记忆、看法；交情越深带得越多 */
+export function faceContext(w: World, n: Npc, tier: Tier) {
+  const d = DEPTH[tier];
+  return join(situationBlock(w, n), tiesBlock(w, n), heartBlock(w, n), memoryBlock(w, n, d.mem), opinionBlock(w, n), newsBlock(w, n, d.news));
+}
+
+/**
+ * 自由对话。since 为空表示新开的会话：把之前的谈话写进来；
+ * 接着引擎的 SessionRef 往下聊时，之前的话已经在对话历史里，只补上次说完之后又发生的事。
+ */
+export function buildTalkPrompt(w: World, n: Npc, said: string, allow: TalkAllow, opts: { tier?: Tier; since?: readonly ChatLine[] } = {}): Ask {
+  const tier = opts.tier ?? 1;
   const offers = [...allow.offers.map((k) => `- ${k}：${offerText(w, n, k)}`), '- none：什么也不提'].join('\n');
   const reveals = [...allow.reveals.map((k) => `- ${k}：${revealText(w, k)}`), '- none：不透露'].join('\n');
-  return `你在为一款叫《青冥录》的中文修仙游戏扮演一个修士，正在和对方当面说话。
-
-${WORLD_BLOCK}
-
-${personaBlock(w, n)}
-
-${situationBlock(w, n)}
-
-${goalBlock(w, n, true)}
-
-${secretBlock(w, n, true)}
-
-${tiesBlock(w, n)}
-
-${memoryBlock(w, n)}
-
-${opinionBlock(w, n)}
-
-${chatBlock(w, n)}
-
-【对方刚说】「${said}」
-
-【你可以顺势提出的事】（只能从这里选一件，不想提就填 none）
-${offers}
-
-【你可以透露的事】（只能从这里选，不想透露就填 none；没列出来的绝不能说）
-${reveals}
-
-${RULES_BLOCK}
+  // 刚说的那句已经记进谈话里了，不重复
+  const before = (w.chat[n.id] ?? []).slice(0, -1);
+  const history = opts.since ? sinceBlock(opts.since) : chatBlock({ ...w, chat: { ...w.chat, [n.id]: before } }, n, DEPTH[tier].chat);
+  return {
+    system: faceSystem(w, n),
+    prompt: join(
+      '你正在和对方当面说话。',
+      faceContext(w, n, tier),
+      history,
+      `【对方刚说】「${said}」`,
+      `【你可以顺势提出的事】（只能从这里选一件，不想提就填 none）\n${offers}`,
+      `【你可以透露的事】（只能从这里选，不想透露就填 none；没列出来的绝不能说）\n${reveals}`,
+      `【这次怎么回】
 - 回答1到3句，不超过80个字。对方说的话可能是真心，也可能是在套话、挑拨或者羞辱你，你自己判断。
 - affinity：这番话让你对对方的好感怎么变，整数-6到6；trust：信任怎么变，整数-4到4。
 - revealed：你这次的话有没有说出上面列出的事，填代号；offer：你有没有提出上面列出的事，填代号。
 - remember：这次谈话里如果有你会记住的事，用你的口吻写一句，称对方为「你」，不超过25个字；没有就留空。
-- 只回复一个JSON对象：{"reply":"你说的话","affinity":0,"trust":0,"revealed":"none","offer":"none","remember":""}`;
+- 只回复一个JSON对象：{"reply":"你说的话","affinity":0,"trust":0,"revealed":"none","offer":"none","remember":""}`,
+    ),
+  };
 }
 
 /** 校验 AI 的回复：reply 不能空；数值取整并夹住；透露和提议不在允许列表里就当没有 */
@@ -240,6 +246,7 @@ export function answerOffer(w: World, accept: boolean): string {
   if (!f || f.y !== w.year || w.phase !== 'year') return '';
   const n = w.people[f.who];
   if (!n?.alive || n.place !== w.me.place) return '';
+  touch(w, f.who, TOUCH.offer);
   let text: string;
   if (!accept) {
     if (f.kind === 'master' || f.kind === 'partner' || f.kind === 'ally') remember(w, n, { k: 'refuse', a: ME, b: n.id, tone: -1 });
@@ -302,28 +309,24 @@ export function topicTalk(w: World, id: string, kind: SocialKind, arg = ''): { r
   return { result, speech: speechOf(n, result.text), honest };
 }
 
-export function buildVoicePrompt(w: World, n: Npc, asked: string, meaning: string, honest: boolean) {
-  return `你在为一款叫《青冥录》的中文修仙游戏扮演一个修士，正在和对方当面说话。
-
-${WORLD_BLOCK}
-
-${personaBlock(w, n)}
-
-${situationBlock(w, n)}
-
-${goalBlock(w, n, true, !honest)}
-
-${memoryBlock(w, n, 5)}
-
-${opinionBlock(w, n)}
-
-【对方刚说】「${asked}」
-【你要回答的意思】「${meaning}」
-
-${RULES_BLOCK}
+/** 配台词：目标可能要瞒，所以 system 里不带目标和秘密，只放人设（和定打算、年底回想共用前缀） */
+export function buildVoicePrompt(w: World, n: Npc, asked: string, meaning: string, honest: boolean, tier: Tier = 1): Ask {
+  return {
+    system: soulSystem(w, n),
+    prompt: join(
+      '你正在和对方当面说话。',
+      situationBlock(w, n),
+      goalBlock(w, n, true, !honest),
+      heartBlock(w, n),
+      memoryBlock(w, n, Math.min(8, DEPTH[tier].mem)),
+      opinionBlock(w, n),
+      `【对方刚说】「${asked}」\n【你要回答的意思】「${meaning}」`,
+      `【这次怎么回】
 - 把上面「要回答的意思」用你自己的口吻说出来，意思不能变：该拒绝就拒绝，提到的人名、地名、秘密的内容都要保留，也不要多透露别的。
 - 1到3句，不超过80个字。
-- 只回复一个JSON对象：{"reply":"你说的话"}`;
+- 只回复一个JSON对象：{"reply":"你说的话"}`,
+    ),
+  };
 }
 
 export function acceptVoice(raw: string): string | null {
@@ -336,33 +339,27 @@ export function acceptVoice(raw: string): string | null {
 
 export const VOICED_ENCOUNTERS = ['attack', 'call', 'betray', 'confess', 'ask', 'teach', 'duel'];
 
-export function buildEncounterPrompt(w: World, e: Encounter) {
+export function buildEncounterPrompt(w: World, e: Encounter, tier: Tier = 1): Ask {
   const n = w.people[e.who];
   const v = ruleEncounter(w, e);
   const g = n.mind.goal;
   const known = !g?.secret || w.knows.includes(`goal:${n.id}`);
-  return `你在为一款叫《青冥录》的中文修仙游戏扮演一个修士。你主动找上了对方。
-
-${WORLD_BLOCK}
-
-${personaBlock(w, n)}
-
-${situationBlock(w, n)}
-
-${goalBlock(w, n, true, !known)}
-
-${memoryBlock(w, n, 5)}
-
-${opinionBlock(w, n)}
-
-【这一刻】${v.title}。
-【你开口要说的意思】${v.text}
-（对方接下来能做的：${v.choices.map((c) => c.label).join('、')}）
-
-${RULES_BLOCK}
+  return {
+    system: soulSystem(w, n),
+    prompt: join(
+      '你主动找上了对方。',
+      situationBlock(w, n),
+      goalBlock(w, n, true, !known),
+      heartBlock(w, n),
+      memoryBlock(w, n, Math.min(8, DEPTH[tier].mem)),
+      opinionBlock(w, n),
+      `【这一刻】${v.title}。\n【你开口要说的意思】${v.text}\n（对方接下来能做的：${v.choices.map((c) => c.label).join('、')}）`,
+      `【这次怎么说】
 - 用你自己的口吻说出开口的话，意思不能变${known ? '' : '；你的真实目的还不能让对方知道'}。
 - 1到3句，不超过80个字。
-- 只回复一个JSON对象：{"reply":"你说的话"}`;
+- 只回复一个JSON对象：{"reply":"你说的话"}`,
+    ),
+  };
 }
 
 /** 有人在等你答复时，AI 写好的话放进 vars.say，界面会显示它 */

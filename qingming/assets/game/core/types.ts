@@ -60,6 +60,12 @@ export interface Mind {
   mood: number;
   /** 知道的秘密：「secret:lu」「goal:wen」 */
   knows: string[];
+  /** 和主角打交道攒下的交情（说话、打交道、找上门都会加，每年淡一些）。只决定 AI 花多少心思，不进规则 */
+  bond?: number;
+  /** 心里的主角：年底由 AI 把这一年凝成的一句话（称主角为「你」），之后一直记着 */
+  heart?: string;
+  /** heart 是哪一年写的 */
+  heartY?: number;
 }
 
 export interface Being {
@@ -110,6 +116,9 @@ export interface Offer { who: string; kind: OfferKind; y: number; item?: string 
 
 export interface News { y: number; text: string; tone: 'good' | 'bad' | 'story' | 'info'; about: string[]; big?: boolean }
 
+/** 主角在场时听到的两个人之间的话（AI 写的） */
+export interface Heard { y: number; at: PlaceId; a: string; b: string; lines: { who: string; text: string }[] }
+
 /** NPC 主动找上主角的事 */
 export interface Encounter { id: string; kind: string; who: string; vars: Record<string, string | number> }
 
@@ -136,6 +145,8 @@ export interface World {
   chat: Record<string, ChatLine[]>;
   /** 对方在谈话里提出、等你答复的事 */
   offer: Offer | null;
+  /** 旁听到的对话（最近 20 段） */
+  heard: Heard[];
   flags: Record<string, number | string | boolean>;
   ending: { kind: 'age' | 'dead' | 'ascend'; y: number } | null;
   /** 主角的经历（写小传用） */
