@@ -11,6 +11,7 @@ import { choose, endDay, endNight, newGame, setTask, startProject, toNight } fro
 import { currentEvent } from '../tiangong/assets/hanyi/systems/story';
 import { applyTalk, canTalk, knownTaste, satWith, scriptedReply, seats, sitWith, Topic, TOPICS } from '../tiangong/assets/hanyi/ai/dialogue';
 import { adoptAll, openChat } from '../tiangong/assets/hanyi/ai/intent';
+import { scoreRun } from '../tiangong/assets/hanyi/meta';
 import { blocked, careScore, cookScore, huntOut, woodOut, scavOut } from '../tiangong/assets/hanyi/systems/work';
 
 type Policy = 'smart' | 'random' | 'idle' | 'listen';
@@ -104,8 +105,8 @@ function nightTalk(s: GameState, policy: Policy, r: ReturnType<typeof makeRng>) 
   }
 }
 
-function play(seed: number, policy: Policy) {
-  const s = newGame(seed);
+function play(seed: number, policy: Policy, winter = 1, perk = '') {
+  const s = newGame(seed, { winter, perk });
   const r = makeRng(seed ^ 0x9e3779b9);
   const fired: string[] = [];
   let guard = 0;
@@ -128,7 +129,9 @@ function play(seed: number, policy: Policy) {
   return { s, fired, minH };
 }
 
-function run(policy: Policy, n: number) {
+function run(policy: Policy, n: number, winter = 1, perk = '') {
+  const grades: Record<string, number> = {};
+  let scoreSum = 0;
   let alive = 0, total = 0, wiped = 0, firstDeath = 0, deaths = 0, recruited = 0, gamesWithDeath = 0;
   const by: Record<string, number> = {};
   const ev: Record<string, number> = {};
@@ -137,7 +140,10 @@ function run(policy: Policy, n: number) {
   let endDaySum = 0;
   const mins: number[] = [];
   for (let i = 0; i < n; i++) {
-    const { s, fired, minH } = play(1000 + i, policy);
+    const { s, fired, minH } = play(1000 + i, policy, winter, perk);
+    const sc = scoreRun(s);
+    scoreSum += sc.total;
+    grades[sc.grade] = (grades[sc.grade] ?? 0) + 1;
     mins.push(minH);
     const present = s.chars.filter((c) => c.status === 'active' || s.flags[`back_${c.id}`]).length;
     alive += present; total += s.chars.length;
@@ -153,7 +159,8 @@ function run(policy: Policy, n: number) {
     for (const k of Object.keys(s.flags)) if (k.startsWith('arc_') && s.flags[k]) arcs[k] = (arcs[k] ?? 0) + 1;
   }
   const f = (x: number) => (x / n).toFixed(2);
-  console.log(`\n== 策略 ${policy}，${n} 局 ==`);
+  console.log(`\n== 策略 ${policy}，${n} 局，寒冬 ${winter}${perk ? '，行囊 ' + perk : ''} ==`);
+  console.log(`平均得分 ${f(scoreSum)}　评级`, grades);
   console.log(`团灭 ${(wiped / n * 100).toFixed(0)}%　平均结束于第 ${f(endDaySum)} 天　存活 ${alive}/${total}（${(alive / total * 100).toFixed(0)}%）　平均死亡 ${f(deaths)} 人　平均招募 ${f(recruited)} 人`);
   console.log(`有人死亡的局 ${(gamesWithDeath / n * 100).toFixed(0)}%，首个死亡平均第 ${gamesWithDeath ? (firstDeath / gamesWithDeath).toFixed(1) : '-'} 天`);
   mins.sort((a, b) => a - b);
@@ -188,7 +195,10 @@ export function trace(seed: number) {
   console.log('END', s.ending, s.rescueBy, s.chars.map((c) => c.id + ':' + c.status).join(' '));
 }
 
-if (process.argv[3] === "trace") { trace(n); } else {
+if (process.argv[3] === "trace") { trace(n); } else if (process.argv[3] === "winters") {
+  for (const w of [1, 2, 3, 4, 5]) run('smart', n, w);
+  run('smart', n, 3, 'gun');
+} else {
 run('smart', n);
 run('listen', n);
 run('random', Math.min(n, 200));

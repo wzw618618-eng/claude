@@ -7,7 +7,8 @@ import { cancelProject, choose, endDay, endNight, newGame, setTask, startProject
 import { adoptAll, adoptIntent, openChat } from '../tiangong/assets/hanyi/ai/intent';
 import { createSound, CUE_FOR_ACT } from '../tiangong/assets/ui/audio';
 import { createFx } from '../tiangong/assets/ui/fx';
-import { endingScreen, gameScreen, hasOverlay, storyTotal, TIPS, titleScreen, UI } from '../tiangong/assets/ui/view';
+import { endingScreen, gameScreen, hasOverlay, metaAct, storyTotal, TIPS, titleScreen, UI } from '../tiangong/assets/ui/view';
+import { parseMeta, recordRun } from '../tiangong/assets/hanyi/meta';
 
 declare global {
   interface Window { claude?: any }
@@ -17,6 +18,7 @@ const KEY = 'hanyi.save.v1';
 const TIPS_KEY = 'hanyi.tips.v1';
 const SOUND_KEY = 'hanyi.sound.v1';
 const HEART_KEY = 'hanyi.heart.v1';
+const META_KEY = 'hanyi.meta.v1';
 const app = document.getElementById('app')!;
 const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* 存不了不影响游玩 */ } };
@@ -44,7 +46,9 @@ const ui: UI = {
   tips: (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]'); } catch { return []; } })(),
   sound: read(SOUND_KEY) !== 'off',
   heartSeen: Number(read(HEART_KEY) ?? 0) || 0,
+  meta: parseMeta(read(META_KEY)),
 };
+const saveMeta = () => write(META_KEY, JSON.stringify(ui.meta));
 const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
 
 function save() {
@@ -67,7 +71,12 @@ function render(opts: { top?: boolean; chatBottom?: boolean } = {}) {
   const prevSheet = app.querySelector('.sheet');
   const sheetY = prevSheet?.scrollTop ?? 0;
   if (ui.screen === 'title' || !s) app.innerHTML = titleScreen(ui);
-  else if (s.phase === 'ending') app.innerHTML = endingScreen(s);
+  else if (s.phase === 'ending') {
+    // 一局结束：记一次账（同一局只记一次）
+    const r = recordRun(ui.meta!, s);
+    if (r) { ui.lastRun = r; saveMeta(); }
+    app.innerHTML = endingScreen(s, ui);
+  }
   else app.innerHTML = gameScreen(s, ui);
   const phase = ui.screen === 'title' || !s ? 'title' : s.phase;
   document.documentElement.dataset.phase = phase;
@@ -109,8 +118,12 @@ app.addEventListener('click', (e) => {
     return render();
   }
 
+  if (metaAct(ui, a, v)) return render({ top: true });
   if (a === 'new') {
-    s = newGame();
+    s = newGame(undefined, ui.pick);
+    ui.meta!.last = ui.pick ? { ...ui.pick } : undefined;
+    saveMeta();
+    Object.assign(ui, { setup: false, album: false, lastRun: undefined });
     ui.heartSeen = 0;
     write(HEART_KEY, '0');
     Object.assign(ui, { screen: 'game', tab: 'people', sheet: null, outcome: null, confirmReset: false, reportOpen: false, aiNote: null });

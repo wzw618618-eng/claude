@@ -6,6 +6,7 @@ import { act, addMood, addTrust, ch, ended, nm, newGame as freshGame } from './c
 import { makeRng } from './core/rng';
 import { remember } from './ai/memory';
 import { pickToday } from './data/situations';
+import { applyStart } from './data/perks';
 import { planDay, ruleWants } from './ai/intent';
 import { buildPlugin, campfireScenes, endingPlugin, socialPlugin, weatherPlugin, startProject, cancelProject } from './systems/camp';
 import { morningPlugin, prunePending, resolveChoice, storyPlugin } from './systems/story';
@@ -24,8 +25,9 @@ export const engine = new Engine()
   .use(morningPlugin);
 
 /** 开一局新游戏：第一天早上，每个人先说说自己想干什么 */
-export function newGame(seed?: number) {
+export function newGame(seed?: number, opts: { winter?: number; perk?: string } = {}) {
   const s = freshGame(seed);
+  applyStart(s, opts.winter ?? 1, opts.perk ?? '');
   planDay(s);
   return s;
 }

@@ -13,9 +13,13 @@ import {
 } from '../hanyi/systems/work';
 import { canSit, knownTaste, MAX_TALKS, satWith, seats, TOPICS } from '../hanyi/ai/dialogue';
 import { todayText } from '../hanyi/data/situations';
+import {
+  ACH_BONUS, ACHS, albumCount, FATE_WORD, fateKinds, type Meta, nextPerk, PERKS, perkOpen, type RunResult, scoreRun,
+  WINTER_NAME, winterDesc, winterOpen, WINTERS,
+} from '../hanyi/meta';
 import { memoriesOf } from '../hanyi/ai/memory';
 import { PAIR_STORIES } from '../hanyi/data/events-story';
-import { progress } from '../hanyi/data/stories';
+import { progress, STORIES } from '../hanyi/data/stories';
 import { icon } from './icons';
 
 /** 每个人的画：用在他的登记页上 */
@@ -67,6 +71,14 @@ export interface UI {
   /** 上次打开「人心」页时，大家的故事一共走到了第几章（有新章节时菜单上亮红点） */
   heartSeen?: number;
   engine?: EngineView;
+  /** 局外成长：薪火、图鉴、成就（存在宿主那里） */
+  meta?: Meta;
+  /** 标题页：正在挑寒冬和行囊 / 正在看图鉴 */
+  setup?: boolean;
+  album?: boolean;
+  pick?: { winter: number; perk: string };
+  /** 刚结束那一局的成绩单 */
+  lastRun?: RunResult;
 }
 
 export const esc = (t: unknown) =>
@@ -102,23 +114,125 @@ export function forecast(s: GameState) {
 // ───────────── 标题 ─────────────
 
 export function titleScreen(ui: UI) {
+  const m = ui.meta;
+  const body = m && ui.album ? albumView(m) : m && ui.setup ? setupView(ui, m) : titleBody(ui);
   return `<section class="title">
   <div class="title-art" aria-hidden="true"></div>
   <canvas class="snowfx title-snow" data-snow="title" data-n="70" aria-hidden="true"></canvas>
   ${soundBtn(ui, 'title-snd')}
-  <div class="wrap">
+  <div class="wrap ${m && (ui.album || ui.setup) ? 'menu' : ''}">${body}</div>
+</section>`;
+}
+
+function titleBody(ui: UI) {
+  const m = ui.meta;
+  const veteran = !!m && m.runs > 0;
+  const start = veteran ? 'setup' : 'new';
+  return `
     <h1>寒驿<span>二十个冬夜</span></h1>
     <p class="story">寒潮来得毫无征兆。客车在山道上抛锚，五个陌生人躲进了半山腰一座废弃的驿站。广播里最后一条消息说：大雪封山，道路至少二十天才能打通。<br><br>你成了那个拿主意的人。</p>
-    <div class="cast" aria-label="驿站里的人">${CHAR_ORDER.map((id) => (CHARS[id].starter
+    <div class="cast" aria-label="驿站里的人">${CHAR_ORDER.map((id) => (CHARS[id].starter || (m && metChar(m, id))
       ? `<figure>${portrait(id)}<figcaption>${CHARS[id].short}</figcaption></figure>`
       : '<figure class="unknown"><i class="pt pt-unknown-0" aria-hidden="true"></i><figcaption>？</figcaption></figure>')).join('')}</div>
+    ${veteran ? metaStrip(m!) : ''}
     <div class="row">
-      ${ui.hasSave ? '<button class="go" data-act="continue">继续</button><button class="btn ghost" data-act="new">重新开始</button>' : '<button class="go" data-act="new">推开驿站的门</button>'}
+      ${ui.hasSave ? `<button class="go" data-act="continue">继续</button><button class="btn ghost" data-act="${start}">新的一局</button>` : `<button class="go" data-act="${start}">${veteran ? '再推开一次门' : '推开驿站的门'}</button>`}
+      ${veteran ? '<button class="btn ghost" data-act="album">图鉴</button>' : ''}
     </div>
     <p class="mini">白天给每个人派活：砍柴取暖、打猎果腹、搜寻物资、营建驿站。夜里围着火，和他们说说话。信任，会让他们说出藏在心里的事。${ui.ai ? '<br>夜谈由 Claude 即兴扮演每个角色，你可以说任何话。' : ''}</p>
-    <p class="art-credit">画：清 · 袁耀，雪山中的客栈与旅人（1745），大都会艺术博物馆藏</p>
-  </div>
-</section>`;
+    <p class="art-credit">画：清 · 袁耀，雪山中的客栈与旅人（1745），大都会艺术博物馆藏</p>`;
+}
+
+const metChar = (m: Meta, id: string) => m.fates.some((f) => f.startsWith(id + ':'));
+
+/** 下一样行囊还差多少薪火 */
+function nextBar(m: Meta) {
+  const n = nextPerk(m);
+  if (!n) return '<p class="next-perk">行囊全部解锁了。试试更冷的寒冬。</p>';
+  const prev = PERKS.filter((p) => p.need <= m.ember).reduce((t, p) => Math.max(t, p.need), 0);
+  const pct = Math.round(((m.ember - prev) / (n.need - prev)) * 100);
+  return `<div class="next-perk"><p>再攒 <b>${n.need - m.ember}</b> 薪火，解锁「${n.name}」：${n.desc}</p><div class="bar-track"><i style="width:${pct}%"></i></div></div>`;
+}
+
+function metaStrip(m: Meta) {
+  const a = albumCount(m);
+  return `<div class="meta-strip">
+    <div><small>薪火</small><b>${m.ember}</b></div>
+    <div><small>最好成绩</small><b>${m.best}</b></div>
+    <div><small>最冷通关</small><b>${m.cleared ? `${m.cleared} 级` : '—'}</b></div>
+    <div><small>图鉴</small><b>${a.pct}%</b></div>
+  </div>${nextBar(m)}`;
+}
+
+function setupView(ui: UI, m: Meta) {
+  const pick = ui.pick ?? { winter: 1, perk: '' };
+  const wins = WINTERS.map((w) => {
+    const open = winterOpen(m, w);
+    return `<button class="win ${pick.winter === w ? 'on' : ''}" data-act="winter" data-v="${w}" ${open ? '' : 'disabled'} aria-pressed="${pick.winter === w}"><b>${w}</b><small>${open ? WINTER_NAME[w] : '未解锁'}</small></button>`;
+  }).join('');
+  const perks = PERKS.map((p) => {
+    const open = perkOpen(m, p.id);
+    return `<button class="perk ${pick.perk === p.id ? 'on' : ''} ${open ? '' : 'locked'}" data-act="perk" data-v="${p.id}" ${open ? '' : 'disabled'} aria-pressed="${pick.perk === p.id}"><b>${p.name}</b><small>${open ? p.desc : `薪火 ${p.need} 解锁 · ${p.desc}`}</small></button>`;
+  }).join('');
+  return `<p class="setup-h">出发之前</p>
+    <h2 class="sec">寒冬 · 越冷得分越高</h2>
+    <div class="winters">${wins}</div>
+    <p class="mini">${winterDesc(pick.winter)}${winterOpen(m, pick.winter + 1) || pick.winter >= WINTERS.length ? '' : ` 在这一级获救，就能解锁 ${pick.winter + 1} 级。`}</p>
+    <h2 class="sec">行囊 · 带一样东西上路</h2>
+    <div class="perks">${perks}</div>
+    ${nextBar(m)}
+    <div class="row"><button class="go" data-act="new">出发</button><button class="btn ghost" data-act="back">返回</button></div>`;
+}
+
+function albumView(m: Meta) {
+  const a = albumCount(m);
+  const fates = CHAR_ORDER.map((id) => {
+    const d = CHARS[id];
+    const met = metChar(m, id);
+    const chips = fateKinds(id).map((k) => (m.fates.includes(`${id}:${k}`) ? `<span class="chip ${k === 'good' ? 'good' : k === 'dead' ? 'bad' : k === 'left' ? 'warn' : ''}">${FATE_WORD[k]}</span>` : '<span class="chip unseen">？？？</span>')).join('');
+    const ch = STORIES[id] ?? [];
+    const got = m.chapters[id] ?? 0;
+    const path = ch.map((c, i) => (i < got ? `<span class="got">${esc(c.title)}</span>` : '<span>？？？</span>')).join(' → ');
+    return `<li style="--c:${d.color}">${met ? portrait(id) : '<i class="pt pt-unknown-0" aria-hidden="true"></i>'}<div><b>${met ? d.short : '？'}</b><div class="chips">${chips}</div><p class="path">心路：${path}</p></div></li>`;
+  }).join('');
+  const achs = ACHS.map((x) => `<li class="${m.ach.includes(x.id) ? 'got' : ''}"><b>${x.name}</b><small>${x.desc}</small></li>`).join('');
+  return `<p class="setup-h">图鉴 · ${a.pct}%</p>
+    <div class="album-parts">${a.parts.map((p) => `<div><small>${p.label}</small><b>${p.have}/${p.all}</b></div>`).join('')}</div>
+    <p class="mini">玩了 ${m.runs} 局，获救 ${m.wins} 局。每个新成就额外 +${ACH_BONUS} 薪火。</p>
+    <h2 class="sec">每个人的结局和心路</h2>
+    <ul class="album-fates">${fates}</ul>
+    <h2 class="sec">成就</h2>
+    <ul class="achs">${achs}</ul>
+    <div class="row"><button class="btn ghost" data-act="back">返回</button></div>`;
+}
+
+/** 标题页上的局外操作（两个宿主共用）；处理了返回 true */
+export function metaAct(ui: UI, a: string, v: string) {
+  const m = ui.meta;
+  if (!m) return false;
+  ui.pick ??= m.last ? { ...m.last } : { winter: 1, perk: '' };
+  if (a === 'setup') { Object.assign(ui, { screen: 'title', setup: true, album: false }); if (!winterOpen(m, ui.pick.winter)) ui.pick.winter = 1; return true; }
+  if (a === 'album') { Object.assign(ui, { screen: 'title', album: true, setup: false }); return true; }
+  if (a === 'back') { Object.assign(ui, { setup: false, album: false }); return true; }
+  if (a === 'winter') { if (winterOpen(m, Number(v))) ui.pick.winter = Number(v); return true; }
+  if (a === 'perk') { if (perkOpen(m, v)) ui.pick.perk = ui.pick.perk === v ? '' : v; return true; }
+  return false;
+}
+
+/** 这一局的成绩单：分数、评级、薪火、解锁、新成就、图鉴新增 */
+function runCard(s: GameState, ui: UI) {
+  const r = ui.lastRun;
+  const sc = r?.score ?? scoreRun(s);
+  const m = ui.meta;
+  return `<section class="run">
+    <div class="run-head"><div class="grade g-${sc.grade}">${sc.grade}</div><div><b>${sc.total}</b><small>分${r?.best ? ' · 新纪录！' : ''}${s.winter && s.winter > 1 ? ` · 寒冬 ${s.winter} 级` : ''}</small></div></div>
+    <ul class="run-lines">${sc.lines.map((l) => `<li><span>${esc(l.label)}</span><b>+${l.pts}</b></li>`).join('')}</ul>
+    ${r ? `<p class="run-ember">薪火 <b>+${r.gained}</b>${m ? `，一共 ${m.ember}` : ''}</p>` : ''}
+    ${r?.ach.length ? `<ul class="run-new">${r.ach.map((a) => `<li class="ach">成就「${a.name}」<small>${a.desc} +${ACH_BONUS} 薪火</small></li>`).join('')}</ul>` : ''}
+    ${r?.unlocks.length ? `<ul class="run-new">${r.unlocks.map((u) => `<li class="unlock">解锁了${esc(u)}</li>`).join('')}</ul>` : ''}
+    ${r?.fresh.length ? `<p class="mini">图鉴新增 ${r.fresh.length} 条：${r.fresh.slice(0, 4).map(esc).join('、')}${r.fresh.length > 4 ? '……' : ''}</p>` : ''}
+    ${m ? nextBar(m) : ''}
+  </section>`;
 }
 
 // ───────────── 日头 ─────────────
@@ -160,7 +274,7 @@ function hud(s: GameState, ui: UI) {
   const rescue = s.rescueBy !== 'road' ? `救援约 ${Math.max(0, s.rescueDay - s.day)} 日后到` : `撑到开路 · 约${cnDay(LAST_DAY)}日`;
   return `<header class="hud" data-phase="${s.phase}"><div class="hud-art" aria-hidden="true"></div>${snowCanvas('hud', s)}<div class="wrap">
   <div class="hud-top">
-    <div class="hud-day"><b>第${cnDay(s.day)}日${soundBtn(ui)}</b><span>${PHASE_WORD[s.phase]} · ${rescue}</span></div>
+    <div class="hud-day"><b>第${cnDay(s.day)}日${soundBtn(ui)}</b><span>${PHASE_WORD[s.phase]} · ${rescue}${s.winter && s.winter > 1 ? ` · 寒冬${s.winter}级` : ''}</span></div>
     <button class="hud-sky" data-act="info" data-v="heat" aria-label="天气和保暖，点开看说明"><strong class="${s.weather.kind === 'blizzard' ? 'storm' : ''}">${icon(`w_${s.weather.kind}`)}${WEATHER[s.weather.kind]} ${temp(s.temp)}</strong><span>保暖 ${insulation(s)} 级 · 每日烧柴 ${f.burn} 捆</span></button>
   </div>
   <div class="caps">${cap('food', '食物', f.food, f.eat)}${cap('wood', '柴火', f.wood, f.burn)}${cap('mat', '物资', f.mat, 0)}${cap('med', '药品', 0, 0)}</div>
@@ -858,7 +972,7 @@ const RESCUE: Record<string, (s: GameState) => string> = {
   phone: (s) => `第${cnDay(s.day)}日，直升机的螺旋桨声撕开了云层。那部卫星电话，把大家带回了人间。`,
 };
 
-export function endingScreen(s: GameState) {
+export function endingScreen(s: GameState, ui?: UI) {
   const wiped = s.ending?.kind === 'wiped';
   const ids = s.chars.map((c) => c.id);
   const saved = ids.filter((id) => isPresentAtEnd(s, id)).length;
@@ -876,7 +990,8 @@ export function endingScreen(s: GameState) {
     <h1>${wiped ? '火熄了' : '救援到了'}</h1>
     <p class="story">${story}</p>
     <div class="tally"><div><small>坚持</small><b>${s.day} 天</b></div><div><small>活着下山</small><b>${saved} / ${ids.length}</b></div><div><small>解开心结</small><b>${arcs} 人</b></div></div>
+    ${ui ? runCard(s, ui) : ''}
     <ul class="fates">${fates.join('')}</ul>
-    <div class="row"><button class="go" data-act="new">再来一局</button></div>
+    <div class="row"><button class="go" data-act="${ui?.meta ? 'setup' : 'new'}">再来一局</button></div>
   </div></section>`;
 }

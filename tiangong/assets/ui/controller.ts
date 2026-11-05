@@ -12,13 +12,15 @@ import artCss from './art.css?raw';
 import css from './style.css?raw';
 import { createSound, CUE_FOR_ACT } from './audio.ts';
 import { createFx } from './fx.ts';
-import { endingScreen, type EngineView, gameScreen, hasOverlay, storyTotal, TIPS, titleScreen, type UI } from './view.ts';
+import { endingScreen, type EngineView, gameScreen, hasOverlay, metaAct, storyTotal, TIPS, titleScreen, type UI } from './view.ts';
+import { parseMeta, recordRun } from '../hanyi/meta.ts';
 
 const SAVE_KEY = 'hanyi.engine.save.v1';
 const AI_KEY = 'hanyi.engine.ai.v1';
 const TIPS_KEY = 'hanyi.tips.v1';
 const SOUND_KEY = 'hanyi.sound.v1';
 const HEART_KEY = 'hanyi.heart.v1';
+const META_KEY = 'hanyi.engine.meta.v1';
 const FONTS = 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap';
 
 type Kind = EngineView['settings']['kind'];
@@ -63,12 +65,14 @@ export function mountHanyi(host: HanyiHost) {
     tips: (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]') as string[]; } catch { return []; } })(),
     sound: read(SOUND_KEY) !== 'off',
     heartSeen: Number(read(HEART_KEY) ?? 0) || 0,
+    meta: parseMeta(read(META_KEY)),
     engine: {
       souls: [], provider: '连接中', sessions: {}, stream: null,
       settings: { kind: cfg.kind, baseUrl: cfg.baseUrl, model: cfg.model, hasKey: !!cfg.apiKey, claude: false, editing: false },
     },
   };
   const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
+  const saveMeta = () => write(META_KEY, JSON.stringify(ui.meta));
   const send = (m: ToEngine, transfer?: Transferable[]) => host.port.postMessage(m, transfer ?? []);
   const actOn = (a: Act) => send({ channel: CHANNEL, kind: 'act', act: a });
 
@@ -80,7 +84,11 @@ export function mountHanyi(host: HanyiHost) {
     const prev = app.querySelector('.sheet');
     const sheetY = prev?.scrollTop ?? 0;
     if (ui.screen === 'title' || !s) app.innerHTML = titleScreen(ui);
-    else if (s.phase === 'ending') app.innerHTML = endingScreen(s);
+    else if (s.phase === 'ending') {
+      const r = recordRun(ui.meta!, s);
+      if (r) { ui.lastRun = r; saveMeta(); }
+      app.innerHTML = endingScreen(s, ui);
+    }
     else app.innerHTML = gameScreen(s, ui);
     shell.dataset.phase = ui.screen === 'title' || !s ? 'title' : s.phase;
     const overlay = !!s && ui.screen === 'game' && s.phase !== 'ending' && hasOverlay(s, ui);
@@ -139,6 +147,7 @@ export function mountHanyi(host: HanyiHost) {
     const v = el.dataset.v ?? '';
     let top = false;
     if (CUE_FOR_ACT[a]) sound.play(CUE_FOR_ACT[a]);
+    if (metaAct(ui, a, v)) { render({ top: true }); return; }
     switch (a) {
       case 'sound':
         sound.setMuted(!sound.muted);
@@ -153,7 +162,10 @@ export function mountHanyi(host: HanyiHost) {
       case 'tip-reset': ui.tips = []; saveTips(); ui.tab = 'people'; top = true; break;
       case 'new':
       case 'reset-yes':
-        actOn({ type: 'new' });
+        actOn({ type: 'new', ...(ui.pick ?? {}) });
+        ui.meta!.last = ui.pick ? { ...ui.pick } : undefined;
+        saveMeta();
+        Object.assign(ui, { setup: false, album: false, lastRun: undefined });
         ui.heartSeen = 0;
         write(HEART_KEY, '0');
         Object.assign(ui, { screen: 'game', tab: 'people', sheet: null, outcome: null, confirmReset: false, reportOpen: false });

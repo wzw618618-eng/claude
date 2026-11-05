@@ -7,7 +7,7 @@ import type { SoulView } from '../souls/soul-client.ts';
 export const CHANNEL = 'hanyi/camp';
 
 export type Act =
-  | { type: 'new' }
+  | { type: 'new'; winter?: number; perk?: string }
   | { type: 'endDay' }
   | { type: 'toNight' }
   | { type: 'endNight' }

@@ -7,6 +7,7 @@ import {
 } from '../core/world';
 import { SKILLS, TASKS } from '../data/rules';
 import { todayRisk, todayYield } from '../data/situations';
+import { perkRisk, perkYield } from '../data/perks';
 
 const OUTDOOR: TaskId[] = ['wood', 'hunt', 'scavenge', 'explore'];
 const DANGER: TaskId[] = ['scavenge', 'explore', 'guard'];
@@ -32,7 +33,7 @@ export function efficiency(s: GameState, c: CharState, t: TaskId) {
   if (has(c, 'lazy')) e *= 0.85;
   if (has(c, 'child') && ['wood', 'build'].includes(t)) e *= 0.5;
   if (OUTDOOR.includes(t)) e *= s.weather.kind === 'blizzard' ? 0.5 : s.weather.kind === 'snow' ? 0.85 : 1;
-  return e * todayYield(s, t);
+  return e * todayYield(s, t) * perkYield(s, t);
 }
 
 export function injuryRisk(s: GameState, c: CharState, t: TaskId) {
@@ -45,7 +46,7 @@ export function injuryRisk(s: GameState, c: CharState, t: TaskId) {
   if (has(c, 'reckless')) p *= 1.6;
   if (has(c, 'timid')) p *= 0.5;
   if (t === 'explore' && s.built.includes('tower')) p *= 0.6;
-  return clamp(p * todayRisk(s, t), 0, 0.6);
+  return clamp(p * todayRisk(s, t) * perkRisk(s), 0, 0.6);
 }
 
 /** 干这个活对心情的直接影响（特质决定） */

@@ -20,6 +20,8 @@ import { CAMP_PACKAGE, UI_PACKAGE } from '../ids.ts';
 import { acceptReply, replySoFar } from '../souls/envelope.ts';
 import { createChatApiProvider, createOfflineProvider, TALK_LIMITS } from '../souls/providers.ts';
 import { createSoulAdapter } from '../souls/soul-client.ts';
+import { newGame } from '../hanyi/game.ts';
+import { newMeta, perkOpen, recordRun, winterOpen } from '../hanyi/meta.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -40,6 +42,7 @@ function brains(world: World, session: CampSession) {
   }
   return out;
 }
+
 
 describe('寒驿 · 工程身份', () => {
   it('forge.json 的两个根分别指向营地插件和界面插件', async () => {
@@ -373,5 +376,36 @@ describe('寒驿 · 记忆、心路和人与人之间的故事', () => {
     expect(EVENTS.peace_ma_su.bind!(s, rng)).toBeNull();
     s.day = 8;
     expect(EVENTS.peace_ma_su.bind!(s, rng)).toEqual({ actors: ['ma', 'su'] });
+  });
+});
+
+describe('寒驿 · 局外成长', () => {
+  it('一局结束只记一次账：薪火、图鉴、解锁更冷的寒冬', () => {
+    const s = newGame(77, { winter: 1, perk: 'rice' });
+    expect(s.res.food).toBe(21);
+    s.phase = 'ending';
+    s.ending = { kind: 'rescued', day: 18 };
+    s.fired.blizzard = 7;
+    s.flags.sitAll = 'deer,cold';
+    const m = newMeta();
+    const r = recordRun(m, s)!;
+    expect(r.score.total).toBeGreaterThanOrEqual(5 * 20);
+    expect(m.ember).toBe(r.gained);
+    expect(m.cleared).toBe(1);
+    expect(r.unlocks).toContain('寒冬 2 级「大寒」');
+    expect(m.sits).toEqual(['deer', 'cold']);
+    expect(m.fates.length).toBe(5);
+    expect(recordRun(m, s)).toBeNull();
+    expect(m.runs).toBe(1);
+  });
+
+  it('寒冬越冷开局越紧，行囊在开局生效', () => {
+    const a = newGame(5, { winter: 1 });
+    const b = newGame(5, { winter: 5, perk: 'radio' });
+    expect(b.res.food).toBe(a.res.food - 8);
+    expect(b.temp).toBeLessThan(a.temp);
+    expect(b.flags.radioUnlocked).toBe(true);
+    expect(perkOpen(newMeta(), 'gun')).toBe(false);
+    expect(winterOpen(newMeta(), 2)).toBe(false);
   });
 });

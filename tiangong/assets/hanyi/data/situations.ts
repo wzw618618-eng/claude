@@ -128,6 +128,8 @@ export function pickToday(s: GameState, rng: Rng) {
   const hit = cands.find((x) => (r -= x.d.weight) <= 0) ?? cands[cands.length - 1];
   s.today = { id: hit.d.id, actors: hit.a };
   s.flags.todaySeen = [...seen, hit.d.id].slice(-6).join(',');
+  const all = String(s.flags.sitAll ?? '').split(',').filter(Boolean);
+  if (!all.includes(hit.d.id)) s.flags.sitAll = [...all, hit.d.id].join(',');
   hit.d.start?.(s);
 }
 

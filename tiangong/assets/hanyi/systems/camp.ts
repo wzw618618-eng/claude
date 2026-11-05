@@ -7,6 +7,7 @@ import {
 } from '../core/world';
 import { PAIR_SCENES } from '../data/characters';
 import { BUILDINGS, LAST_DAY } from '../data/rules';
+import { coldOf } from '../data/perks';
 import { Ctx } from '../core/engine';
 
 export const socialPlugin: Plugin = {
@@ -194,7 +195,7 @@ export const weatherPlugin: Plugin = {
       s.flags.lastStorm = s.day;
     }
     const off = w.kind === 'blizzard' ? -6 : w.kind === 'snow' ? -2 : 0;
-    s.temp = clamp(baseTemp(s.day) + off + rng.int(-1, 1), -40, 0);
+    s.temp = clamp(baseTemp(s.day) + off + rng.int(-1, 1) - coldOf(s.winter), -40, 0);
   },
 };
 

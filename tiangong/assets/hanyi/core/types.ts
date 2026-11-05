@@ -108,4 +108,7 @@ export interface GameState {
   today?: { id: string; actors: string[] } | null;
   /** 今晚陪着坐过的人 */
   sat?: string[];
+  /** 寒冬等级（1 最暖）和开局带的行囊 */
+  winter?: number;
+  perk?: string;
 }

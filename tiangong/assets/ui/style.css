@@ -646,3 +646,59 @@ button.task-btn:hover { border-color: var(--dim); }
 .topics button i { font-style: normal; margin-left: 4px; font-size: 12px; }
 .topics button.like i { color: var(--good); }
 .topics button.dislike i { color: var(--bad); }
+
+/* ───────── 局外成长：薪火、出发、图鉴、成绩单 ───────── */
+.meta-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 0; }
+.meta-strip div, .album-parts div { background: color-mix(in srgb, var(--ink-2) 80%, transparent); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 6px; text-align: center; }
+.meta-strip small, .album-parts small { display: block; font-size: 11px; color: var(--dim); letter-spacing: 0.08em; }
+.meta-strip b, .album-parts b { font-size: 17px; color: var(--paper); font-variant-numeric: tabular-nums; }
+.next-perk { margin: 8px 0 0; font-size: 13px; color: var(--frost); }
+.next-perk p { margin: 0 0 6px; }
+.next-perk b { color: var(--ember); }
+.bar-track { height: 6px; border-radius: 3px; background: var(--ink-3); overflow: hidden; }
+.bar-track i { display: block; height: 100%; background: var(--ember); border-radius: 3px; }
+.title .setup-h { font-family: var(--font-display); font-weight: 400; font-size: 34px; line-height: 1.2; color: var(--paper); margin: 8px 0 4px; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6); }
+.winters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.win, .perk { border: 1px solid var(--rule); border-radius: 10px; background: var(--ink-2); padding: 8px 6px; text-align: center; color: var(--snow); }
+.win b { display: block; font-size: 20px; }
+.win small, .perk small { display: block; font-size: 11.5px; color: var(--dim); line-height: 1.4; }
+.win.on, .perk.on { border-color: var(--ember); background: var(--ember-soft); }
+.win:disabled, .perk.locked { opacity: 0.45; }
+.perks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.perk { text-align: left; padding: 10px; }
+.perk b { display: block; font-size: 14.5px; margin-bottom: 2px; }
+.album-parts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.album-parts b { font-size: 14px; }
+.album-fates, .achs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.album-fates > li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: start; border: 1px solid var(--rule); border-radius: 12px; padding: 10px; background: var(--ink-2); }
+.album-fates .pt { width: 52px; height: 52px; border-radius: 10px; }
+.album-fates .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.chip.unseen { color: var(--dim); border-style: dashed; }
+.album-fates .path { margin: 0; font-size: 12.5px; color: var(--dim); line-height: 1.6; }
+.album-fates .path .got { color: var(--paper); }
+.achs li { border: 1px dashed var(--rule); border-radius: 10px; padding: 8px 10px; color: var(--dim); }
+.achs li b { display: block; font-size: 14px; }
+.achs li small { font-size: 12px; }
+.achs li.got { border-style: solid; border-color: color-mix(in srgb, var(--ember) 55%, transparent); color: var(--snow); }
+.achs li.got b { color: var(--ember); }
+.run { border: 1px solid color-mix(in srgb, var(--ember) 45%, transparent); border-radius: 14px; padding: 14px; background: color-mix(in srgb, var(--ink-2) 90%, transparent); display: grid; gap: 8px; margin: 12px 0; }
+.run-head { display: flex; align-items: center; gap: 14px; }
+.run-head b { font-size: 34px; color: var(--paper); font-variant-numeric: tabular-nums; line-height: 1; }
+.run-head small { display: block; color: var(--frost); font-size: 12.5px; }
+.grade { width: 58px; height: 58px; border-radius: 14px; display: grid; place-items: center; font-family: var(--font-display); font-size: 38px; color: var(--ember-ink); background: var(--frost); }
+.grade.g-S { background: var(--ember); box-shadow: 0 0 24px color-mix(in srgb, var(--ember) 60%, transparent); }
+.grade.g-A { background: var(--warn); }
+.grade.g-B { background: var(--good); }
+.run-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13.5px; color: var(--frost); }
+.run-lines li { display: flex; justify-content: space-between; }
+.run-lines b { color: var(--snow); font-variant-numeric: tabular-nums; }
+.run-ember { margin: 0; font-size: 14px; }
+.run-ember b { color: var(--ember); font-size: 17px; }
+.run-new { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.run-new li { border-radius: 10px; padding: 8px 10px; background: var(--ember-soft); color: var(--paper); font-size: 14px; }
+.run-new li small { display: block; color: var(--frost); font-size: 12px; }
+.run-new li.unlock { background: color-mix(in srgb, var(--good) 18%, transparent); }
+.title .wrap.menu { padding-block: max(28px, env(safe-area-inset-top)) 40px; gap: 14px; }
+.title .wrap.menu .sec, .title .wrap.menu > .mini { color: var(--frost); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
+.win.on, .perk.on { background: color-mix(in srgb, var(--ember) 24%, var(--ink-2)); }
+.album-fates .path { display: block; } .album-fates .path span { display: inline; }

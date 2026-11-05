@@ -85,7 +85,7 @@ export class CampSession {
     const s = this.s;
     let outcome: { title: string; text: string } | null = null;
     switch (a.type) {
-      case 'new': this.s = newGame(); this.focus = null; break;
+      case 'new': this.s = newGame(undefined, { winter: a.winter, perk: a.perk }); this.focus = null; break;
       case 'endDay': endDay(s); break;
       case 'toNight': toNight(s); break;
       case 'endNight': endNight(s); this.focus = null; break;

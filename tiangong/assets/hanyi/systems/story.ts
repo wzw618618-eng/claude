@@ -42,7 +42,7 @@ export const storyPlugin: Plugin = {
     if (!A.length) return;
     const guards = A.filter((c) => c.task === 'guard' && !blocked(s, c, 'guard'));
     ctx.tmp.noGuard = guards.length === 0;
-    const power = guards.reduce((t, c) => t + guardPower(c), 0);
+    const power = guards.reduce((t, c) => t + guardPower(c), 0) + (guards.length && s.perk === 'gun' ? 1 : 0);
     const tower = s.built.includes('tower');
 
     // 狼群
