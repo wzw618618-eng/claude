@@ -18,11 +18,13 @@ import {
   NpcBrain,
 } from '@forgeax/engine/npc';
 import type { ChatLine, Npc, PlaceId, World } from '../game/core/types.ts';
-import { lifeLeft, ME, newWorld, nm, placeName, realmText, type RootId } from '../game/core/world.ts';
+import { lifeLeft, ME, newWorld, nm, type OriginId, placeName, realmText, rollBirth, type RootId } from '../game/core/world.ts';
+import { upgrade } from '../game/core/save.ts';
 import { goalText } from '../game/mind/goals.ts';
 import { describe, feel } from '../game/mind/memory.ts';
 import { bondScore, isMode, MODES, type Mode, type Tier, tierOf, tierText } from '../game/mind/bond.ts';
-import { buy, choose, doMain, endTurn, moveTo, retreat, type SocialKind, useItem } from '../game/player.ts';
+import { buy, choose, doMain, endTurn, moveTo, retreat, sell, type SocialKind, useItem } from '../game/player.ts';
+import { openWorld } from '../game/systems/year.ts';
 import { acceptDecision, applyDecision, buildDecidePrompt, whoDecides, yearChoices } from '../game/ai/decide.ts';
 import { type Ask, DEPTH, type Think } from '../game/ai/prompts.ts';
 import {
@@ -78,7 +80,7 @@ export class WorldSession {
   /** 今年 NPC 自己发起了几次 AI 请求 */
   private spent = { key: '', n: 0 };
 
-  constructor(private readonly out: (m: ToHost) => void, seed?: number, opts?: { name?: string; root?: RootId; gender?: 'm' | 'f' }) {
+  constructor(private readonly out: (m: ToHost) => void, seed?: number, opts?: { name?: string; root?: RootId; gender?: 'm' | 'f'; origin?: OriginId }) {
     this.w = newWorld(seed, opts);
   }
 
@@ -132,7 +134,13 @@ export class WorldSession {
     const year = w.year;
     let outcome: string | null = null;
     switch (a.type) {
-      case 'new': this.reset(newWorld(a.seed, { name: a.name, root: a.root, gender: a.gender })); break;
+      case 'new': {
+        // 灵根、五行、出身由天定；只有测试会指定
+        const seed = a.seed ?? ((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+        const birth = rollBirth(seed);
+        this.reset(openWorld(newWorld(seed, { name: a.name, gender: a.gender, root: a.root ?? birth.root, origin: a.origin ?? birth.origin, el: a.root ? undefined : birth.el })));
+        break;
+      }
       case 'move':
         if (moveTo(w, a.place)) {
           this.focus = null;
@@ -141,11 +149,20 @@ export class WorldSession {
         break;
       case 'main': outcome = doMain(w, a.act) || null; break;
       case 'buy': outcome = buy(w, a.item); break;
+      case 'sell': outcome = sell(w, a.item) || null; break;
       case 'use': outcome = useItem(w, a.item) || null; break;
       case 'choose': outcome = choose(w, a.i) || null; break;
       case 'offer': outcome = answerOffer(w, a.accept) || null; break;
       case 'endTurn': this.endYear(); break;
-      case 'retreat': { const n = retreat(w, Math.max(1, Math.min(10, Math.floor(a.years)))); outcome = n ? `闭关${n}年。` : null; break; }
+      case 'retreat': {
+        const before = realmText(w.me), at = placeName(w.me.place);
+        const n = retreat(w, Math.max(1, Math.min(10, Math.floor(a.years))));
+        const after = realmText(w.me);
+        // 说清楚这几年怎么样了：境界有没有变、是不是被人找上门打断了
+        outcome = n ? `在${at}闭关${n}年${before !== after ? `，从${before}修到了${after}` : '，境界没什么变化'}。${w.pending.length ? '有人找上门来，只好出关。' : ''}`
+          : w.pending.length ? '刚要闭关，就有人找上门来。' : null;
+        break;
+      }
     }
     if (this.w.year !== year) {
       this.focus = null;
@@ -162,8 +179,8 @@ export class WorldSession {
     const w = this.w;
     if (w.phase !== 'year') return;
     if (!w.turn.moved) {
-      // 没选地方就留在原地；有人找上门就先处理
-      moveTo(w, w.me.place);
+      // 没选地方就留在原地（只有凶险的地方才会碰上意外）；有人找上门就先处理
+      moveTo(w, w.me.place, { quiet: true });
       if (w.pending.length) { this.voiceEncounters(); return; }
     }
     if (w.pending.length) return;
@@ -289,10 +306,10 @@ export class WorldSession {
     if (this.thinking || !said || !n || !canTalk(w, id)) return;
     // 你先开口了，他的招呼就不用了
     this.cancelWhere((p) => p.kind === 'greet' && p.id === id);
-    const fallback = scriptedTalk(w, n, said);
     startLine(w, id, said);
     const tier = this.tier(n);
     const allow = talkAllow(w, n);
+    const fallback = scriptedTalk(w, n, said, allow);
     const session = this.sessions[id];
     const ask = buildTalkPrompt(w, n, said, allow, { tier, since: session ? this.since(id) : undefined });
     this.focus = id;
@@ -586,12 +603,7 @@ function safeParse(t: string): World | null {
   try {
     const w = JSON.parse(t);
     if (!(w && w.v === 1 && w.people && w.me && w.turn)) return null;
-    // 第 1 阶段的存档没有谈话记录；第 2 阶段的没有旁听
-    w.chat ??= {};
-    w.turn.talk ??= {};
-    w.offer ??= null;
-    w.heard ??= [];
-    return w as World;
+    return upgrade(w as World);
   } catch {
     return null;
   }

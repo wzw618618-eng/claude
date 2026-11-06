@@ -1,7 +1,7 @@
 // 界面（浏览器主线程）与游戏世界（引擎侧）之间的消息协议，走 GameHost.port。
 
 import type { PlaceId, World } from '../game/core/types.ts';
-import type { RootId } from '../game/core/world.ts';
+import type { OriginId, RootId } from '../game/core/world.ts';
 import type { Mode } from '../game/mind/bond.ts';
 import type { MainAct, SocialKind } from '../game/player.ts';
 import type { SoulView } from '../souls/soul-client.ts';
@@ -9,10 +9,11 @@ import type { SoulView } from '../souls/soul-client.ts';
 export const CHANNEL = 'qingming/world';
 
 export type Act =
-  | { type: 'new'; seed?: number; name?: string; root?: RootId; gender?: 'm' | 'f' }
+  | { type: 'new'; seed?: number; name?: string; root?: RootId; gender?: 'm' | 'f'; origin?: OriginId }
   | { type: 'move'; place: PlaceId }
   | { type: 'main'; act: MainAct }
   | { type: 'buy'; item: string }
+  | { type: 'sell'; item: string }
   | { type: 'use'; item: string }
   /** 处理眼前这件找上门的事 */
   | { type: 'choose'; i: number }

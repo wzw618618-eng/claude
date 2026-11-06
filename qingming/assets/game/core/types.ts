@@ -47,6 +47,8 @@ export interface Goal {
   ally?: string;
   since: number;
   done?: 'ok' | 'fail';
+  /** 动手那一步最早在哪一年（让名角的大事别在开局几年就演完） */
+  after?: number;
 }
 
 export interface Mind {
@@ -90,6 +92,8 @@ export interface Being {
   bonus: number;
   master?: string;
   partner?: string;
+  /** 连着冲关失败了几次（越败越有经验） */
+  tries?: number;
 }
 
 export interface Npc extends Being {
@@ -102,7 +106,7 @@ export interface Npc extends Being {
 }
 
 /** 一年的打算：干什么、去哪、为什么；scheme 是谋划手段，target 是冲着谁 */
-export interface Plan { act: string; place: PlaceId; why: string; by: 'rule' | 'ai'; scheme?: string; target?: string; /** AI 正在替他想 */ asking?: boolean }
+export interface Plan { act: string; place: PlaceId; why: string; by: 'rule' | 'ai'; scheme?: string; target?: string; /** AI 正在替他想 */ asking?: boolean; /** 是为了长远目标在奔走（目标瞒着人时，外人看不到这句 why） */ goal?: boolean }
 
 /** 和某人说过的话（按年记，me 是主角，them 是对方，note 是旁白） */
 export interface ChatLine { y: number; from: 'me' | 'them' | 'note'; text: string }
@@ -123,6 +127,9 @@ export interface Heard { y: number; at: PlaceId; a: string; b: string; lines: { 
 export interface Encounter { id: string; kind: string; who: string; vars: Record<string, string | number> }
 
 export interface Sect { id: SectId; name: string; master: string }
+
+export type RootId = 'heaven' | 'dual' | 'mixed';
+export type OriginId = 'wild' | 'mo' | 'hua' | 'ledger' | 'outcast' | 'servant';
 
 export interface World {
   v: 1;
@@ -152,4 +159,13 @@ export interface World {
   /** 主角的经历（写小传用） */
   life: News[];
   nextId: number;
+  /** 存档的修订号：读旧档时按它补字段、修旧数据（见 save.ts） */
+  rev?: number;
+  /** 名声：帮村民、行医、讲道、揭发、镇守攒下的 */
+  fame?: number;
+  /** 开局选的灵根和出身 */
+  root?: RootId;
+  origin?: OriginId;
+  /** 灵根的五行：天灵根一种，双灵根两种，杂灵根三到五种（「火」「木水」「金木土」） */
+  rootEl?: string;
 }

@@ -290,6 +290,8 @@
 .acts-row { display: flex; flex-direction: column; gap: 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chips button { border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13.5px; background: var(--card); }
+.chips button small { margin-left: 5px; font-size: 11.5px; }
+.chips button:disabled small { color: var(--cinnabar); }
 
 /* 对话 */
 .chat-sheet { display: flex; flex-direction: column; height: 88vh; }
@@ -362,3 +364,48 @@
   .scrim:not(.center) { align-items: center; }
   .sheet { border-radius: 16px; }
 }
+
+/* ───── 教学 ───── */
+.coach {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--dock) + 12px + env(safe-area-inset-bottom, 0px));
+  width: min(calc(100% - 24px), 520px); padding: 12px 14px; border-radius: var(--r);
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 0 0 1.5px var(--cinnabar);
+  animation: coach-in 0.3s ease-out;
+}
+.coach h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font-family: var(--font-brush); font-size: 20px; font-weight: 400; }
+.coach h3 small { font-family: var(--font-serif); font-size: 11px; color: var(--faint); }
+.coach p { margin: 0; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
+.coach .row { display: flex; gap: 8px; margin-top: 10px; }
+.coach .row button { flex: 0 0 auto; }
+.coach.still { animation: none; }
+@keyframes coach-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.coach-target { outline: 2px solid var(--cinnabar); outline-offset: 3px; border-radius: var(--r); animation: coach-pulse 1.4s ease-in-out infinite; }
+@keyframes coach-pulse { 0%, 100% { outline-color: var(--cinnabar); } 50% { outline-color: var(--cinnabar-soft); } }
+/* 声音开关：一个小印 */
+.qm .snd { flex: 0 0 auto; width: 32px; height: 32px; padding: 0; border-radius: 50%; font-family: var(--font-brush); font-size: 17px; line-height: 1; color: var(--cinnabar); border: 1.5px solid var(--cinnabar); background: transparent; }
+.qm .snd.off { color: var(--faint); border-color: var(--line); }
+.title h3 { margin: 14px 0 6px; font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.roots.origins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.origin-desc { margin: 8px 2px 4px; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+
+/* ───── 开局：身世和测灵根 ───── */
+.title .fate { text-align: center; margin: 4px 0 12px; }
+.birth p { margin-top: 10px; line-height: 1.8; color: var(--ink); }
+.birth .stone {
+  width: 120px; height: 84px; margin: 16px auto 4px; border-radius: 48% 52% 46% 54% / 56% 50% 50% 44%;
+  background: radial-gradient(70% 60% at 40% 35%, color-mix(in srgb, var(--ink) 18%, var(--paper)), color-mix(in srgb, var(--ink) 38%, var(--paper)));
+  display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: inset 0 -6px 12px rgba(0, 0, 0, 0.18);
+}
+.birth .el { width: 14px; height: 14px; border-radius: 50%; animation: qm-glow 2.4s ease-in-out infinite; }
+.birth .el:nth-child(2) { animation-delay: 0.3s; } .birth .el:nth-child(3) { animation-delay: 0.6s; }
+.birth .el:nth-child(4) { animation-delay: 0.9s; } .birth .el:nth-child(5) { animation-delay: 1.2s; }
+.el-0 { --g: #efe6c4; } .el-1 { --g: #4f9a6a; } .el-2 { --g: #3d6fa8; } .el-3 { --g: #cf4a30; } .el-4 { --g: #c09336; }
+.birth .el { background: var(--g); box-shadow: 0 0 10px 3px var(--g); }
+@keyframes qm-glow { 50% { box-shadow: 0 0 18px 7px var(--g); } }
+.birth .verdict { text-align: center; color: var(--cinnabar); margin: 6px 0 10px; display: flex; flex-direction: column; align-items: center; }
+.birth .verdict b { font-size: 34px; font-weight: 400; line-height: 1.2; }
+.birth .verdict small { color: var(--ink-2); font-size: 14px; letter-spacing: 0.2em; }
+.birth .facts { margin: 4px 0 16px; }
+.stats dd small { display: block; }

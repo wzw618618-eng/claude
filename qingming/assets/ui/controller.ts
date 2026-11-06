@@ -4,7 +4,6 @@
 // - 托管 AI 提供方：密钥只在这一侧，经引擎的 Intelligence 端口桥接给游戏世界，顺带记账。
 
 import type { PlaceId, World } from '../game/core/types.ts';
-import type { RootId } from '../game/core/world.ts';
 import { isMode, type Mode } from '../game/mind/bond.ts';
 import type { MainAct, SocialKind } from '../game/player.ts';
 import { type AiConfig, loadConfig, providerFor, saveConfig } from '../souls/config.ts';
@@ -13,9 +12,14 @@ import { createMeter, totalsText } from '../souls/meter.ts';
 import type { SoulView } from '../souls/soul-client.ts';
 import { type Act, type AiView, CHANNEL, type ToEngine, type ToHost } from '../world/protocol.ts';
 import css from './style.css?raw';
+import { CUE_FOR_ACT, createSound } from './audio.ts';
 import { type AiKind, type Model, newUI, screen, type Sheet, type Tab, type UI } from './view.ts';
 
 const SAVE_KEY = 'qingming.save.v1';
+const TIPS_KEY = 'qingming.tips.v1';
+const SOUND_KEY = 'qingming.sound.v1';
+/** 第一年那四步教学 */
+const FIRST_TIPS = ['where', 'main', 'people', 'end'];
 const FONTS = 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap';
 
 export interface QingmingHost {
@@ -63,6 +67,11 @@ export function mountQingming(host: QingmingHost) {
   let refocus = false;
   const ui: UI = newUI();
   ui.hasSave = !!playable(read(SAVE_KEY));
+  ui.tips = (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]') as string[]; } catch { return []; } })();
+  const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
+  const sound = createSound(win, { muted: read(SOUND_KEY) === 'off' });
+  ui.sound = !sound.muted;
+  const sceneOf = () => sound.scene({ phase: ui.screen !== 'game' || !w ? 'title' : w.phase === 'ending' ? 'ending' : 'year', place: w?.me.place ?? null });
   const syncSettings = () => {
     ui.settings = { kind: cfg.kind, hasKey: !!cfg.apiKey, model: cfg.model, mode: cfg.mode, claude: !!sample };
   };
@@ -84,6 +93,7 @@ export function mountQingming(host: QingmingHost) {
 
   const sheetKey = (s: Sheet | null) => (s ? `${s.kind}:${'id' in s ? s.id : ''}` : '');
   let lastSheet = '';
+  let lastTip = '';
   let lastLog = 0;
 
   const render = (opts: { top?: boolean } = {}) => {
@@ -121,6 +131,20 @@ export function mountQingming(host: QingmingHost) {
       if ((hadFocus || refocus) && !box.disabled) { box.focus(); refocus = false; }
     }
     lastSheet = key;
+    // 教学提示指着的地方，描一圈朱红
+    const tip = app.querySelector<HTMLElement>('.coach');
+    const target = tip?.dataset.target ? app.querySelector<HTMLElement>(tip.dataset.target) : null;
+    target?.classList.add('coach-target');
+    // 新的提示：它指着的地方要是被顶栏或提示卡挡住，滚到两者之间
+    if (tip && target && tip.dataset.tip !== lastTip && !target.closest('.dock')) {
+      const head = app.querySelector('.top')?.getBoundingClientRect().bottom ?? 0;
+      const r = target.getBoundingClientRect();
+      if (r.top < head || r.top > tip.getBoundingClientRect().top - 40) shell.scrollTop += r.top - head - 12;
+    }
+    // 同一条提示重画时不再从头淡入
+    if (tip && tip.dataset.tip === lastTip) tip.classList.add('still');
+    lastTip = tip?.dataset.tip ?? '';
+    sceneOf();
   };
 
   // ───────────── 来自游戏世界 ─────────────
@@ -136,10 +160,25 @@ export function mountQingming(host: QingmingHost) {
     const prev = w;
     let top = false;
     w = m.world;
+    // 声音跟着世界走：有人找上门、破境、知道了秘密、过年、结局
+    if (prev && prev.seed === w.seed && ui.screen === 'game') {
+      if (w.phase === 'ending' && prev.phase !== 'ending') sound.play(w.ending?.kind === 'ascend' ? 'good' : 'bad');
+      else if (w.year > prev.year) sound.play('year');
+      else if (w.pending.length && w.pending[0].id !== prev.pending[0]?.id) sound.play('event');
+      else if (w.me.realm > prev.me.realm) sound.play('good');
+      else if (w.knows.length > prev.knows.length) sound.play('secret');
+      else if (w.me.hp < prev.me.hp - 15) sound.play('clash');
+    }
     ai = m.ai;
     souls = m.souls;
     if (!ai.thinking) ui.stream = null;
     if (prev && prev.seed !== w.seed) meter.resetGame();
+    // 新的一局到了：先看身世
+    if (ui.awaitBirth && (!prev || prev.seed !== w.seed)) {
+      ui.awaitBirth = false;
+      ui.sheet = { kind: 'birth' };
+      top = true;
+    }
     // 这一句的结果已经写进谈话记录了，对话开着就不再弹纸条
     if (m.outcome && ui.sheet?.kind !== 'chat') ui.outcome = m.outcome;
     // 过了年（或者闭关了几年）：翻一页，看看这些年发生了什么
@@ -190,7 +229,13 @@ export function mountQingming(host: QingmingHost) {
     const v = el.dataset.v ?? '';
     const arg = el.dataset.arg ?? '';
     let top = false;
+    sound.unlock();
+    sound.play(CUE_FOR_ACT[a] ?? 'tap');
     switch (a) {
+      case 'tip': if (!ui.tips.includes(v)) ui.tips.push(v); saveTips(); break;
+      case 'tip-skip': ui.tips = [...new Set([...ui.tips, ...FIRST_TIPS])]; saveTips(); break;
+      case 'tip-reset': ui.tips = []; saveTips(); ui.sheet = null; ui.tab = 'here'; top = true; break;
+      case 'sound': sound.setMuted(!sound.muted); ui.sound = !sound.muted; write(SOUND_KEY, sound.muted ? 'off' : 'on'); break;
       case 'continue': ui.screen = 'game'; ui.tab = 'here'; ui.sheet = null; top = true; break;
       case 'go-title': ui.screen = 'title'; ui.sheet = null; ui.outcome = null; focus(null); top = true; break;
       case 'tab': ui.tab = v as Tab; ui.sheet = null; ui.confirmEnd = false; top = true; break;
@@ -209,6 +254,7 @@ export function mountQingming(host: QingmingHost) {
       case 'move': act({ type: 'move', place: v as PlaceId }); ui.sheet = null; ui.tab = 'here'; top = true; break;
       case 'main': act({ type: 'main', act: v as MainAct }); return;
       case 'buy': act({ type: 'buy', item: v }); return;
+      case 'sell': act({ type: 'sell', item: v }); return;
       case 'use': act({ type: 'use', item: v }); return;
       case 'choose': act({ type: 'choose', i: Number(el.dataset.i) }); return;
       case 'offer': act({ type: 'offer', accept: v === 'yes' }); return;
@@ -254,12 +300,12 @@ export function mountQingming(host: QingmingHost) {
     event.preventDefault();
     const field = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | null)?.value?.trim() ?? '';
     if (kind === 'new') {
-      const root = (form.querySelector<HTMLInputElement>('input[name="root"]:checked')?.value ?? ui.setup.root) as RootId;
       const gender = (form.querySelector<HTMLInputElement>('input[name="gender"]:checked')?.value ?? ui.setup.gender) as 'm' | 'f';
-      ui.setup = { name: field('name'), gender, root };
-      act({ type: 'new', name: ui.setup.name || undefined, gender, root });
+      ui.setup = { name: field('name'), gender };
+      // 灵根和出身由游戏世界投出来；新的一局到了再揭开身世
+      act({ type: 'new', name: ui.setup.name || undefined, gender });
       meter.resetGame();
-      Object.assign(ui, { screen: 'game', tab: 'here', sheet: null, outcome: null, confirmEnd: false, newsFilter: 'all' } satisfies Partial<UI>);
+      Object.assign(ui, { screen: 'game', tab: 'here', sheet: null, outcome: null, confirmEnd: false, newsFilter: 'all', awaitBirth: true } satisfies Partial<UI>);
       render({ top: true });
       return;
     }
@@ -288,8 +334,7 @@ export function mountQingming(host: QingmingHost) {
   const onChange = (event: Event) => {
     const t = event.target as HTMLInputElement;
     if (!t.closest('form[data-form="new"]')) return;
-    if (t.name === 'root') ui.setup.root = t.value as RootId;
-    else if (t.name === 'gender') ui.setup.gender = t.value as 'm' | 'f';
+    if (t.name === 'gender') ui.setup.gender = t.value as 'm' | 'f';
     else return;
     render();
   };
@@ -338,6 +383,7 @@ export function mountQingming(host: QingmingHost) {
       app.removeEventListener('input', onInput);
       app.removeEventListener('keydown', onKey);
       offMeter();
+      sound.dispose();
       void link?.close();
       shell.remove();
     },

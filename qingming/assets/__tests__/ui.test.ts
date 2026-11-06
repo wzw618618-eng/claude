@@ -20,16 +20,18 @@ function model(seed = 7, tweak: (s: WorldSession) => void = () => undefined, ui:
 const arrive = (s: WorldSession, place: 'village' | 'market' | 'qinglan') => { moveTo(s.w, place); s.w.pending = []; };
 
 /** controller.ts 认得的动作 */
-const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'person', 'chat', 'place', 'move', 'main', 'buy', 'use', 'choose', 'offer', 'social', 'end', 'end-yes', 'end-no', 'retreat', 'news', 'ai-kind', 'mode']);
+const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'person', 'chat', 'place', 'move', 'main', 'buy', 'sell', 'use', 'choose', 'offer', 'social', 'end', 'end-yes', 'end-no', 'retreat', 'news', 'ai-kind', 'mode', 'tip', 'tip-skip', 'tip-reset', 'sound']);
 const acts = (html: string) => [...html.matchAll(/data-act="([^"]+)"/g)].map((m) => m[1]);
 
 describe('正式界面', () => {
-  it('开局：起名、选性别和灵根；有存档时可以接着玩', () => {
+  it('开局：只起名、选性别，灵根和出身由天定；有存档时可以接着玩', () => {
     const m = model(1, () => undefined, { screen: 'title', hasSave: false });
     const html = screen(m);
     expect(html).toContain('青冥录');
     expect(html).toContain('data-form="new"');
-    expect(html).toContain('天灵根');
+    expect(html).toContain('name="gender"');
+    expect(html).not.toContain('name="root"');
+    expect(html).not.toContain('name="origin"');
     expect(html).not.toContain('接着走下去');
     expect(screen({ ...m, ui: { ...m.ui, hasSave: true } })).toContain('接着走下去');
   });
@@ -91,7 +93,9 @@ describe('正式界面', () => {
     const html = screen({ ...m, souls: m.s.souls.view() });
     expect(html).toContain('相熟');
     expect(html).toContain('「你这孩子嘴笨心实。」');
-    expect(html).toContain('见面主动开口');
+    // 离线时不讲 AI 能做的事；接上 AI 才讲
+    expect(html).not.toContain('见面主动开口');
+    expect(screen({ ...m, souls: m.s.souls.view(), ai: { ...m.ai!, online: true } })).toContain('见面主动开口');
     expect(html).toContain('data-act="social"');
     expect(html).toContain('说出一个秘密');
     const far = screen({ ...m, ui: { ...m.ui, sheet: { kind: 'person', id: 'wen' } } });
@@ -155,6 +159,7 @@ describe('正式界面', () => {
       screen(model(12)),
       screen(model(12, (s) => arrive(s, 'village'))),
       screen(model(12, (s) => arrive(s, 'market'), { sheet: { kind: 'person', id: 'liu' } })),
+      screen(model(12, (s) => { s.w.me.items.push('pill', 'life'); arrive(s, 'market'); })),
       screen(model(12, (s) => arrive(s, 'village'), { sheet: { kind: 'chat', id: 'hua' } })),
       screen(model(12, () => undefined, { sheet: { kind: 'settings' } })),
       screen(model(12, () => undefined, { sheet: { kind: 'retreat' } })),
@@ -163,6 +168,32 @@ describe('正式界面', () => {
       ...(['map', 'people', 'news', 'self'] as const).map((tab) => screen(model(12, (s) => arrive(s, 'village'), { tab }))),
     ];
     for (const a of htmls.flatMap(acts)) expect(KNOWN, a).toContain(a);
+  });
+
+  it('第一年一步步带着走：先选地方，再做主事；看过的不再出现', () => {
+    const first = screen(model(14));
+    expect(first).toContain('data-tip="where"');
+    const moved = screen(model(14, (s) => arrive(s, 'village')));
+    expect(moved).toContain('data-tip="main"');
+    const seen = screen(model(14, (s) => arrive(s, 'village'), { tips: ['where', 'main', 'people', 'end'] }));
+    expect(seen).not.toContain('class="coach"');
+    const settings = screen(model(14, () => undefined, { sheet: { kind: 'settings' }, sound: true }));
+    expect(settings).toContain('重新看一遍教学');
+    expect(settings).toContain('声音：开');
+  });
+
+  it('开局揭开身世和测灵根；途中碰上的事没有来人；当了宗主自身页写宗主', () => {
+    const t = screen(model(13, (s) => s.act({ type: 'new', seed: 1234, name: '林舟' }), { sheet: { kind: 'birth' } }));
+    expect(t).toContain('身世');
+    expect(t).toContain('测灵石');
+    expect(t).toMatch(/[天双杂]灵根<\/b><small>[金木水火土 ·]+<\/small>/);
+    expect(t).toContain('踏上修行路');
+    const ev = screen(model(13, (s) => { s.w.turn.moved = true; s.w.pending = [{ id: 'event:f_herb', kind: 'event', who: '', vars: { ev: 'f_herb' } }]; }));
+    expect(ev).toContain('途中');
+    expect(ev).toContain('老松下的灵芝');
+    const self = screen(model(13, (s) => { s.w.me.sect = 'qinglan'; s.w.sects.qinglan.master = ME; }, { tab: 'self' }));
+    expect(self).toContain('青岚宗宗主');
+    expect(self).toContain('名声');
   });
 
   it('印章：两个字的名字照写，三个字取后两个', () => {

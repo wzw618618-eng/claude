@@ -24,7 +24,7 @@ export const POWER = [1, 3, 9, 27, 81];
 /** 每升一个小境界要的修为 */
 export const stageCost = (realm: number) => Math.round(100 * 2.6 ** realm);
 /** 冲击下一个大境界的基础成功率 */
-export const BREAK = [0.55, 0.4, 0.28, 0.18];
+export const BREAK = [0.55, 0.4, 0.28, 0.16];
 /** 一年修炼的基础修为 */
 export const YEAR_EXP = 40;
 
@@ -51,5 +51,8 @@ export const ITEMS: Record<string, ItemDef> = {
   sword: { name: '玄冥剑', desc: '上古修士的佩剑，战力 ×1.5。', price: 0, unique: true },
   letter: { name: '云鹤遗书', desc: '一封压在白骨下面的信，写着三十年前洞府里发生的事。', price: 0, unique: true },
 };
+
+/** 有人上门求购你身上的东西时出的价 */
+export const BID: Record<string, number> = { sword: 300, life: 250, letter: 300 };
 
 export const ZERO_VALUES: Values = { power: 0.5, wealth: 0.3, love: 0.3, loyalty: 0.3, justice: 0.3 };

@@ -258,7 +258,8 @@ describe('不为过时的事花钱', () => {
     expect(of(seen, 'decide').length).toBeGreaterThan(0);
     expect(provider.activeCount).toBeGreaterThan(0);
     expect(s.waiting).toBeGreaterThan(0);
-    s.act({ type: 'new', seed: 9 });
+    // 山野无名开局没有熟人，新的一局不会马上有人想事
+    s.act({ type: 'new', seed: 9, root: 'dual', origin: 'wild' });
     expect(s.waiting).toBe(0);
     expect(provider.activeCount).toBe(0);
 
