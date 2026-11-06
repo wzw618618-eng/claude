@@ -4,7 +4,7 @@
 // - 托管 AI 提供方：密钥只在这一侧，经引擎的 Intelligence 端口桥接给游戏世界，顺带记账。
 
 import type { PlaceId, World } from '../game/core/types.ts';
-import type { RootId } from '../game/core/world.ts';
+import type { OriginId, RootId } from '../game/core/world.ts';
 import { isMode, type Mode } from '../game/mind/bond.ts';
 import type { MainAct, SocialKind } from '../game/player.ts';
 import { type AiConfig, loadConfig, providerFor, saveConfig } from '../souls/config.ts';
@@ -209,6 +209,7 @@ export function mountQingming(host: QingmingHost) {
       case 'move': act({ type: 'move', place: v as PlaceId }); ui.sheet = null; ui.tab = 'here'; top = true; break;
       case 'main': act({ type: 'main', act: v as MainAct }); return;
       case 'buy': act({ type: 'buy', item: v }); return;
+      case 'sell': act({ type: 'sell', item: v }); return;
       case 'use': act({ type: 'use', item: v }); return;
       case 'choose': act({ type: 'choose', i: Number(el.dataset.i) }); return;
       case 'offer': act({ type: 'offer', accept: v === 'yes' }); return;
@@ -256,8 +257,9 @@ export function mountQingming(host: QingmingHost) {
     if (kind === 'new') {
       const root = (form.querySelector<HTMLInputElement>('input[name="root"]:checked')?.value ?? ui.setup.root) as RootId;
       const gender = (form.querySelector<HTMLInputElement>('input[name="gender"]:checked')?.value ?? ui.setup.gender) as 'm' | 'f';
-      ui.setup = { name: field('name'), gender, root };
-      act({ type: 'new', name: ui.setup.name || undefined, gender, root });
+      const origin = (form.querySelector<HTMLInputElement>('input[name="origin"]:checked')?.value ?? ui.setup.origin) as OriginId;
+      ui.setup = { name: field('name'), gender, root, origin };
+      act({ type: 'new', name: ui.setup.name || undefined, gender, root, origin });
       meter.resetGame();
       Object.assign(ui, { screen: 'game', tab: 'here', sheet: null, outcome: null, confirmEnd: false, newsFilter: 'all' } satisfies Partial<UI>);
       render({ top: true });
@@ -289,6 +291,7 @@ export function mountQingming(host: QingmingHost) {
     const t = event.target as HTMLInputElement;
     if (!t.closest('form[data-form="new"]')) return;
     if (t.name === 'root') ui.setup.root = t.value as RootId;
+    else if (t.name === 'origin') ui.setup.origin = t.value as OriginId;
     else if (t.name === 'gender') ui.setup.gender = t.value as 'm' | 'f';
     else return;
     render();

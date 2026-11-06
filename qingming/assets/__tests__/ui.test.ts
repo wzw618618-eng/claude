@@ -20,7 +20,7 @@ function model(seed = 7, tweak: (s: WorldSession) => void = () => undefined, ui:
 const arrive = (s: WorldSession, place: 'village' | 'market' | 'qinglan') => { moveTo(s.w, place); s.w.pending = []; };
 
 /** controller.ts 认得的动作 */
-const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'person', 'chat', 'place', 'move', 'main', 'buy', 'use', 'choose', 'offer', 'social', 'end', 'end-yes', 'end-no', 'retreat', 'news', 'ai-kind', 'mode']);
+const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'person', 'chat', 'place', 'move', 'main', 'buy', 'sell', 'use', 'choose', 'offer', 'social', 'end', 'end-yes', 'end-no', 'retreat', 'news', 'ai-kind', 'mode']);
 const acts = (html: string) => [...html.matchAll(/data-act="([^"]+)"/g)].map((m) => m[1]);
 
 describe('正式界面', () => {
@@ -155,6 +155,7 @@ describe('正式界面', () => {
       screen(model(12)),
       screen(model(12, (s) => arrive(s, 'village'))),
       screen(model(12, (s) => arrive(s, 'market'), { sheet: { kind: 'person', id: 'liu' } })),
+      screen(model(12, (s) => { s.w.me.items.push('pill', 'life'); arrive(s, 'market'); })),
       screen(model(12, (s) => arrive(s, 'village'), { sheet: { kind: 'chat', id: 'hua' } })),
       screen(model(12, () => undefined, { sheet: { kind: 'settings' } })),
       screen(model(12, () => undefined, { sheet: { kind: 'retreat' } })),
@@ -163,6 +164,18 @@ describe('正式界面', () => {
       ...(['map', 'people', 'news', 'self'] as const).map((tab) => screen(model(12, (s) => arrive(s, 'village'), { tab }))),
     ];
     for (const a of htmls.flatMap(acts)) expect(KNOWN, a).toContain(a);
+  });
+
+  it('开局能选出身；途中碰上的事没有来人；当了宗主自身页写宗主', () => {
+    const t = screen(model(13, () => undefined, { screen: 'title', hasSave: false }));
+    expect(t).toContain('墨家遗孤');
+    expect(t).toContain('name="origin"');
+    const ev = screen(model(13, (s) => { s.w.turn.moved = true; s.w.pending = [{ id: 'event:f_herb', kind: 'event', who: '', vars: { ev: 'f_herb' } }]; }));
+    expect(ev).toContain('途中');
+    expect(ev).toContain('老松下的灵芝');
+    const self = screen(model(13, (s) => { s.w.me.sect = 'qinglan'; s.w.sects.qinglan.master = ME; }, { tab: 'self' }));
+    expect(self).toContain('青岚宗宗主');
+    expect(self).toContain('名声');
   });
 
   it('印章：两个字的名字照写，三个字取后两个', () => {

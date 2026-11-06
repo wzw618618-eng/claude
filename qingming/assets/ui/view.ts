@@ -3,13 +3,14 @@
 // AI 写的话、玩家起的名字都要转义后才能放进 HTML。
 
 import type { ChatLine, Npc, PlaceId, World } from '../game/core/types.ts';
-import { expNeed, lifeLeft, lifeOf, ME, nm, npcs, placeName, realmText, ROOTS, type RootId } from '../game/core/world.ts';
+import { expNeed, lifeGain, lifeLeft, lifeOf, ME, nm, npcs, ORIGINS, type OriginId, placeName, realmText, ROOTS, type RootId, titleOf } from '../game/core/world.ts';
 import { ITEMS, PLACES, PLACE_ORDER, SECT_NAME, TRAITS } from '../game/data/world-data.ts';
 import { PERSON } from '../game/data/people.ts';
 import { goalText } from '../game/mind/goals.ts';
 import { aboutMe, describe, feel } from '../game/mind/memory.ts';
 import { bondScore, MODES, type Mode, TIER_AT, TIER_NAME } from '../game/mind/bond.ts';
-import { canSocial, mainActs, secretLine, SHOP, type SocialKind, tellables, viewEncounter } from '../game/player.ts';
+import { canSocial, mainActs, mastered, secretLine, sellOffer, SHOP, type SocialKind, tellables, viewEncounter } from '../game/player.ts';
+import { fame, fameTier } from '../game/systems/places.ts';
 import { canTalk, MAX_LINES } from '../game/ai/talk.ts';
 import { heardText } from '../game/ai/souls.ts';
 import type { AiView } from '../world/protocol.ts';
@@ -39,7 +40,7 @@ export interface UI {
   outcome: string | null;
   newsFilter: 'all' | 'big' | 'me' | 'heard';
   /** 开局时填的 */
-  setup: { name: string; gender: 'm' | 'f'; root: RootId };
+  setup: { name: string; gender: 'm' | 'f'; root: RootId; origin: OriginId };
   /** 正在边写边显示的那句话 */
   stream: { id: string; text: string } | null;
   /** 过年前确认一下（主事没做、还能打交道） */
@@ -59,7 +60,7 @@ export interface Model {
 
 export const newUI = (): UI => ({
   screen: 'title', tab: 'here', sheet: null, outcome: null, newsFilter: 'all',
-  setup: { name: '', gender: 'm', root: 'dual' }, stream: null, confirmEnd: false, hasSave: false,
+  setup: { name: '', gender: 'm', root: 'dual', origin: 'wild' }, stream: null, confirmEnd: false, hasSave: false,
   settings: { kind: 'offline', hasKey: false, model: 'deepseek-flash', mode: 'normal', claude: false },
   spend: { game: '还没用过', all: '还没用过', top: [] },
 });
@@ -122,6 +123,9 @@ function titleScreen(m: Model): string {
   const roots = (Object.keys(ROOTS) as RootId[]).map((r) => `<label class="root${ui.setup.root === r ? ' on' : ''}">
       <input type="radio" name="root" value="${r}"${ui.setup.root === r ? ' checked' : ''}><b>${ROOTS[r].name}</b><small>${esc(ROOTS[r].desc)}</small>
     </label>`).join('');
+  const origins = (Object.keys(ORIGINS) as OriginId[]).map((o) => `<label class="root${ui.setup.origin === o ? ' on' : ''}">
+      <input type="radio" name="origin" value="${o}"${ui.setup.origin === o ? ' checked' : ''}><b>${ORIGINS[o].name}</b><small>${esc(ORIGINS[o].desc)}</small>
+    </label>`).join('');
   return `<main class="title">
     <div class="title-ink" aria-hidden="true"></div>
     <h1 class="brush">青冥录</h1>
@@ -134,7 +138,10 @@ function titleScreen(m: Model): string {
         <label class="pill${ui.setup.gender === 'm' ? ' on' : ''}"><input type="radio" name="gender" value="m"${ui.setup.gender === 'm' ? ' checked' : ''}>男</label>
         <label class="pill${ui.setup.gender === 'f' ? ' on' : ''}"><input type="radio" name="gender" value="f"${ui.setup.gender === 'f' ? ' checked' : ''}>女</label>
       </div>
+      <h3>灵根</h3>
       <div class="roots">${roots}</div>
+      <h3>出身</h3>
+      <div class="roots">${origins}</div>
       <button type="submit" class="primary wide">入青冥</button>
     </form>
     <p class="ai-line">${aiLine(m)} · ${btn('AI 设置', 'sheet', { v: 'settings', cls: 'link' })}</p>
@@ -207,7 +214,7 @@ function hereTab(m: Model): string {
   return `<section class="banner">
       <h2 class="brush">${esc(p.name)}</h2>
       <p>${esc(p.desc)}</p>
-      <p class="tags"><span>修炼 ×${p.cultivate}</span>${p.danger >= 0.1 ? '<span class="bad">凶险</span>' : p.danger > 0.02 ? '<span>有些危险</span>' : '<span>太平</span>'}</p>
+      <p class="tags"><span>修炼 ×${p.cultivate}</span>${p.danger >= 0.1 ? '<span class="bad">凶险</span>' : p.danger > 0.02 ? '<span>有些危险</span>' : '<span>太平</span>'}${w.flags.abode === w.me.place ? '<span>你的洞府</span>' : ''}${w.flags.ward === w.me.place ? '<span>你镇守此地</span>' : ''}</p>
     </section>
     ${offer ? `<section class="card offer-bar">${seal(offer.name, tierOf(m, offer).cls)}<p><b>${esc(offer.name)}</b>在等你答复。</p>${btn('去看看', 'chat', { id: offer.id, cls: 'primary' })}</section>` : ''}
     <section class="card acts">
@@ -237,11 +244,14 @@ function endCard(m: Model): string {
 function shopCard(m: Model): string {
   const w = m.w!;
   const stock = Number(w.flags.lifeStock ?? 0);
+  const mine = [...new Set(w.me.items)].map((id) => [id, sellOffer(w, id)] as const).filter(([, o]) => o);
   return `<section class="card shop"><h3>坊市 <small>灵石 ${w.me.stones}</small></h3>
     ${Object.entries(SHOP).map(([id, price]) => {
       const sold = id === 'life' && stock <= 0;
-      return `<div class="ware"><div><b>${ITEMS[id].name}</b><small>${esc(ITEMS[id].desc)}${sold ? '（卖完了）' : ''}</small></div>${btn(`${price} 灵石`, 'buy', { v: id, disabled: sold || w.me.stones < price })}</div>`;
+      const left = id === 'life' && stock > 0 ? `（还剩 ${stock} 颗）` : '';
+      return `<div class="ware"><div><b>${ITEMS[id].name}</b><small>${esc(ITEMS[id].desc)}${sold ? '（卖完了）' : left}</small></div>${btn(`${price} 灵石`, 'buy', { v: id, disabled: sold || w.me.stones < price })}</div>`;
     }).join('')}
+    ${mine.length ? `<h4>卖</h4>${mine.map(([id, o]) => `<div class="ware"><div><b>${ITEMS[id].name}</b><small>${o!.to === 'liu' ? '柳如烟收' : o!.to === 'gone' ? '一位过路的高人收，卖了就再也找不回来' : '铺子收，半价'}</small></div>${btn(`卖 ${o!.price} 灵石`, 'sell', { v: id })}</div>`).join('')}` : ''}
   </section>`;
 }
 
@@ -260,7 +270,7 @@ function personRow(m: Model, n: Npc, here = false): string {
   const w = m.w!;
   const t = tierOf(m, n);
   const plan = n.plan.asking ? '<span class="pulse">正在想今年做什么…</span>' : n.plan.why ? `${esc(n.plan.why)}${n.plan.by === 'ai' ? '<em class="own">自己拿的主意</em>' : ''}` : '';
-  const sect = n.sect ? SECT_NAME[n.sect] : '散修';
+  const sect = n.alive ? titleOf(w, n.id) : n.sect ? SECT_NAME[n.sect] : '散修';
   return `<div class="person">
     <button type="button" class="who" data-act="person" data-id="${n.id}">
       ${seal(n.name, t.cls)}
@@ -331,11 +341,20 @@ function selfTab(m: Model): string {
     if (k.startsWith('goal:')) return n?.mind.goal ? `<li><b>${esc(nm(w, who))}的真实打算</b>${esc(goalText(w, n.mind.goal))}</li>` : '';
     return `<li><b>${esc(nm(w, who))}的秘密</b>${esc(secretLine(w, who))}</li>`;
   }).filter(Boolean);
-  const ties = [me.sect ? `${SECT_NAME[me.sect]}弟子` : '散修', me.master ? `师父：${esc(nm(w, me.master))}` : '', me.partner ? `道侣：${esc(nm(w, me.partner))}` : ''].filter(Boolean);
+  const ties = [titleOf(w, ME), me.master ? `师父：${esc(nm(w, me.master))}` : '', me.partner ? `道侣：${esc(nm(w, me.partner))}` : ''].filter(Boolean);
+  const ds = npcs(w).filter((x) => x.master === ME);
+  const root = w.root ? ROOTS[w.root] : null;
+  const origin = w.origin ? ORIGINS[w.origin] : null;
   return `<section class="card self">
       <div class="self-head">${seal(me.name, 'me', true)}<div><h2>${esc(me.name)}</h2><p>${SEX(me.gender)} · ${me.age}岁 · ${realmText(me)}</p><p>${ties.join(' · ')}</p></div></div>
       <dl class="stats">
-        <div><dt>资质</dt><dd>${me.talent >= 1.4 ? '上佳' : me.talent >= 1.1 ? '不错' : '平平'}（修炼 ×${me.talent}）</dd></div>
+        <div><dt>灵根</dt><dd>${root ? `${root.name}（修炼 ×${me.talent}，${root.perk}）` : `${me.talent >= 1.4 ? '上佳' : me.talent >= 1.1 ? '不错' : '平平'}（修炼 ×${me.talent}）`}</dd></div>
+        ${origin ? `<div><dt>出身</dt><dd>${origin.name}</dd></div>` : ''}
+        <div><dt>名声</dt><dd>${fameTier(w)}（${fame(w)}）</dd></div>
+        ${w.flags.insight ? `<div><dt>悟道</dt><dd>下次冲关把握 +${Math.round(Number(w.flags.insight) * 100)}%</dd></div>` : ''}
+        ${w.flags.abode ? `<div><dt>洞府</dt><dd>${placeName(w.flags.abode as PlaceId)}</dd></div>` : ''}
+        ${w.flags.ward ? `<div><dt>镇守</dt><dd>${placeName(w.flags.ward as PlaceId)}</dd></div>` : ''}
+        ${ds.length ? `<div><dt>徒弟</dt><dd>${ds.map((d) => esc(d.name)).join('、')}</dd></div>` : ''}
         <div><dt>修为</dt><dd>${me.realm < 4 ? `${Math.floor(me.exp)} / ${expNeed(me)}` : '圆满'}</dd></div>
         <div><dt>气血</dt><dd>${me.hp} / 100</dd></div>
         <div><dt>寿元</dt><dd>还剩 ${lifeLeft(me)} 年（上限 ${lifeOf(me)}）</dd></div>
@@ -345,7 +364,7 @@ function selfTab(m: Model): string {
     <section class="card bag"><h3>行囊</h3>
       ${items.length ? items.map((id) => {
         const n = me.items.filter((x) => x === id).length;
-        const use = id === 'heal' ? btn('服下', 'use', { v: id, disabled: me.hp >= 100 }) : id === 'life' ? btn('服下', 'use', { v: id }) : '';
+        const use = id === 'heal' ? btn('服下', 'use', { v: id, disabled: me.hp >= 100 }) : id === 'life' ? btn(lifeGain(me) ? `服下（+${lifeGain(me)}年）` : '已不起作用', 'use', { v: id, disabled: !lifeGain(me) }) : '';
         return `<div class="ware"><div><b>${esc(ITEMS[id]?.name ?? id)}${n > 1 ? ` ×${n}` : ''}</b><small>${esc(ITEMS[id]?.desc ?? '')}</small></div>${use}</div>`;
       }).join('') : '<p class="empty">空空如也。</p>'}
     </section>
@@ -385,6 +404,10 @@ function socialOptions(m: Model, n: Npc): [SocialKind, string][] {
   if (n.sect && !me.sect) out.push(['join', `请他引荐入${SECT_NAME[n.sect]}`]);
   if (g && !g.ally && w.knows.includes(`goal:${n.id}`) && g.target !== ME && ((g.kind === 'revenge' && g.step === 2) || (g.kind === 'treasure' && g.step === 1))) out.push(['ally', '助他一臂之力']);
   if (tellables(w, n.id).length) out.push(['tell', '说出一个秘密…']);
+  if (me.realm >= 2 && n.realm < me.realm && !n.master && me.master !== n.id) out.push(['disciple', '收为弟子']);
+  const ruled = mastered(w);
+  if (ruled && !n.sect) out.push(['admit', `收入${SECT_NAME[ruled]}`]);
+  if (ruled && n.sect === ruled) out.push(['expel', '逐出门墙']);
   return out;
 }
 
@@ -411,7 +434,7 @@ function personSheet(m: Model, id: string): string {
   const souls = soul?.affordances.filter((a) => a.kind === 'soul').map((a) => a.label) ?? [];
   const mems = aboutMe(n).slice(0, 6).map((x) => `<li><b>第${x.y}年</b>${esc(describe(w, x, n.id))}</li>`);
   const traits = n.mind.traits.map((k) => `<span title="${esc(TRAITS[k].desc)}">${TRAITS[k].name}</span>`).join('');
-  return `${sheetHead(`${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em>`, `${SEX(n.gender)} · ${n.age}岁 · ${realmText(n)} · ${n.sect ? SECT_NAME[n.sect] : '散修'}${n.alive ? ` · 在${placeName(n.place)}` : ` · ${esc(n.died?.note ?? '已故')}`}`, seal(n.name, t.cls, true))}
+  return `${sheetHead(`${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em>`, `${SEX(n.gender)} · ${n.age}岁 · ${realmText(n)} · ${n.alive ? titleOf(w, n.id) : n.sect ? SECT_NAME[n.sect] : '散修'}${n.alive ? ` · 在${placeName(n.place)}` : ` · ${esc(n.died?.note ?? '已故')}`}`, seal(n.name, t.cls, true))}
     ${n.mind.heart ? `<blockquote class="heart"><p>「${esc(n.mind.heart)}」</p><cite>心里的你 · 第${n.mind.heartY ?? w.year}年</cite></blockquote>` : ''}
     <section class="opinion">
       <p>对你：<b>${feel(n)}</b></p>
@@ -558,7 +581,7 @@ function encounterModal(m: Model): string {
   const t = n ? tierOf(m, n) : { cls: '', name: '' };
   const voiced = typeof e.vars.say === 'string' && e.vars.say;
   return `<div class="scrim center encounter-scrim"><div class="encounter card" role="dialog" aria-modal="true">
-    <header>${n ? seal(n.name, t.cls, true) : ''}<div><p class="kicker">找上门${w.pending.length > 1 ? ` · 还有 ${w.pending.length - 1} 件` : ''}</p><h2 class="brush">${esc(v.title)}</h2></div></header>
+    <header>${n ? seal(n.name, t.cls, true) : ''}<div><p class="kicker">${n ? '找上门' : '途中'}${w.pending.length > 1 ? ` · 还有 ${w.pending.length - 1} 件` : ''}</p><h2 class="brush">${esc(v.title)}</h2></div></header>
     <p class="speech">${esc(v.text)}</p>
     ${!voiced && m.ai?.online && n ? '<p class="hint pulse">…</p>' : ''}
     <div class="choices">${v.choices.map((c, i) => btn(`<b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}`, 'choose', { i, disabled: c.disabled })).join('')}</div>

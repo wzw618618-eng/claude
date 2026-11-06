@@ -2,9 +2,10 @@
 // 冲着主角来的事（报仇、表白、拉你入伙、翻脸）不在这里自动结算，而是等主角到了地方，变成找上门的事（见 encounters.ts）。
 
 import type { Rng } from '../core/rng';
-import type { Goal, GoalKind, Npc, PlaceId, Plan, World } from '../core/types';
-import { adjust, aff, being, giveItem, has, itemName, lifeLeft, ME, news, nm, npcs, power, takeItem } from '../core/world';
-import { SECT_NAME } from '../data/world-data';
+import type { Being, Goal, GoalKind, Npc, PlaceId, Plan, World } from '../core/types';
+import { adjust, aff, being, extendLife, giveItem, has, itemName, lifeGain, lifeLeft, mark, ME, moveTreasure, news, nm, npcs, power, sweepDead, takeItem } from '../core/world';
+import { PERSON } from '../data/people';
+import { BID, SECT_NAME } from '../data/world-data';
 import { canBreak, fight } from '../systems/body';
 import { remember, witness } from './memory';
 
@@ -39,6 +40,33 @@ export const bestPlace = (n: Npc): PlaceId => (n.sect ? n.sect : 'vein');
 const grow = (w: World, n: Npc, why: string): Want => (canBreak(n) ? { act: 'seclude', place: bestPlace(n), why } : { act: 'cultivate', place: bestPlace(n), why });
 const holderOf = (w: World, item: string) => w.treasure[item];
 
+/** 名角的大事有个最早的年份：之前只做准备，不动手 */
+export const ripe = (w: World, g: Goal) => !g.after || w.year >= g.after;
+
+/** 这个人想从别人手里弄到的东西：夺宝要的宝物，求长生要的延寿丹 */
+export function wantFrom(n: Npc) {
+  const g = n.mind.goal;
+  if (g?.kind === 'treasure') return g.target!;
+  if (g?.kind === 'longevity') return 'life';
+  return '';
+}
+
+/** 到了动手那一步、而且真能动手：仇人还活着；宝物还在洞府里 */
+export function strikeReady(w: World, n: Npc) {
+  const g = n.mind.goal;
+  if (!g) return false;
+  if (g.kind === 'revenge') return g.step === 3 && !!g.target && !!being(w, g.target)?.alive;
+  if (g.kind === 'treasure') return g.step === 2 && w.treasure[g.target!] === 'cave';
+  return false;
+}
+
+/** 宗主（门主）眼下不在山上、或者有伤：有人会趁虚夺位 */
+export function masterAway(w: World, sect: 'qinglan' | 'chixiao', m: Being) {
+  if (m.id === ME) return w.me.place !== sect;
+  const x = m as Npc;
+  return x.place === 'cave' || x.hp < 40 || (x.mind.goal?.kind === 'treasure' && x.mind.goal.step === 2 && w.treasure[x.mind.goal.target!] === 'cave');
+}
+
 /** 为了目标，今年想干什么；返回 null 就按平常的需要来 */
 export function goalWant(w: World, n: Npc): Want | null {
   const g = n.mind.goal;
@@ -57,9 +85,10 @@ export function goalWant(w: World, n: Npc): Want | null {
       if (g.step === 1) return { act: 'goal', place: sect, why: '和同门多走动', scheme: 'woo' };
       if (g.step === 2) {
         const m = w.sects[sect].master;
-        const master = m ? w.people[m] : undefined;
-        const scheme = !master?.alive ? 'claim' : has(n, 'cruel') && power(n) >= power(master) * 0.8 ? 'ambush' : lifeLeft(master) < 12 ? 'wait' : 'scandal';
-        return { act: 'goal', place: sect, why: scheme === 'ambush' ? '是时候动手了' : scheme === 'wait' ? '等那老东西自己坐化' : '让同门看清宗主的真面目', scheme, target: m || undefined };
+        const master = m ? being(w, m) : undefined;
+        const scheme = !master?.alive ? 'claim' : masterAway(w, sect, master) ? 'seize' : has(n, 'cruel') && power(n) >= power(master) * 0.8 ? 'ambush' : lifeLeft(master) < 12 ? 'wait' : 'scandal';
+        const why = { ambush: '是时候动手了', wait: '等那老东西自己坐化', scandal: '让同门看清宗主的真面目', seize: '趁宗主不在山上，把位子拿过来', claim: '接下宗主之位' }[scheme];
+        return { act: 'goal', place: sect, why, scheme, target: m || undefined };
       }
       return { act: 'goal', place: sect, why: '接下宗主之位', scheme: 'claim' };
     }
@@ -78,8 +107,10 @@ export function goalWant(w: World, n: Npc): Want | null {
         if (h === 'cave') return !bold(n) && delveOdds(n) < 0.25 ? grow(w, n, '洞府深处太凶险，得先变强') : { act: 'goal', place: 'cave', why: `下洞府取${tn}`, scheme: 'delve' };
         const holder = h ? being(w, h) : undefined;
         if (!holder?.alive) return null;
-        if (n.stones < 300 && !has(n, 'cunning') && power(n) < power(holder) * 0.7) return grow(w, n, `${nm(w, h)}太强，硬抢不得`);
-        const scheme = n.stones >= 300 ? 'buy' : has(n, 'cunning') ? 'steal' : 'rob';
+        const price = BID[g.target!] ?? 300;
+        const refused = Number(w.flags[`bidno:${n.id}`] ?? 0);
+        if (n.stones < price && !has(n, 'cunning') && power(n) < power(holder) * 0.7) return grow(w, n, `${nm(w, h)}太强，硬抢不得`);
+        const scheme = n.stones >= price && refused < 2 ? 'buy' : has(n, 'cunning') ? 'steal' : 'rob';
         return { act: 'goal', place: holder.place, why: `从${nm(w, h)}手里弄到${tn}`, scheme, target: h };
       }
       return { act: 'goal', place: n.place, why: '处理后事', scheme: g.ally && (has(n, 'cruel') || has(n, 'greedy')) ? 'betray' : 'share', target: g.ally };
@@ -89,7 +120,11 @@ export function goalWant(w: World, n: Npc): Want | null {
       if (g.step === 1) return n.stones >= 200 ? { act: 'goal', place: 'market', why: '去坊市买延寿丹', scheme: 'buy' } : { act: 'goal', place: 'cave', why: '去洞府找延寿的灵药', scheme: 'delve' };
       {
         const h = lifeHolder(w, n);
-        return h ? { act: 'goal', place: being(w, h)!.place, why: '顾不得那么多了', scheme: 'rob', target: h } : grow(w, n, '寿元不多了');
+        if (!h) return grow(w, n, '寿元不多了');
+        // 心善的人再急也不会去抢；阴狠的人、快死又不心善的人才动手
+        const scheme = has(n, 'cruel') || (lifeLeft(n) < 5 && !has(n, 'kind')) ? 'rob' : n.stones >= BID.life && Number(w.flags[`bidno:${n.id}`] ?? 0) < 2 ? 'buy' : has(n, 'kind') && !has(n, 'cunning') ? 'wait' : 'steal';
+        if (scheme === 'wait') return grow(w, n, '寿元不多了，听天由命吧');
+        return { act: 'goal', place: being(w, h)!.place, why: scheme === 'buy' ? `想从${nm(w, h)}手里买一颗延寿丹` : scheme === 'steal' ? `打${nm(w, h)}那颗延寿丹的主意` : '顾不得那么多了', scheme, target: h };
       }
     case 'join':
       if (g.step === 0) return { act: 'cultivate', place: n.place, why: '先把根基打牢' };
@@ -108,6 +143,7 @@ export function finish(w: World, n: Npc, done: 'ok' | 'fail') {
   const g = n.mind.goal;
   if (!g) return;
   g.done = done;
+  if (PERSON[n.id]) mark(w, `${n.id}:${g.kind}:${done}`);
   n.mind.past.push(g);
   n.mind.goal = null;
   n.mind.mood = Math.max(0, Math.min(100, n.mind.mood + (done === 'ok' ? 20 : -15)));
@@ -147,7 +183,7 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
     case 'revenge': {
       if (!T?.alive) { finish(w, n, 'fail'); return; }
       if (g.step === 0) {
-        if (n.mind.knows.includes(`secret:${g.target}`) || rng.chance(0.08)) {
+        if (n.mind.knows.includes(`secret:${g.target}`) || rng.chance(0.05)) {
           if (!n.mind.knows.includes(`secret:${g.target}`)) n.mind.knows.push(`secret:${g.target}`);
           next(g);
           news(w, `${n.name}终于查到了，当年的事是${tn}干的。`, 'story', [n.id, g.target!]);
@@ -159,6 +195,7 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
         return;
       }
       if (g.step === 2) {
+        if (!ripe(w, g)) return;
         if (power(n) >= power(T) * 1.2 || g.stuck >= 3) { next(g); return; }
         const ally = recruit(w, n, rng, g.target);
         if (ally) { g.ally = ally; next(g); }
@@ -209,13 +246,15 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
           if (n.stones >= 10) { n.stones -= 10; remember(w, x, { k: 'gift', a: n.id, b: x.id, tone: 1 }); }
           else remember(w, x, { k: 'talk_good', a: n.id, b: x.id, tone: 1 });
         }
-        if (supporters(w, n) >= 2 || g.stuck >= 4) next(g);
+        if ((supporters(w, n) >= 2 || g.stuck >= 4) && ripe(w, g)) next(g);
         return;
       }
       if (g.step === 2) {
-        const master = sect.master ? w.people[sect.master] : undefined;
+        const master = sect.master ? being(w, sect.master) : undefined;
         if (!master?.alive) { next(g); return; }
         const scheme = n.plan.scheme;
+        if (scheme === 'seize') { seize(w, n, sect.id, master); return; }
+        if (scheme === 'ambush' && master.id === ME) return; // 冲着你来的：等你到了地方，变成找上门的事
         if (scheme === 'ambush' && n.place === master.place) {
           const r = fight(w, n, master, rng, { lethal: true, ambush: 1.3 });
           if (r.win === n && r.killed) {
@@ -231,14 +270,14 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
           const caught = rng.chance(has(n, 'cunning') ? 0.15 : 0.35);
           if (caught) {
             for (const x of mates) remember(w, x, { k: 'lie', a: n.id, b: master.id, tone: -2 });
-            remember(w, master, { k: 'betray', a: n.id, b: master.id, tone: -3 });
+            if (master.id !== ME) remember(w, master as Npc, { k: 'betray', a: n.id, b: master.id, tone: -3 });
             news(w, `有人在${sect.name}里散布宗主的坏话，查到最后是${n.name}。`, 'story', [n.id, master.id]);
             g.step = 1;
           } else {
             for (const x of mates) adjust(x, master.id, { aff: -12, trust: -8 });
             const known = n.mind.knows.includes(`secret:${master.id}`);
             if (known) for (const x of mates) if (!x.mind.knows.includes(`secret:${master.id}`)) x.mind.knows.push(`secret:${master.id}`);
-            news(w, `${sect.name}里流言四起：${known ? '宗主当年的旧事被人翻了出来' : '都在说宗主的不是'}。`, 'story', [master.id]);
+            news(w, `${sect.name}里流言四起：${known ? '宗主当年的旧事被人翻了出来' : `都在说${master.id === ME ? '你' : '宗主'}的不是`}。`, 'story', [master.id]);
             if (deposable(w, sect.id)) depose(w, sect.id);
           }
         }
@@ -260,7 +299,14 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
       }
       if (g.step === 1) {
         if (n.items.includes('letter') || n.mind.knows.includes('secret:wen')) { next(g); return; }
-        if (n.place !== 'cave') return;
+        if (!ripe(w, g) || n.place !== 'cave') return;
+        if (w.treasure.letter !== 'cave') {
+          // 遗书早被人拿走了，只找到了师父的遗骨
+          if (!n.mind.knows.includes('bones')) n.mind.knows.push('bones');
+          news(w, `${n.name}在玄冥洞府深处找到了师父的遗骨，压在骨头下的东西却已经不见了。`, 'story', [n.id], true);
+          finish(w, n, 'ok');
+          return;
+        }
         const r = delve(w, n, rng, 'letter');
         if (r === 'found') {
           n.mind.knows.push('secret:wen');
@@ -287,7 +333,19 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
         if (T.partner !== ME) adjust(n, T.partner, { aff: has(n, 'grudge') ? -40 : -15 });
         return;
       }
-      if (g.target === ME) return;
+      if (g.target === ME) {
+        if (n.place !== w.me.place) { if (g.stuck >= 8) finish(w, n, 'fail'); return; }
+        if (g.step === 0) { next(g); return; }
+        if (g.step === 1) {
+          if (takeItem(n, 'heal')) giveItem(w.me, 'heal');
+          else if (n.stones >= 15) { n.stones -= 15; w.me.stones += 15; }
+          news(w, `${n.name}悄悄给你留了点东西。`, 'good', [ME, n.id]);
+          next(g);
+          return;
+        }
+        if (g.stuck >= 6) finish(w, n, 'fail');
+        return;
+      }
       const t = T as Npc;
       if (n.place !== t.place) return;
       if (g.step === 0) {
@@ -322,12 +380,15 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
       if (!h || h === 'gone') { finish(w, n, 'fail'); return; }
       if (g.step === 0) { if (rng.chance(0.4)) next(g); return; }
       if (g.step === 1) {
+        if (!ripe(w, g)) return;
         if (power(n) >= GUARDIAN * (has(n, 'careful') || has(n, 'cunning') ? 1.2 : 0.8) || g.stuck >= 4) { next(g); return; }
         const ally = recruit(w, n, rng);
         if (ally) { g.ally = ally; next(g); }
         return;
       }
       if (g.step === 2) {
+        // 东西已经不在洞府里了：说好一起下洞府的帮手用不上了
+        if (g.ally === ME && h !== 'cave') g.ally = undefined;
         if (h === 'cave') {
           if (n.place !== 'cave') return;
           const helper = g.ally && g.ally !== ME ? w.people[g.ally] : undefined;
@@ -338,6 +399,15 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
           return;
         }
         const holder = being(w, h);
+        if (h === ME) {
+          // 冲着你来的：抢和买等你到了地方变成找上门的事；偷是悄悄的
+          if (n.plan.scheme === 'steal' && n.place === w.me.place && rng.chance(w.me.realm > n.realm ? 0.15 : 0.3)) {
+            moveTreasure(w, item, ME, n.id);
+            news(w, `你的${tn}不翼而飞。`, 'bad', [ME], true);
+            next(g);
+          } else if (g.stuck >= 8) finish(w, n, 'fail');
+          return;
+        }
         if (!holder?.alive || holder.place !== n.place) return;
         const scheme = n.plan.scheme;
         if (scheme === 'buy' && n.stones >= 300 && h !== ME && (has(holder as Npc, 'greedy') || rng.chance(0.3))) {
@@ -382,6 +452,8 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
     }
     case 'longevity': {
       if (lifeLeft(n) >= 40) { finish(w, n, 'ok'); return; }
+      // 延寿丹已经吃不出寿元了，只能认命
+      if (lifeGain(n) === 0 && !canBreak(n)) { finish(w, n, 'fail'); return; }
       if (g.step === 0) { if (lifeLeft(n) < 12 && !canBreak(n)) next(g); return; }
       if (g.step === 1) {
         if (n.items.includes('life')) { useLife(w, n); finish(w, n, 'ok'); return; }
@@ -391,14 +463,40 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
           news(w, `${n.name}在云渡坊买下了一颗延寿丹。`, 'info', [n.id]);
           return;
         }
-        if (n.place === 'cave' && rng.chance(0.15)) { useLife(w, n); finish(w, n, 'ok'); news(w, `${n.name}在洞府里找到一株延寿灵药。`, 'story', [n.id]); return; }
-        if (g.stuck >= 2 && (has(n, 'cruel') || has(n, 'cunning') || lifeLeft(n) < 5)) next(g);
+        if (n.place === 'cave' && rng.chance(0.08)) { extendLife(n); finish(w, n, 'ok'); news(w, `${n.name}在洞府里找到一株延寿灵药。`, 'story', [n.id]); return; }
+        if (g.stuck >= 2 && (has(n, 'cruel') || lifeLeft(n) < 8)) next(g);
         return;
       }
       const h = n.plan.target;
       const holder = h ? being(w, h) : undefined;
-      if (!holder?.alive || h === ME || holder.place !== n.place) return;
-      const r = fight(w, n, holder, rng, { lethal: true });
+      if (!holder?.alive || !holder.items.includes('life')) { if (g.stuck >= 6) finish(w, n, 'fail'); return; }
+      if (h === ME) {
+        if (n.plan.scheme === 'steal' && n.place === w.me.place && rng.chance(w.me.realm > n.realm ? 0.15 : 0.3) && takeItem(w.me, 'life')) {
+          useLife(w, n);
+          news(w, '你的延寿丹不翼而飞。', 'bad', [ME]);
+          finish(w, n, 'ok');
+        } else if (g.stuck >= 8) finish(w, n, 'fail');
+        return;
+      }
+      if (holder.place !== n.place) return;
+      const sch = n.plan.scheme;
+      if (sch === 'buy' && n.stones >= BID.life && (has(holder as Npc, 'greedy') || rng.chance(0.35)) && takeItem(holder, 'life')) {
+        n.stones -= BID.life; holder.stones += BID.life;
+        useLife(w, n);
+        news(w, `${n.name}花${BID.life}灵石，从${holder.name}手里买下了一颗延寿丹。`, 'info', [n.id, holder.id]);
+        finish(w, n, 'ok');
+        return;
+      }
+      if (sch === 'steal') {
+        if (rng.chance(0.3) && takeItem(holder, 'life')) {
+          useLife(w, n);
+          news(w, `${holder.name}的延寿丹不翼而飞。`, 'story', [holder.id]);
+          finish(w, n, 'ok');
+        }
+        return;
+      }
+      if (sch !== 'rob') return;
+      const r = fight(w, n, holder, rng, { lethal: has(n, 'cruel') || has(n, 'grudge') });
       if (r.win === n && takeItem(holder, 'life')) {
         useLife(w, n);
         remember(w, holder as Npc, { k: 'rob', a: n.id, b: holder.id, tone: -3 });
@@ -429,28 +527,23 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
 
 const placeOf = (w: World, n: Npc) => ({ qinglan: '青岚宗', chixiao: '赤霄门', market: '云渡坊', vein: '听泉谷', cave: '玄冥洞府', forest: '黑松林', village: '柳溪村' })[n.place];
 
-export function useLife(w: World, n: Npc | World['me']) {
+/** 服下一颗延寿丹：返回多了几年寿元（越吃越不灵） */
+export function useLife(w: World, n: Being) {
   takeItem(n, 'life');
-  n.bonus += 30;
+  return extendLife(n);
 }
 
-export function moveTreasure(w: World, item: string, from: string, to: string) {
-  const a = being(w, from);
-  if (a) takeItem(a, item);
-  const b = being(w, to);
-  if (b) giveItem(b, item);
-  w.treasure[item] = to;
-}
+export { moveTreasure };
 
 const bold = (n: Npc) => has(n, 'rash') || has(n, 'bold');
 /** 下洞府深处能成的把握 */
-export function delveOdds(n: Npc | World['me'], helper?: Npc) {
+export function delveOdds(n: Being, helper?: Being) {
   const pa = power(n) + (helper ? power(helper) * 0.7 : 0);
   return pa * pa / (pa * pa + GUARDIAN * GUARDIAN);
 }
 
 /** 下洞府深处：和守护的东西打一场，赢了拿到宝物；会受伤，也可能死在里面 */
-export function delve(w: World, n: Npc | World['me'], rng: Rng, item: string, helper?: Npc) {
+export function delve(w: World, n: Being, rng: Rng, item: string, helper?: Being) {
   if (w.treasure[item] !== 'cave') return 'none';
   const p = delveOdds(n, helper);
   if (rng.chance(p)) {
@@ -480,11 +573,48 @@ export function deposable(w: World, sect: 'qinglan' | 'chixiao') {
   return mates.length >= 2 && mates.filter((x) => aff(x, m) < 0).length > mates.length / 2;
 }
 export function depose(w: World, sect: 'qinglan' | 'chixiao') {
-  const m = w.people[w.sects[sect].master];
+  const id = w.sects[sect].master;
   w.sects[sect].master = '';
+  if (id === ME) {
+    news(w, `${SECT_NAME[sect]}众弟子逼宫，${w.me.name}被废去了宗主之位。`, 'bad', [ME], true);
+    return;
+  }
+  const m = w.people[id];
   if (m?.alive) {
     m.sect = '';
     news(w, `${SECT_NAME[sect]}众弟子逼宫，${m.name}被废去宗主之位，离开了山门。`, 'bad', [m.id], true);
+  }
+}
+
+const headTitle = (sect: 'qinglan' | 'chixiao') => (sect === 'qinglan' ? '宗主' : '门主');
+
+/**
+ * 趁宗主不在山上夺位：支持他的人多过忠于宗主的人就成了，否则事情败露、叛出宗门。
+ * 你站了哪边（plot:<id> = 'me'）算两个人。
+ */
+export function seize(w: World, n: Npc, sect: 'qinglan' | 'chixiao', master: Being) {
+  if (!masterAway(w, sect, master) || master.place === sect) return;
+  const sided = w.flags[`plot:${n.id}`];
+  const sup = supporters(w, n) + (has(n, 'cunning') ? 1 : 0) + (sided === 'me' ? 2 : 0);
+  const loyal = npcs(w).filter((x) => x.sect === sect && x.id !== n.id && x.id !== master.id && aff(x, master.id) >= 40);
+  const S = SECT_NAME[sect];
+  if (sup > loyal.length) {
+    w.sects[sect].master = n.id;
+    for (const x of loyal) adjust(x, n.id, { aff: -30 });
+    if (master.id !== ME) {
+      const m = master as Npc;
+      m.sect = '';
+      adjust(m, n.id, { aff: -100, trust: -80 });
+      if (!m.mind.goal || m.mind.goal.kind !== 'revenge') setGoal(w, m, { kind: 'revenge', target: n.id, secret: false, step: 1 });
+    }
+    mark(w, `coup:${sect}`);
+    news(w, `${master.name}不在山上，${n.name}联络长老，自立为${S}${headTitle(sect)}。${master.id === ME ? '' : `${master.name}回来时，山门已经不认他了。`}`, 'bad', [n.id, master.id], true);
+    finish(w, n, 'ok');
+  } else {
+    n.sect = '';
+    if (master.id !== ME) remember(w, master as Npc, { k: 'betray', a: n.id, b: master.id, tone: -3 });
+    news(w, `${n.name}想趁${master.name}不在夺位，没几个人跟他，事情败露，叛出了${S}。`, 'bad', [n.id, master.id], true);
+    finish(w, n, 'fail');
   }
 }
 
@@ -510,4 +640,5 @@ export function killed(w: World, killer: string, victim: string, rng: Rng, witne
       }
     }
   }
+  sweepDead(w);
 }

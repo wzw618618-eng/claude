@@ -6,7 +6,7 @@
 import type { Npc, Plan, SectId, World } from '../core/types';
 import { aff, being, ME, nm, npcs, placeName, power } from '../core/world';
 import { asJson } from '../../souls/envelope';
-import { bestPlace, GOALS, goalWant, targetName } from '../mind/goals';
+import { bestPlace, GOALS, goalWant, masterAway, targetName } from '../mind/goals';
 import { canBreak } from '../systems/body';
 import { follow, needOptions } from '../systems/year';
 import { type Tier, tierOf } from '../mind/bond';
@@ -18,7 +18,7 @@ export interface YearChoice { id: string; want: Want; label: string; forGoal: bo
 const SCHEME: Record<string, string> = {
   ambush: '埋伏，亲自动手', scandal: '散布宗主的丑闻', wait: '按兵不动，等对方自己倒下', buy: '花钱买', steal: '暗中偷',
   rob: '硬抢', share: '把好处分给帮手', betray: '独吞，甩掉帮手', delve: '闯洞府深处', ally: '找帮手', woo: '拉拢同门',
-  claim: '接位', near: '多接近', gift: '送礼', confess: '表白',
+  claim: '接位', near: '多接近', gift: '送礼', confess: '表白', seize: '趁宗主不在山上夺位',
 };
 
 /** 为目标奔走的几种做法：规则挑一种，AI 可以换成别的合法做法 */
@@ -37,6 +37,7 @@ function goalVariants(w: World, n: Npc): Want[] {
       add({ act: 'goal', place: sect, why: '等那老东西自己坐化', scheme: 'wait', target: m });
       // 打不过还硬上就是送死，不给这个选项
       if (power(n) >= power(master) * 0.6) add({ act: 'goal', place: sect, why: '是时候动手了', scheme: 'ambush', target: m });
+      if (masterAway(w, sect, master)) add({ act: 'goal', place: sect, why: '趁宗主不在山上，把位子拿过来', scheme: 'seize', target: m });
     }
   }
   if (g.kind === 'treasure' && g.step === 2) {
@@ -56,6 +57,12 @@ function goalVariants(w: World, n: Npc): Want[] {
   if (g.kind === 'longevity' && g.step === 1) {
     if (n.stones >= 200) add({ act: 'goal', place: 'market', why: '去坊市买延寿丹', scheme: 'buy' });
     add({ act: 'goal', place: 'cave', why: '去洞府找延寿的灵药', scheme: 'delve' });
+  }
+  if (g.kind === 'longevity' && g.step === 2 && base.target && base.target !== ME) {
+    const h = base.target, hn = nm(w, h), at = being(w, h)?.place ?? n.place;
+    if (n.stones >= 250) add({ act: 'goal', place: at, why: `想从${hn}手里买一颗延寿丹`, scheme: 'buy', target: h });
+    add({ act: 'goal', place: at, why: `打${hn}那颗延寿丹的主意`, scheme: 'steal', target: h });
+    add({ act: 'goal', place: at, why: '顾不得那么多了', scheme: 'rob', target: h });
   }
   return out;
 }

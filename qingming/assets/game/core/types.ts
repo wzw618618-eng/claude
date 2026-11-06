@@ -47,6 +47,8 @@ export interface Goal {
   ally?: string;
   since: number;
   done?: 'ok' | 'fail';
+  /** 动手那一步最早在哪一年（让名角的大事别在开局几年就演完） */
+  after?: number;
 }
 
 export interface Mind {
@@ -90,6 +92,8 @@ export interface Being {
   bonus: number;
   master?: string;
   partner?: string;
+  /** 连着冲关失败了几次（越败越有经验） */
+  tries?: number;
 }
 
 export interface Npc extends Being {
@@ -124,6 +128,9 @@ export interface Encounter { id: string; kind: string; who: string; vars: Record
 
 export interface Sect { id: SectId; name: string; master: string }
 
+export type RootId = 'heaven' | 'dual' | 'mixed';
+export type OriginId = 'wild' | 'mo' | 'hua' | 'ledger' | 'outcast' | 'servant';
+
 export interface World {
   v: 1;
   seed: number;
@@ -152,4 +159,11 @@ export interface World {
   /** 主角的经历（写小传用） */
   life: News[];
   nextId: number;
+  /** 存档的修订号：读旧档时按它补字段、修旧数据（见 save.ts） */
+  rev?: number;
+  /** 名声：帮村民、行医、讲道、揭发、镇守攒下的 */
+  fame?: number;
+  /** 开局选的灵根和出身 */
+  root?: RootId;
+  origin?: OriginId;
 }

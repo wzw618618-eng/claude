@@ -2,13 +2,14 @@
 
 import { makeRng, type Rng } from '../core/rng';
 import type { Npc, PlaceId, World } from '../core/types';
-import { adjust, aff, being, has, lifeLeft, makeNpc, ME, news, nm, npcs, op, placeName, power, realmText, takeItem } from '../core/world';
+import { adjust, aff, being, has, lifeGain, lifeLeft, makeNpc, ME, news, nm, npcs, op, placeName, power, realmText, sweepDead, takeItem } from '../core/world';
 import { newcomer, PERSON } from '../data/people';
 import { REALMS, SECT_NAME } from '../data/world-data';
-import { advanceGoal, bestPlace, finish, goalWant, setGoal, supporters } from '../mind/goals';
+import { advanceGoal, bestPlace, finish, goalWant, setGoal, supporters, useLife } from '../mind/goals';
 import { gossip, remember } from '../mind/memory';
 import { fadeBonds } from '../mind/bond';
-import { age, canBreak, fight, gainExp, tryBreak, yearExp } from './body';
+import { age, beast, beastRange, canBreak, fight, gainExp, tryBreak, yearExp } from './body';
+import { playerYear } from './places';
 
 type Want = { act: string; place: PlaceId; why: string; scheme?: string; target?: string };
 
@@ -78,38 +79,14 @@ function doAct(w: World, n: Npc, rng: Rng) {
     if (r?.ok && n.realm >= 2) news(w, `${n.name}闭关出关，突破到了${REALMS[n.realm]}。`, 'good', [n.id], n.realm >= 3);
     else if (r && !r.ok && n.realm >= 2) news(w, `${n.name}冲击${REALMS[n.realm + 1]}失败，受了内伤。`, 'info', [n.id]);
   }
-  if (act === 'adventure') beast(w, n, rng, n.place === 'cave' ? 2 : 0.5, n.place === 'cave' ? 12 : 4);
+  if (act === 'adventure') { const [lo, hi] = beastRange(n.place); beast(w, n, rng, lo, hi * 0.75); }
   if (act === 'task') { n.merit += 8 + rng.int(0, 6); n.stones += 15; gainExp(n, yearExp(w, n, n.place, 0.4)); }
   if (act === 'trade' && n.stones >= 60) { n.stones -= 60; n.items.push('pill'); }
   if (act === 'heal') { if (takeItem(n, 'heal')) n.hp = Math.min(100, n.hp + 50); n.hp = Math.min(100, n.hp + 25); }
   if (act === 'help') n.stones += 3;
 }
 
-/** 和妖兽打一场：赢了有灵石，偶尔有丹药；输了受伤，很少丢命 */
-export function beast(w: World, b: World['me'] | Npc, rng: Rng, lo: number, hi: number) {
-  const foe = rng.range(lo, hi);
-  const p = power(b);
-  const win = rng.chance(p * p / (p * p + foe * foe));
-  if (win) {
-    const loot = Math.round(10 + foe * 6 + rng.int(0, 20));
-    b.stones += loot;
-    gainExp(b, 12 + foe * 3);
-    let item = '';
-    if (rng.chance(hi > 6 ? 0.2 : 0.1)) { item = rng.chance(0.6) ? 'heal' : 'pill'; b.items.push(item); }
-    if (hi > 6 && rng.chance(0.03)) { item = 'life'; b.items.push('life'); }
-    b.hp = Math.max(1, b.hp - rng.int(0, 15));
-    return { win, loot, item, foe };
-  }
-  b.hp -= Math.round(15 + foe * 4);
-  if (b.hp <= 0) {
-    if (rng.chance(0.5)) {
-      b.alive = false; b.hp = 0;
-      b.died = { y: w.year, note: `葬身${placeName(b.place)}的妖兽之口` };
-      if (b.id !== ME) news(w, `${b.name}在${placeName(b.place)}遇上大妖，没能回来。`, 'bad', [b.id], true);
-    } else b.hp = 5;
-  }
-  return { win, loot: 0, item: '', foe };
-}
+export { beast };
 
 /** 同一处的人彼此打交道：论道、冲突、闲聊，见面就会把听来的事讲给对方 */
 export function socialize(w: World, rng: Rng) {
@@ -156,7 +133,7 @@ function succession(w: World, rng: Rng) {
     const scored: [string, number][] = cands.map((x) => [x.id, power(x) * 2 + supporters(w, x) * 2 + x.merit / 15 + (x.mind.goal?.kind === 'throne' ? 3 : 0) + rng.range(0, 2)]);
     if (w.me.alive && w.me.sect === sect.id) {
       const sup = cands.filter((x) => aff(x, ME) >= 30).length;
-      scored.push([ME, power(w.me) * 2 + sup * 2 + w.me.merit / 15 + rng.range(0, 2)]);
+      scored.push([ME, power(w.me) * 2 + sup * 2 + w.me.merit / 15 + (w.fame ?? 0) / 10 + rng.range(0, 2)]);
     }
     if (!scored.length) { sect.master = ''; continue; }
     scored.sort((a, b) => b[1] - a[1]);
@@ -175,7 +152,7 @@ function spawnGoals(w: World, rng: Rng) {
   for (const n of npcs(w)) {
     if (n.mind.goal) continue;
     const secretive = has(n, 'careful') || has(n, 'cunning') || has(n, 'lonely');
-    if (lifeLeft(n) < 15 && n.realm < 4) { setGoal(w, n, { kind: 'longevity', secret: secretive, cover: '闭关参悟' }); continue; }
+    if (lifeLeft(n) < 15 && n.realm < 4 && (lifeGain(n) > 0 || n.stage === 2)) { setGoal(w, n, { kind: 'longevity', secret: secretive, cover: '闭关参悟' }); continue; }
     if (!n.partner && (has(n, 'devoted') || n.mind.values.love >= 0.6) && rng.chance(0.3)) {
       // 长辈晚辈、年纪差太多的，交情再深也只是交情
       const fit = (id: string) => { const b = being(w, id); return !!b?.alive && !b.partner && b.age >= 18 && n.age >= 18 && Math.abs(b.age - n.age) <= 20 && b.master !== n.id && n.master !== id; };
@@ -210,12 +187,14 @@ function spawnGoals(w: World, rng: Rng) {
 function newcomers(w: World, rng: Rng) {
   if (npcs(w).length >= 12 || !rng.chance(0.35)) return;
   const id = `n${w.nextId++}`;
-  const d = newcomer(id, rng.pick, rng.next);
+  const names = new Set(npcs(w).map((n) => n.name));
+  let d = newcomer(id, rng.pick, rng.next, Math.min(2, Math.floor(w.year / 30)));
+  for (let i = 0; i < 4 && names.has(d.name); i++) d = newcomer(id, rng.pick, rng.next, Math.min(2, Math.floor(w.year / 30)));
   const n = makeNpc(d, w.year);
   n.bio = d.bio;
   n.voice = d.voice;
   w.people[id] = n;
-  news(w, `${d.name}${d.sect ? `拜入了${SECT_NAME[d.sect]}` : '来到了云渡坊'}，是个${REALMS[d.realm]}期的年轻修士。`, 'info', [id]);
+  news(w, d.realm ? `${d.name}从外州来到青冥州${d.sect ? `，投在${SECT_NAME[d.sect]}门下` : ''}，是个${REALMS[d.realm]}修士。` : `${d.name}${d.sect ? `拜入了${SECT_NAME[d.sect]}` : '来到了云渡坊'}，是个${REALMS[d.realm]}期的年轻修士。`, 'info', [id]);
 }
 
 export function endYear(w: World) {
@@ -226,17 +205,20 @@ export function endYear(w: World) {
   socialize(w, rng);
   for (const n of Object.values(w.people)) {
     if (!n.alive) continue;
+    // 寿元将尽、身上还有延寿丹的人，会把它吃了
+    if (lifeLeft(n) <= 1 && lifeGain(n) > 0 && n.items.includes('life')) useLife(w, n);
     age(w, n);
     if (!n.alive) {
       news(w, `${n.name}寿元耗尽，坐化于${realmText(n)}。`, 'bad', [n.id], n.realm >= 2);
       for (const x of npcs(w)) if (aff(x, n.id) >= 40) x.mind.mood = Math.max(0, x.mind.mood - 15);
     }
   }
-  if (w.me.alive) age(w, w.me);
+  if (w.me.alive) { playerYear(w); age(w, w.me); }
+  sweepDead(w);
   succession(w, rng);
   spawnGoals(w, rng);
   newcomers(w, rng);
-  if (rng.chance(0.15)) w.flags.lifeStock = Math.min(1, Number(w.flags.lifeStock ?? 0) + 1);
+  if (rng.chance(0.2)) w.flags.lifeStock = Math.min(2, Number(w.flags.lifeStock ?? 0) + 1);
   for (const n of npcs(w)) n.mind.mood = Math.round(n.mind.mood + (60 - n.mind.mood) * 0.2);
   for (const k of Object.keys(w.flags)) if (k.startsWith('clash:') && w.year - Number(w.flags[k]) >= 6) delete w.flags[k];
   fadeBonds(w);

@@ -18,11 +18,12 @@ import {
   NpcBrain,
 } from '@forgeax/engine/npc';
 import type { ChatLine, Npc, PlaceId, World } from '../game/core/types.ts';
-import { lifeLeft, ME, newWorld, nm, placeName, realmText, type RootId } from '../game/core/world.ts';
+import { lifeLeft, ME, newWorld, nm, type OriginId, placeName, realmText, type RootId } from '../game/core/world.ts';
+import { upgrade } from '../game/core/save.ts';
 import { goalText } from '../game/mind/goals.ts';
 import { describe, feel } from '../game/mind/memory.ts';
 import { bondScore, isMode, MODES, type Mode, type Tier, tierOf, tierText } from '../game/mind/bond.ts';
-import { buy, choose, doMain, endTurn, moveTo, retreat, type SocialKind, useItem } from '../game/player.ts';
+import { buy, choose, doMain, endTurn, moveTo, retreat, sell, type SocialKind, useItem } from '../game/player.ts';
 import { acceptDecision, applyDecision, buildDecidePrompt, whoDecides, yearChoices } from '../game/ai/decide.ts';
 import { type Ask, DEPTH, type Think } from '../game/ai/prompts.ts';
 import {
@@ -78,7 +79,7 @@ export class WorldSession {
   /** 今年 NPC 自己发起了几次 AI 请求 */
   private spent = { key: '', n: 0 };
 
-  constructor(private readonly out: (m: ToHost) => void, seed?: number, opts?: { name?: string; root?: RootId; gender?: 'm' | 'f' }) {
+  constructor(private readonly out: (m: ToHost) => void, seed?: number, opts?: { name?: string; root?: RootId; gender?: 'm' | 'f'; origin?: OriginId }) {
     this.w = newWorld(seed, opts);
   }
 
@@ -132,7 +133,7 @@ export class WorldSession {
     const year = w.year;
     let outcome: string | null = null;
     switch (a.type) {
-      case 'new': this.reset(newWorld(a.seed, { name: a.name, root: a.root, gender: a.gender })); break;
+      case 'new': this.reset(newWorld(a.seed, { name: a.name, root: a.root, gender: a.gender, origin: a.origin })); break;
       case 'move':
         if (moveTo(w, a.place)) {
           this.focus = null;
@@ -141,6 +142,7 @@ export class WorldSession {
         break;
       case 'main': outcome = doMain(w, a.act) || null; break;
       case 'buy': outcome = buy(w, a.item); break;
+      case 'sell': outcome = sell(w, a.item) || null; break;
       case 'use': outcome = useItem(w, a.item) || null; break;
       case 'choose': outcome = choose(w, a.i) || null; break;
       case 'offer': outcome = answerOffer(w, a.accept) || null; break;
@@ -162,8 +164,8 @@ export class WorldSession {
     const w = this.w;
     if (w.phase !== 'year') return;
     if (!w.turn.moved) {
-      // 没选地方就留在原地；有人找上门就先处理
-      moveTo(w, w.me.place);
+      // 没选地方就留在原地（只有凶险的地方才会碰上意外）；有人找上门就先处理
+      moveTo(w, w.me.place, { quiet: true });
       if (w.pending.length) { this.voiceEncounters(); return; }
     }
     if (w.pending.length) return;
@@ -586,12 +588,7 @@ function safeParse(t: string): World | null {
   try {
     const w = JSON.parse(t);
     if (!(w && w.v === 1 && w.people && w.me && w.turn)) return null;
-    // 第 1 阶段的存档没有谈话记录；第 2 阶段的没有旁听
-    w.chat ??= {};
-    w.turn.talk ??= {};
-    w.offer ??= null;
-    w.heard ??= [];
-    return w as World;
+    return upgrade(w as World);
   } catch {
     return null;
   }

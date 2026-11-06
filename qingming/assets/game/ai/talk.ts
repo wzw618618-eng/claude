@@ -289,6 +289,9 @@ export function askLine(w: World, kind: SocialKind, arg = ''): string {
     case 'join': return '我想拜入贵门。';
     case 'ally': return '你要找的帮手，算我一个。';
     case 'tell': return `（你说出了${nm(w, arg.slice(7))}的秘密）`;
+    case 'disciple': return '你可愿拜我为师？';
+    case 'admit': return '可愿入我门下？';
+    case 'expel': return '你走吧，从今往后不再是本门弟子。';
   }
 }
 
@@ -337,7 +340,7 @@ export function acceptVoice(raw: string): string | null {
 
 // ───────────── 找上门的事：AI 替来人开口 ─────────────
 
-export const VOICED_ENCOUNTERS = ['attack', 'call', 'betray', 'confess', 'ask', 'teach', 'duel'];
+export const VOICED_ENCOUNTERS = ['attack', 'call', 'betray', 'confess', 'ask', 'teach', 'duel', 'bid', 'plot', 'apprentice'];
 
 export function buildEncounterPrompt(w: World, e: Encounter, tier: Tier = 1): Ask {
   const n = w.people[e.who];
