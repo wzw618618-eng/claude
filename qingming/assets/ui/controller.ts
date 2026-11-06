@@ -13,9 +13,14 @@ import { createMeter, totalsText } from '../souls/meter.ts';
 import type { SoulView } from '../souls/soul-client.ts';
 import { type Act, type AiView, CHANNEL, type ToEngine, type ToHost } from '../world/protocol.ts';
 import css from './style.css?raw';
+import { CUE_FOR_ACT, createSound } from './audio.ts';
 import { type AiKind, type Model, newUI, screen, type Sheet, type Tab, type UI } from './view.ts';
 
 const SAVE_KEY = 'qingming.save.v1';
+const TIPS_KEY = 'qingming.tips.v1';
+const SOUND_KEY = 'qingming.sound.v1';
+/** 第一年那四步教学 */
+const FIRST_TIPS = ['where', 'main', 'people', 'end'];
 const FONTS = 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600&display=swap';
 
 export interface QingmingHost {
@@ -63,6 +68,11 @@ export function mountQingming(host: QingmingHost) {
   let refocus = false;
   const ui: UI = newUI();
   ui.hasSave = !!playable(read(SAVE_KEY));
+  ui.tips = (() => { try { return JSON.parse(read(TIPS_KEY) ?? '[]') as string[]; } catch { return []; } })();
+  const saveTips = () => write(TIPS_KEY, JSON.stringify(ui.tips));
+  const sound = createSound(win, { muted: read(SOUND_KEY) === 'off' });
+  ui.sound = !sound.muted;
+  const sceneOf = () => sound.scene({ phase: ui.screen !== 'game' || !w ? 'title' : w.phase === 'ending' ? 'ending' : 'year', place: w?.me.place ?? null });
   const syncSettings = () => {
     ui.settings = { kind: cfg.kind, hasKey: !!cfg.apiKey, model: cfg.model, mode: cfg.mode, claude: !!sample };
   };
@@ -84,6 +94,7 @@ export function mountQingming(host: QingmingHost) {
 
   const sheetKey = (s: Sheet | null) => (s ? `${s.kind}:${'id' in s ? s.id : ''}` : '');
   let lastSheet = '';
+  let lastTip = '';
   let lastLog = 0;
 
   const render = (opts: { top?: boolean } = {}) => {
@@ -121,6 +132,13 @@ export function mountQingming(host: QingmingHost) {
       if ((hadFocus || refocus) && !box.disabled) { box.focus(); refocus = false; }
     }
     lastSheet = key;
+    // 教学提示指着的地方，描一圈朱红
+    const tip = app.querySelector<HTMLElement>('.coach');
+    if (tip?.dataset.target) app.querySelector(tip.dataset.target)?.classList.add('coach-target');
+    // 同一条提示重画时不再从头淡入
+    if (tip && tip.dataset.tip === lastTip) tip.classList.add('still');
+    lastTip = tip?.dataset.tip ?? '';
+    sceneOf();
   };
 
   // ───────────── 来自游戏世界 ─────────────
@@ -136,6 +154,15 @@ export function mountQingming(host: QingmingHost) {
     const prev = w;
     let top = false;
     w = m.world;
+    // 声音跟着世界走：有人找上门、破境、知道了秘密、过年、结局
+    if (prev && prev.seed === w.seed && ui.screen === 'game') {
+      if (w.phase === 'ending' && prev.phase !== 'ending') sound.play(w.ending?.kind === 'ascend' ? 'good' : 'bad');
+      else if (w.year > prev.year) sound.play('year');
+      else if (w.pending.length && w.pending[0].id !== prev.pending[0]?.id) sound.play('event');
+      else if (w.me.realm > prev.me.realm) sound.play('good');
+      else if (w.knows.length > prev.knows.length) sound.play('secret');
+      else if (w.me.hp < prev.me.hp - 15) sound.play('clash');
+    }
     ai = m.ai;
     souls = m.souls;
     if (!ai.thinking) ui.stream = null;
@@ -190,7 +217,13 @@ export function mountQingming(host: QingmingHost) {
     const v = el.dataset.v ?? '';
     const arg = el.dataset.arg ?? '';
     let top = false;
+    sound.unlock();
+    sound.play(CUE_FOR_ACT[a] ?? 'tap');
     switch (a) {
+      case 'tip': if (!ui.tips.includes(v)) ui.tips.push(v); saveTips(); break;
+      case 'tip-skip': ui.tips = [...new Set([...ui.tips, ...FIRST_TIPS])]; saveTips(); break;
+      case 'tip-reset': ui.tips = []; saveTips(); ui.sheet = null; ui.tab = 'here'; top = true; break;
+      case 'sound': sound.setMuted(!sound.muted); ui.sound = !sound.muted; write(SOUND_KEY, sound.muted ? 'off' : 'on'); break;
       case 'continue': ui.screen = 'game'; ui.tab = 'here'; ui.sheet = null; top = true; break;
       case 'go-title': ui.screen = 'title'; ui.sheet = null; ui.outcome = null; focus(null); top = true; break;
       case 'tab': ui.tab = v as Tab; ui.sheet = null; ui.confirmEnd = false; top = true; break;
@@ -341,6 +374,7 @@ export function mountQingming(host: QingmingHost) {
       app.removeEventListener('input', onInput);
       app.removeEventListener('keydown', onKey);
       offMeter();
+      sound.dispose();
       void link?.close();
       shell.remove();
     },

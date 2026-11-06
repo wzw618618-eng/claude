@@ -49,6 +49,10 @@ export interface UI {
   /** AI 设置：密钥本身不进界面，只记有没有 */
   settings: { kind: AiKind; hasKey: boolean; model: string; mode: Mode; claude: boolean };
   spend: { game: string; all: string; top: string[] };
+  /** 看过的教学提示 */
+  tips: string[];
+  /** 声音开着没有；undefined 是没有声音（测试、不支持的环境） */
+  sound?: boolean;
 }
 
 export interface Model {
@@ -63,6 +67,7 @@ export const newUI = (): UI => ({
   setup: { name: '', gender: 'm', root: 'dual', origin: 'wild' }, stream: null, confirmEnd: false, hasSave: false,
   settings: { kind: 'offline', hasKey: false, model: 'deepseek-flash', mode: 'normal', claude: false },
   spend: { game: '还没用过', all: '还没用过', top: [] },
+  tips: [],
 });
 
 // ───────────── 小工具 ─────────────
@@ -124,7 +129,7 @@ function titleScreen(m: Model): string {
       <input type="radio" name="root" value="${r}"${ui.setup.root === r ? ' checked' : ''}><b>${ROOTS[r].name}</b><small>${esc(ROOTS[r].desc)}</small>
     </label>`).join('');
   const origins = (Object.keys(ORIGINS) as OriginId[]).map((o) => `<label class="root${ui.setup.origin === o ? ' on' : ''}">
-      <input type="radio" name="origin" value="${o}"${ui.setup.origin === o ? ' checked' : ''}><b>${ORIGINS[o].name}</b><small>${esc(ORIGINS[o].desc)}</small>
+      <input type="radio" name="origin" value="${o}"${ui.setup.origin === o ? ' checked' : ''}><b>${ORIGINS[o].name}</b><small>${esc(ORIGINS[o].short)}</small>
     </label>`).join('');
   return `<main class="title">
     <div class="title-ink" aria-hidden="true"></div>
@@ -141,7 +146,8 @@ function titleScreen(m: Model): string {
       <h3>灵根</h3>
       <div class="roots">${roots}</div>
       <h3>出身</h3>
-      <div class="roots">${origins}</div>
+      <div class="roots origins">${origins}</div>
+      <p class="hint origin-desc">${esc(ORIGINS[ui.setup.origin].desc)}</p>
       <button type="submit" class="primary wide">入青冥</button>
     </form>
     <p class="ai-line">${aiLine(m)} · ${btn('AI 设置', 'sheet', { v: 'settings', cls: 'link' })}</p>
@@ -161,6 +167,7 @@ function gameScreen(m: Model): string {
   const body = m.ui.tab === 'map' ? mapTab(m) : m.ui.tab === 'people' ? peopleTab(m) : m.ui.tab === 'news' ? newsTab(m) : m.ui.tab === 'self' ? selfTab(m) : hereTab(m);
   return `${header(m)}
     <main class="main tab-${m.ui.tab}">${body}</main>
+    ${coach(m)}
     <nav class="dock" aria-label="菜单">${tabs.map(([t, l]) => `<button type="button" data-act="tab" data-v="${t}" class="${m.ui.tab === t ? 'on' : ''}"${m.ui.tab === t ? ' aria-current="page"' : ''}><i class="ico ico-${t}" aria-hidden="true"></i>${l}</button>`).join('')}</nav>`;
 }
 
@@ -181,6 +188,7 @@ function header(m: Model): string {
     <div class="row">
       <div class="year"><b class="brush">第${w.year}年</b><span>${esc(placeName(me.place))}</span></div>
       ${btn(`${seal(me.name, 'me')}<span><b>${esc(me.name)}</b><small>${realmText(me)} · ${me.age}岁</small></span>`, 'tab', { v: 'self', cls: 'me-chip' })}
+      ${m.ui.sound !== undefined ? btn(m.ui.sound ? '声' : '静', 'sound', { cls: `snd${m.ui.sound ? '' : ' off'}`, title: m.ui.sound ? '关掉声音' : '打开声音' }) : ''}
       ${btn('<i class="ico ico-gear" aria-hidden="true"></i>', 'sheet', { v: 'settings', cls: 'gear', title: '设置' })}
     </div>
     <div class="bars">
@@ -535,6 +543,52 @@ function yearSheet(m: Model, from: number, to: number): string {
     ${btn('接着走', 'close', { cls: 'primary wide' })}`;
 }
 
+// ───────────── 教学：第一年一步步带着走，之后第一次遇到的时候提一句 ─────────────
+
+interface Tip { id: string; target: string; title: string; text: string; when: (m: Model) => boolean }
+const YEAR1 = (m: Model) => m.w!.year === 1 && m.ui.tab === 'here';
+const here = (m: Model) => m.ui.tab === 'here';
+
+export const TIPS: Tip[] = [
+  { id: 'where', target: '.places', title: '今年去哪', when: (m) => YEAR1(m) && !m.w!.turn.moved,
+    text: '每年开头选一个地方去。到了那里，那里的人会找上门，你也只能和那里的人打交道。卡片上的印章是那里有谁。' },
+  { id: 'main', target: '.card.acts', title: '今年的主事', when: (m) => YEAR1(m) && m.w!.turn.moved && !m.w!.turn.main,
+    text: '一年只能做一件主事。修炼长修为；修为圆满了就闭关冲关；每个地方还有一件只有那里能做的事。' },
+  { id: 'people', target: '.here-people', title: '此地的人', when: (m) => YEAR1(m) && m.w!.turn.moved && m.w!.turn.social > 0 && npcs(m.w!).some((n) => n.place === m.w!.me.place),
+    text: '一年能打两次交道。点名字看他的来历、他怎么看你；点「说话」想说什么就说什么——他们会记得你说过的话、做过的事，还会讲给别人听。' },
+  { id: 'end', target: '.end', title: '过年', when: (m) => YEAR1(m) && m.w!.turn.moved && m.w!.turn.main,
+    text: '做完了就过年，看看这一年江湖上发生了什么。「闭关几年」可以一口气修炼，有人找上门会停下来。' },
+  { id: 'shop', target: '.card.shop', title: '坊市', when: (m) => here(m) && m.w!.me.place === 'market' && m.w!.turn.moved,
+    text: '破境丹让冲关把握大两成；延寿丹续命，但越吃越不灵。身上的东西也能卖。' },
+  { id: 'break', target: '.card.acts', title: '修为圆满', when: (m) => here(m) && m.w!.turn.moved && !m.w!.turn.main && m.w!.me.stage === 2 && m.w!.me.exp >= expNeed(m.w!.me),
+    text: '可以闭关冲击下一个大境界了。失败会受伤、跌一截修为，但下次把握更大。去听泉谷悟道、带着破境丹，把握都会更大。' },
+  { id: 'secret', target: ".dock [data-v='self']", title: '你知道了一个秘密', when: (m) => m.w!.knows.some((k) => k.startsWith('secret:')),
+    text: '在「自身」里能看到。对和它相关的人说出来，会改变他们的打算——被说的那个人，迟早会知道是你说的。' },
+  { id: 'letter', target: ".dock [data-v='self']", title: '云鹤遗书', when: (m) => m.w!.me.items.includes('letter'),
+    text: '拿着它去青岚宗，可以当众揭发温玄。最好有认得云鹤笔迹的人在场——沈清禾，或者花婆婆。' },
+  { id: 'bond', target: ".dock [data-v='people']", title: '交情', when: (m) => Object.values(m.ai?.tiers ?? {}).some((t) => t !== '陌路' && t !== '相识'),
+    text: '和一个人打交道越多、爱恨越深，他越有灵性：相熟以后会主动开口，年底会把你写进心里。「人物」页按交情排。' },
+  { id: 'late', target: '.card.acts', title: '结丹之后', when: (m) => here(m) && m.w!.me.realm >= 2 && m.w!.turn.moved,
+    text: '金丹以后可以开辟洞府、收徒传功；元婴以后还能开坛讲道、镇守一方。名声越大，越有人慕名而来。' },
+];
+
+export function currentTip(m: Model) {
+  const { w, ui } = m;
+  if (ui.screen !== 'game' || !w || w.phase !== 'year' || ui.outcome || ui.sheet || w.pending.length) return null;
+  return TIPS.find((t) => !ui.tips.includes(t.id) && t.when(m)) ?? null;
+}
+
+function coach(m: Model) {
+  const t = currentTip(m);
+  if (!t) return '';
+  const first = TIPS.filter((x) => ['where', 'main', 'people', 'end'].includes(x.id));
+  const k = first.indexOf(t);
+  return `<aside class="coach" data-tip="${t.id}" data-target="${t.target}" role="note">
+    <h3>${t.title}${k >= 0 ? `<small>${k + 1} / ${first.length}</small>` : ''}</h3><p>${t.text}</p>
+    <div class="row">${btn('知道了', 'tip', { v: t.id, cls: 'primary' })}${k >= 0 && k < first.length - 1 ? btn('跳过教学', 'tip-skip', { cls: 'ghost' }) : ''}</div>
+  </aside>`;
+}
+
 function settingsSheet(m: Model): string {
   const s = m.ui.settings;
   const kinds: [AiKind, string, boolean][] = [['offline', '离线', true], ['deepseek', 'DeepSeek', true], ['claude', 'Claude', s.claude]];
@@ -568,6 +622,10 @@ function settingsSheet(m: Model): string {
       <p class="hint">这台设备一共：${esc(m.ui.spend.all)}。按 DeepSeek 高峰价估算，闲时减半。</p>
       ${m.ai ? `<p class="hint">今年 NPC 自己用了 ${m.ai.used}/${m.ai.cap} 次。</p>` : ''}
     </section>
+    <section><h3>其他</h3><div class="row2">
+      ${m.ui.sound !== undefined ? btn(m.ui.sound ? '声音：开' : '声音：关', 'sound', { cls: 'ghost' }) : ''}
+      ${btn('重新看一遍教学', 'tip-reset', { cls: 'ghost' })}
+    </div></section>
     ${m.ui.screen === 'game' ? `<section>${btn('另起一局…', 'sheet', { v: 'new', cls: 'ghost wide' })}</section>` : ''}`;
 }
 

@@ -7,7 +7,8 @@
 // 交情越深（见 mind/bond.ts），记忆、谈话、传闻带得越多，想得也越深。
 
 import type { ChatLine, Npc, World } from '../core/types';
-import { being, isMaster, lifeLeft, ME, nm, op, placeName, realmText } from '../core/world';
+import { being, isMaster, lifeLeft, ME, nm, op, ORIGINS, placeName, realmText, titleOf } from '../core/world';
+import { fameTier } from '../systems/places';
 import { PERSON } from '../data/people';
 import { ITEMS, PLACES, SECT_NAME, TRAITS } from '../data/world-data';
 import { GOALS, goalText } from '../mind/goals';
@@ -131,7 +132,11 @@ export function opinionBlock(w: World, n: Npc) {
   const o = op(n, ME);
   const me = w.me;
   const bond = bondWithMe(w, n);
-  return `【你怎么看对方】对方叫${me.name}，${me.gender === 'f' ? '女' : '男'}，${me.age}岁，${realmText(me)}，${me.sect ? SECT_NAME[me.sect] + '弟子' : '散修'}。${bond ? bond + '。' : ''}
+  // 出身牵着的那几个人，知道对方的来历
+  const origin = w.origin ? ORIGINS[w.origin] : null;
+  const knowsOrigin = origin?.ties?.[n.id] ? `\n对方的来历（你知道）：${origin.desc.replace(/你/g, '对方')}` : '';
+  const fame = (w.fame ?? 0) >= 10 ? `在青冥州${fameTier(w)}。` : '';
+  return `【你怎么看对方】对方叫${me.name}，${me.gender === 'f' ? '女' : '男'}，${me.age}岁，${realmText(me)}，${titleOf(w, ME)}。${fame}${bond ? bond + '。' : ''}${knowsOrigin}
 你对${me.gender === 'f' ? '她' : '他'}：${feel(n)}（好感${o.aff}，范围-100到100；信任${o.trust}，畏惧${o.fear}，范围0到100）。`;
 }
 

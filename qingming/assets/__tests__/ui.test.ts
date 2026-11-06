@@ -20,7 +20,7 @@ function model(seed = 7, tweak: (s: WorldSession) => void = () => undefined, ui:
 const arrive = (s: WorldSession, place: 'village' | 'market' | 'qinglan') => { moveTo(s.w, place); s.w.pending = []; };
 
 /** controller.ts 认得的动作 */
-const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'person', 'chat', 'place', 'move', 'main', 'buy', 'sell', 'use', 'choose', 'offer', 'social', 'end', 'end-yes', 'end-no', 'retreat', 'news', 'ai-kind', 'mode']);
+const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'person', 'chat', 'place', 'move', 'main', 'buy', 'sell', 'use', 'choose', 'offer', 'social', 'end', 'end-yes', 'end-no', 'retreat', 'news', 'ai-kind', 'mode', 'tip', 'tip-skip', 'tip-reset', 'sound']);
 const acts = (html: string) => [...html.matchAll(/data-act="([^"]+)"/g)].map((m) => m[1]);
 
 describe('正式界面', () => {
@@ -164,6 +164,18 @@ describe('正式界面', () => {
       ...(['map', 'people', 'news', 'self'] as const).map((tab) => screen(model(12, (s) => arrive(s, 'village'), { tab }))),
     ];
     for (const a of htmls.flatMap(acts)) expect(KNOWN, a).toContain(a);
+  });
+
+  it('第一年一步步带着走：先选地方，再做主事；看过的不再出现', () => {
+    const first = screen(model(14));
+    expect(first).toContain('data-tip="where"');
+    const moved = screen(model(14, (s) => arrive(s, 'village')));
+    expect(moved).toContain('data-tip="main"');
+    const seen = screen(model(14, (s) => arrive(s, 'village'), { tips: ['where', 'main', 'people', 'end'] }));
+    expect(seen).not.toContain('class="coach"');
+    const settings = screen(model(14, () => undefined, { sheet: { kind: 'settings' }, sound: true }));
+    expect(settings).toContain('重新看一遍教学');
+    expect(settings).toContain('声音：开');
   });
 
   it('开局能选出身；途中碰上的事没有来人；当了宗主自身页写宗主', () => {

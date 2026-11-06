@@ -362,3 +362,28 @@
   .scrim:not(.center) { align-items: center; }
   .sheet { border-radius: 16px; }
 }
+
+/* ───── 教学 ───── */
+.coach {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--dock) + 12px + env(safe-area-inset-bottom, 0px));
+  width: min(calc(100% - 24px), 520px); padding: 12px 14px; border-radius: var(--r);
+  background: var(--card); color: var(--ink);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 0 0 1.5px var(--cinnabar);
+  animation: coach-in 0.3s ease-out;
+}
+.coach h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font-family: var(--font-brush); font-size: 20px; font-weight: 400; }
+.coach h3 small { font-family: var(--font-serif); font-size: 11px; color: var(--faint); }
+.coach p { margin: 0; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
+.coach .row { display: flex; gap: 8px; margin-top: 10px; }
+.coach .row button { flex: 0 0 auto; }
+.coach.still { animation: none; }
+@keyframes coach-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.coach-target { outline: 2px solid var(--cinnabar); outline-offset: 3px; border-radius: var(--r); animation: coach-pulse 1.4s ease-in-out infinite; }
+@keyframes coach-pulse { 0%, 100% { outline-color: var(--cinnabar); } 50% { outline-color: var(--cinnabar-soft); } }
+/* 声音开关：一个小印 */
+.qm .snd { flex: 0 0 auto; width: 32px; height: 32px; padding: 0; border-radius: 50%; font-family: var(--font-brush); font-size: 17px; line-height: 1; color: var(--cinnabar); border: 1.5px solid var(--cinnabar); background: transparent; }
+.qm .snd.off { color: var(--faint); border-color: var(--line); }
+.title h3 { margin: 14px 0 6px; font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.roots.origins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.origin-desc { margin: 8px 2px 4px; font-size: 13px; line-height: 1.6; color: var(--ink-2); }

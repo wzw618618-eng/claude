@@ -155,6 +155,8 @@ export const ROOTS: Record<RootId, { name: string; desc: string; talent: number;
 /** 出身：把你和青冥州的几个人绑在一起 */
 export interface OriginDef {
   name: string;
+  /** 一句话，卡片上写的 */
+  short: string;
   desc: string;
   /** 从哪里出发 */
   at: PlaceId;
@@ -169,25 +171,25 @@ export interface OriginDef {
   line: string;
 }
 export const ORIGINS: Record<OriginId, OriginDef> = {
-  wild: { name: '山野无名', desc: '无牵无挂，没人认得你，也没人欠你。多带些盘缠。', at: 'village', stones: 30, line: '在柳溪村踏上了修行路' },
+  wild: { name: '山野无名', short: '无牵无挂，多些盘缠', desc: '无牵无挂，没人认得你，也没人欠你。多带些盘缠。', at: 'village', stones: 30, line: '在柳溪村踏上了修行路' },
   mo: {
-    name: '墨家遗孤', desc: '二十年前墨家满门被灭，你是漏掉的那个孩子。墨九会来认你，温玄也许会起疑。', at: 'village',
+    name: '墨家遗孤', short: '墨九认你，温玄起疑', desc: '二十年前墨家满门被灭，你是漏掉的那个孩子。墨九会来认你，温玄也许会起疑。', at: 'village',
     ties: { mojiu: { aff: 55, trust: 60 }, wen: { aff: -15, fear: 0 } }, knows: ['goal:mojiu'], line: '带着墨家的旧事，在柳溪村踏上了修行路',
   },
   hua: {
-    name: '药婆婆家的孩子', desc: '花婆婆在柳溪村口捡了你，一手带大。认得草药，采药、行医都更拿手。', at: 'village', items: ['heal'],
+    name: '药婆婆家的孩子', short: '花婆婆带大，懂草药', desc: '花婆婆在柳溪村口捡了你，一手带大。认得草药，采药、行医都更拿手。', at: 'village', items: ['heal'],
     ties: { hua: { aff: 70, trust: 75 }, aman: { aff: 45, trust: 55 } }, line: '辞别了花婆婆，在柳溪村踏上了修行路',
   },
   ledger: {
-    name: '坊市账房出身', desc: '在云渡坊替人记过几年账：柳如烟认得你，韩烈还欠着你东家的钱。灵石多，卖东西也卖得上价。', at: 'market', stones: 90,
+    name: '坊市账房出身', short: '灵石多，卖得上价', desc: '在云渡坊替人记过几年账：柳如烟认得你，韩烈还欠着你东家的钱。灵石多，卖东西也卖得上价。', at: 'market', stones: 90,
     ties: { liu: { aff: 30, trust: 45 }, han: { aff: -15 } }, line: '扔了算盘，在云渡坊踏上了修行路',
   },
   outcast: {
-    name: '赤霄门弃徒', desc: '在赤霄门当过几年外门弟子，犯了门规被赶下山。底子好些；秦焰是旧识，门主和韩烈不待见你。', at: 'forest', stage: 1,
+    name: '赤霄门弃徒', short: '底子好，赤霄门不容', desc: '在赤霄门当过几年外门弟子，犯了门规被赶下山。底子好些；秦焰是旧识，门主和韩烈不待见你。', at: 'forest', stage: 1,
     ties: { qinyan: { aff: 40, trust: 45 }, li: { aff: -20 }, han: { aff: -30 } }, line: '被赶出赤霄门，在黑松林边上重新开始修行',
   },
   servant: {
-    name: '青岚外门杂役', desc: '在青岚宗山门扫过三年地，大师姐照顾过你，小师妹和你最熟；想入青岚宗容易些。陆沉舟看你，像看一枚棋子。', at: 'qinglan',
+    name: '青岚外门杂役', short: '大师姐照顾过你', desc: '在青岚宗山门扫过三年地，大师姐照顾过你，小师妹和你最熟；想入青岚宗容易些。陆沉舟看你，像看一枚棋子。', at: 'qinglan',
     ties: { shen: { aff: 35, trust: 50 }, tang: { aff: 45, trust: 50 }, lu: { aff: 10, trust: 40 } }, line: '放下扫帚，在青岚宗山门外踏上了修行路',
   },
 };
