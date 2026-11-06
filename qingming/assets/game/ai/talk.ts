@@ -14,7 +14,8 @@ import { asJson } from '../../souls/envelope';
 import { GOALS, goalText, targetName } from '../mind/goals';
 import { keep, remember } from '../mind/memory';
 import { touch, TOUCH } from '../mind/bond';
-import { canSocial, chatLine, ruleEncounter, SHOP, social, socialEffect, type SocialKind, type SocialResult } from '../player';
+import { canSocial, ruleEncounter, SHOP, social, socialEffect, type SocialKind, type SocialResult } from '../player';
+import { offlineReply, sellPitch } from './lines';
 import { checkEnd } from '../systems/year';
 import type { Tier } from '../mind/bond';
 import {
@@ -191,16 +192,13 @@ export function acceptTalk(raw: string, allow: TalkAllow): TalkReply | null {
   return { reply, affinity: num(o.affinity, LINE_AFF), trust: num(o.trust, LINE_TRUST), revealed, offer, remember: mem || undefined };
 }
 
-const RUDE = /滚|蠢|废物|找死|狗东西|去死|贱/;
-
-/** 规则写的回答：离线时用它，AI 出错时也用它 */
-export function scriptedTalk(w: World, n: Npc, said: string): TalkReply {
-  const o = op(n, ME);
-  if (RUDE.test(said)) {
-    const reply = has(n, 'proud') || has(n, 'rash') || has(n, 'cruel') ? '你再说一遍试试？' : has(n, 'kind') ? '……何必说这种话。' : '哼。';
-    return { reply, affinity: -3, trust: -1, revealed: 'none', offer: 'none' };
-  }
-  return { reply: chatLine(w, n), affinity: o.aff >= 0 ? 1 : 0, trust: 0, revealed: 'none', offer: 'none' };
+/**
+ * 规则写的回答：离线时用它，AI 出错时也用它。听你说了什么，按他的性子回答；
+ * 给了 allow 才可能顺势提出、透露什么（和 AI 一样的门槛）。
+ */
+export function scriptedTalk(w: World, n: Npc, said: string, allow?: TalkAllow): TalkReply {
+  const s = sellable(w, n);
+  return offlineReply(w, n, said, allow ?? { reveals: [], offers: [] }, { sellLine: s ? sellPitch(s.item, s.price) : undefined });
 }
 
 const within = (used: number, d: number, [lo, hi]: readonly [number, number]) => clamp(used + d, lo, hi) - used;

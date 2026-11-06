@@ -11,7 +11,7 @@ import { fadeBonds } from '../mind/bond';
 import { age, beast, beastRange, canBreak, fight, gainExp, tryBreak, yearExp } from './body';
 import { playerYear } from './places';
 
-type Want = { act: string; place: PlaceId; why: string; scheme?: string; target?: string };
+type Want = { act: string; place: PlaceId; why: string; scheme?: string; target?: string; goal?: boolean };
 
 /** 没有要紧的目标时，按性子和处境挑一件事 */
 export function needWant(w: World, n: Npc, rng: Rng): Want {
@@ -45,7 +45,7 @@ export function needOptions(w: World, n: Npc): [Want, number][] {
 export function ruleWant(w: World, n: Npc, rng: Rng): Want {
   if (n.hp < 30) return needWant(w, n, rng);
   const g = goalWant(w, n);
-  if (g && rng.chance(0.85)) return g;
+  if (g && rng.chance(0.85)) return { ...g, goal: true };
   return needWant(w, n, rng);
 }
 
@@ -57,6 +57,17 @@ export function planYear(w: World, rng: Rng) {
     n.place = want.place;
   }
   for (const n of npcs(w)) follow(w, n);
+}
+
+/**
+ * 新开一局：给每个人定下第一年的打算。newWorld 只摆好开局（人都在家、不动随机数），
+ * 真正开始玩之前再走这一步，不然第一年谁都没有打算。
+ */
+export function openWorld(w: World) {
+  const rng = makeRng(w.rng);
+  planYear(w, rng);
+  w.rng = rng.state();
+  return w;
 }
 
 /** 出手那一年，NPC 帮手陪着去 */
@@ -220,7 +231,7 @@ export function endYear(w: World) {
   newcomers(w, rng);
   if (rng.chance(0.2)) w.flags.lifeStock = Math.min(2, Number(w.flags.lifeStock ?? 0) + 1);
   for (const n of npcs(w)) n.mind.mood = Math.round(n.mind.mood + (60 - n.mind.mood) * 0.2);
-  for (const k of Object.keys(w.flags)) if (k.startsWith('clash:') && w.year - Number(w.flags[k]) >= 6) delete w.flags[k];
+  for (const k of Object.keys(w.flags)) if ((k.startsWith('clash:') || k.startsWith('cd:')) && w.year - Number(w.flags[k]) >= 6) delete w.flags[k];
   fadeBonds(w);
   w.year++;
   w.turn = { moved: false, main: false, social: 2, talk: {} };

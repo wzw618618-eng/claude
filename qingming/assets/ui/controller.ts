@@ -4,7 +4,6 @@
 // - 托管 AI 提供方：密钥只在这一侧，经引擎的 Intelligence 端口桥接给游戏世界，顺带记账。
 
 import type { PlaceId, World } from '../game/core/types.ts';
-import type { OriginId, RootId } from '../game/core/world.ts';
 import { isMode, type Mode } from '../game/mind/bond.ts';
 import type { MainAct, SocialKind } from '../game/player.ts';
 import { type AiConfig, loadConfig, providerFor, saveConfig } from '../souls/config.ts';
@@ -134,7 +133,14 @@ export function mountQingming(host: QingmingHost) {
     lastSheet = key;
     // 教学提示指着的地方，描一圈朱红
     const tip = app.querySelector<HTMLElement>('.coach');
-    if (tip?.dataset.target) app.querySelector(tip.dataset.target)?.classList.add('coach-target');
+    const target = tip?.dataset.target ? app.querySelector<HTMLElement>(tip.dataset.target) : null;
+    target?.classList.add('coach-target');
+    // 新的提示：它指着的地方要是被顶栏或提示卡挡住，滚到两者之间
+    if (tip && target && tip.dataset.tip !== lastTip && !target.closest('.dock')) {
+      const head = app.querySelector('.top')?.getBoundingClientRect().bottom ?? 0;
+      const r = target.getBoundingClientRect();
+      if (r.top < head || r.top > tip.getBoundingClientRect().top - 40) shell.scrollTop += r.top - head - 12;
+    }
     // 同一条提示重画时不再从头淡入
     if (tip && tip.dataset.tip === lastTip) tip.classList.add('still');
     lastTip = tip?.dataset.tip ?? '';
@@ -167,6 +173,12 @@ export function mountQingming(host: QingmingHost) {
     souls = m.souls;
     if (!ai.thinking) ui.stream = null;
     if (prev && prev.seed !== w.seed) meter.resetGame();
+    // 新的一局到了：先看身世
+    if (ui.awaitBirth && (!prev || prev.seed !== w.seed)) {
+      ui.awaitBirth = false;
+      ui.sheet = { kind: 'birth' };
+      top = true;
+    }
     // 这一句的结果已经写进谈话记录了，对话开着就不再弹纸条
     if (m.outcome && ui.sheet?.kind !== 'chat') ui.outcome = m.outcome;
     // 过了年（或者闭关了几年）：翻一页，看看这些年发生了什么
@@ -288,13 +300,12 @@ export function mountQingming(host: QingmingHost) {
     event.preventDefault();
     const field = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | null)?.value?.trim() ?? '';
     if (kind === 'new') {
-      const root = (form.querySelector<HTMLInputElement>('input[name="root"]:checked')?.value ?? ui.setup.root) as RootId;
       const gender = (form.querySelector<HTMLInputElement>('input[name="gender"]:checked')?.value ?? ui.setup.gender) as 'm' | 'f';
-      const origin = (form.querySelector<HTMLInputElement>('input[name="origin"]:checked')?.value ?? ui.setup.origin) as OriginId;
-      ui.setup = { name: field('name'), gender, root, origin };
-      act({ type: 'new', name: ui.setup.name || undefined, gender, root, origin });
+      ui.setup = { name: field('name'), gender };
+      // 灵根和出身由游戏世界投出来；新的一局到了再揭开身世
+      act({ type: 'new', name: ui.setup.name || undefined, gender });
       meter.resetGame();
-      Object.assign(ui, { screen: 'game', tab: 'here', sheet: null, outcome: null, confirmEnd: false, newsFilter: 'all' } satisfies Partial<UI>);
+      Object.assign(ui, { screen: 'game', tab: 'here', sheet: null, outcome: null, confirmEnd: false, newsFilter: 'all', awaitBirth: true } satisfies Partial<UI>);
       render({ top: true });
       return;
     }
@@ -323,9 +334,7 @@ export function mountQingming(host: QingmingHost) {
   const onChange = (event: Event) => {
     const t = event.target as HTMLInputElement;
     if (!t.closest('form[data-form="new"]')) return;
-    if (t.name === 'root') ui.setup.root = t.value as RootId;
-    else if (t.name === 'origin') ui.setup.origin = t.value as OriginId;
-    else if (t.name === 'gender') ui.setup.gender = t.value as 'm' | 'f';
+    if (t.name === 'gender') ui.setup.gender = t.value as 'm' | 'f';
     else return;
     render();
   };

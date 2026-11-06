@@ -186,7 +186,8 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
         if (n.mind.knows.includes(`secret:${g.target}`) || rng.chance(0.05)) {
           if (!n.mind.knows.includes(`secret:${g.target}`)) n.mind.knows.push(`secret:${g.target}`);
           next(g);
-          news(w, `${n.name}终于查到了，当年的事是${tn}干的。`, 'story', [n.id, g.target!]);
+          // 他私下查到的事，外人只看得出他像是查到了什么（你知道真相时才写明）
+          news(w, w.knows.includes(`secret:${g.target}`) ? `${n.name}终于查到了，当年的事是${tn}干的。` : `${n.name}四处打听了好些年的旧事，这些天忽然不再打听了。`, 'story', [n.id, g.target!]);
         }
         return;
       }
@@ -323,6 +324,8 @@ export function advanceGoal(w: World, n: Npc, rng: Rng) {
         setGoal(w, n, { kind: 'revenge', target: 'wen', secret: false, step: 1 });
         for (const x of npcs(w)) if (x.sect === 'qinglan' && x.id !== 'wen' && aff(x, n.id) >= 20 && !x.mind.knows.includes('secret:wen')) x.mind.knows.push('secret:wen');
         news(w, `${n.name}当众说出了三十年前的真相：师父是被温玄害死的。`, 'bad', [n.id, 'wen'], true);
+        // 当众说出来的事，传遍了青冥州，你也听说了
+        if (!w.knows.includes('secret:wen')) w.knows.push('secret:wen');
       }
       return;
     }
@@ -530,7 +533,7 @@ const placeOf = (w: World, n: Npc) => ({ qinglan: '青岚宗', chixiao: '赤霄�
 /** 服下一颗延寿丹：返回多了几年寿元（越吃越不灵） */
 export function useLife(w: World, n: Being) {
   takeItem(n, 'life');
-  return extendLife(n);
+  return extendLife(n, w);
 }
 
 export { moveTreasure };

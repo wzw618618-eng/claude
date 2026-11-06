@@ -3,7 +3,7 @@
 import type { Rng } from '../core/rng';
 import type { Being, Npc, PlaceId, World } from '../core/types';
 import { BREAK, LIFE, PLACES, REALMS, YEAR_EXP } from '../data/world-data';
-import { clamp, expNeed, lifeLeft, ME, news, nm, placeName, power, realmText, takeItem } from '../core/world';
+import { clamp, expNeed, lifeLeft, ME, news, nm, placeName, power, realmText, strongPills, takeItem } from '../core/world';
 
 /** 在某地修炼一年能得多少修为 */
 export function yearExp(w: World, b: Being, at: PlaceId, extra = 1) {
@@ -30,7 +30,7 @@ export const canBreak = (b: Being) => b.realm < 4 && b.stage === 2 && b.exp >= e
 /** 冲关的把握：境界越高越难；资质、破境丹、悟道所得、之前失败攒下的经验都有帮助 */
 export function breakChance(b: Being, pill: boolean, w?: World) {
   const insight = w && b.id === ME ? Number(w.flags.insight ?? 0) : 0;
-  return clamp(BREAK[b.realm] * (0.7 + 0.3 * b.talent) + (pill ? 0.2 : 0) + insight + 0.05 * Math.min(4, b.tries ?? 0), 0.05, 0.95);
+  return clamp(BREAK[b.realm] * (0.7 + 0.3 * b.talent) + (pill ? (strongPills(w, b) ? 0.3 : 0.2) : 0) + insight + 0.05 * Math.min(4, b.tries ?? 0), 0.05, 0.95);
 }
 
 /**

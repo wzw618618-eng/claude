@@ -35,7 +35,7 @@ export interface ActView { id: string; label: string; hint: string; ok: boolean 
 /** 拜山能成的把握 */
 export function joinChance(w: World, sect: SectId) {
   const m = w.people[w.sects[sect].master];
-  return clamp(0.2 + 0.15 * w.me.talent + fame(w) / 100 + (m?.alive && aff(m, ME) >= 20 ? 0.2 : 0) + (w.origin === 'servant' && sect === 'qinglan' ? 0.3 : 0), 0.05, 0.95);
+  return clamp(0.2 + 0.15 * w.me.talent + fame(w) / 100 + (m?.alive && aff(m, ME) >= 20 ? 0.2 : 0) + (w.origin === 'servant' && sect === 'qinglan' ? 0.3 : 0) + (w.flags.vouch === sect ? 0.2 : 0), 0.05, 0.95);
 }
 /** 听泉悟道：下次冲关多几成把握（天灵根悟性好；白鹿在场还会点拨两句） */
 export function insightGain(w: World) {
@@ -139,7 +139,7 @@ export function doLocal(w: World, rng: Rng): string {
         return '你摸到了洞府深处，被守在那里的东西打伤，只能退了出来。';
       }
       const x = rng.next();
-      if (x < 0.05) return `在石缝里找到一株延寿灵草，寿元多了${extendLife(me)}年。`;
+      if (x < 0.05) return `在石缝里找到一株延寿灵草，寿元多了${extendLife(me, w)}年。`;
       if (x < 0.35) { giveItem(me, 'heal'); return '采到几株回春的灵草，炼成了一颗回春丹。'; }
       if (x < 0.5) { giveItem(me, 'pill'); return '在一具枯骨的储物袋里，找到一颗破境丹。'; }
       if (x < 0.75) { me.hp = Math.max(5, me.hp - 20); return '被洞府里的阴风扫中，受了些伤，空手而回。'; }
@@ -305,11 +305,10 @@ export function doLate(w: World, act: string, rng: Rng): string {
   return '';
 }
 
-/** 年末：杂灵根家里捎来灵石；镇守的地方送供奉、攒名声 */
+/** 年末：镇守的地方送供奉、攒名声 */
 export function playerYear(w: World) {
   const me = w.me;
   if (!me.alive) return;
-  if (w.root === 'mixed' && me.age < 80) me.stones += 15;
   const ward = w.flags.ward as PlaceId | undefined;
   if (ward) { me.stones += TRIBUTE[ward] ?? 10; addFame(w, 2); }
 }

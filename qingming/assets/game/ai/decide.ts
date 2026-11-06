@@ -140,7 +140,7 @@ export function acceptDecision(w: World, n: Npc, raw: string): Plan | null {
   const c = yearChoices(w, n).find((x) => x.id === o.choice);
   const why = o.why.trim().replace(/\s+/g, ' ').slice(0, 40);
   if (!c || !why) return null;
-  return { ...c.want, why, by: 'ai' };
+  return { ...c.want, why, by: 'ai', ...(c.forGoal ? { goal: true } : {}) };
 }
 
 /** 采用 AI 的打算：人跟着去那个地方；要出手的话，帮手也跟着去 */

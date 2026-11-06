@@ -94,6 +94,7 @@ describe('青冥录 · 修好的毛病', () => {
 
   it('在云渡坊能卖东西：丹药半价；遗书不卖；玄冥剑卖给柳如烟', () => {
     const w = newWorld(45, { root: 'mixed' });
+    w.me.items.push('pill');
     moveTo(w, 'market');
     w.pending = [];
     const s0 = w.me.stones;

@@ -106,7 +106,7 @@ export interface Npc extends Being {
 }
 
 /** 一年的打算：干什么、去哪、为什么；scheme 是谋划手段，target 是冲着谁 */
-export interface Plan { act: string; place: PlaceId; why: string; by: 'rule' | 'ai'; scheme?: string; target?: string; /** AI 正在替他想 */ asking?: boolean }
+export interface Plan { act: string; place: PlaceId; why: string; by: 'rule' | 'ai'; scheme?: string; target?: string; /** AI 正在替他想 */ asking?: boolean; /** 是为了长远目标在奔走（目标瞒着人时，外人看不到这句 why） */ goal?: boolean }
 
 /** 和某人说过的话（按年记，me 是主角，them 是对方，note 是旁白） */
 export interface ChatLine { y: number; from: 'me' | 'them' | 'note'; text: string }
@@ -166,4 +166,6 @@ export interface World {
   /** 开局选的灵根和出身 */
   root?: RootId;
   origin?: OriginId;
+  /** 灵根的五行：天灵根一种，双灵根两种，杂灵根三到五种（「火」「木水」「金木土」） */
+  rootEl?: string;
 }

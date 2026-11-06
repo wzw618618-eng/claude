@@ -24,12 +24,14 @@ const KNOWN = new Set(['continue', 'go-title', 'tab', 'sheet', 'close', 'ok', 'p
 const acts = (html: string) => [...html.matchAll(/data-act="([^"]+)"/g)].map((m) => m[1]);
 
 describe('正式界面', () => {
-  it('开局：起名、选性别和灵根；有存档时可以接着玩', () => {
+  it('开局：只起名、选性别，灵根和出身由天定；有存档时可以接着玩', () => {
     const m = model(1, () => undefined, { screen: 'title', hasSave: false });
     const html = screen(m);
     expect(html).toContain('青冥录');
     expect(html).toContain('data-form="new"');
-    expect(html).toContain('天灵根');
+    expect(html).toContain('name="gender"');
+    expect(html).not.toContain('name="root"');
+    expect(html).not.toContain('name="origin"');
     expect(html).not.toContain('接着走下去');
     expect(screen({ ...m, ui: { ...m.ui, hasSave: true } })).toContain('接着走下去');
   });
@@ -91,7 +93,9 @@ describe('正式界面', () => {
     const html = screen({ ...m, souls: m.s.souls.view() });
     expect(html).toContain('相熟');
     expect(html).toContain('「你这孩子嘴笨心实。」');
-    expect(html).toContain('见面主动开口');
+    // 离线时不讲 AI 能做的事；接上 AI 才讲
+    expect(html).not.toContain('见面主动开口');
+    expect(screen({ ...m, souls: m.s.souls.view(), ai: { ...m.ai!, online: true } })).toContain('见面主动开口');
     expect(html).toContain('data-act="social"');
     expect(html).toContain('说出一个秘密');
     const far = screen({ ...m, ui: { ...m.ui, sheet: { kind: 'person', id: 'wen' } } });
@@ -178,10 +182,12 @@ describe('正式界面', () => {
     expect(settings).toContain('声音：开');
   });
 
-  it('开局能选出身；途中碰上的事没有来人；当了宗主自身页写宗主', () => {
-    const t = screen(model(13, () => undefined, { screen: 'title', hasSave: false }));
-    expect(t).toContain('墨家遗孤');
-    expect(t).toContain('name="origin"');
+  it('开局揭开身世和测灵根；途中碰上的事没有来人；当了宗主自身页写宗主', () => {
+    const t = screen(model(13, (s) => s.act({ type: 'new', seed: 1234, name: '林舟' }), { sheet: { kind: 'birth' } }));
+    expect(t).toContain('身世');
+    expect(t).toContain('测灵石');
+    expect(t).toMatch(/[天双杂]灵根<\/b><small>[金木水火土 ·]+<\/small>/);
+    expect(t).toContain('踏上修行路');
     const ev = screen(model(13, (s) => { s.w.turn.moved = true; s.w.pending = [{ id: 'event:f_herb', kind: 'event', who: '', vars: { ev: 'f_herb' } }]; }));
     expect(ev).toContain('途中');
     expect(ev).toContain('老松下的灵芝');

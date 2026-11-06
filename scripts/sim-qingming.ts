@@ -7,11 +7,12 @@
 
 import { makeRng } from '../qingming/assets/game/core/rng';
 import type { News, RootId, World } from '../qingming/assets/game/core/types';
-import { lifeGain, lifeLeft, npcs, newWorld } from '../qingming/assets/game/core/world';
+import { lifeGain, lifeLeft, npcs, newWorld, rollBirth } from '../qingming/assets/game/core/world';
 import { canBreak, yearExp } from '../qingming/assets/game/systems/body';
 import { buy, choose, doMain, endTurn, mainActs, moveTo, social, useItem, viewEncounter } from '../qingming/assets/game/player';
 import { applyDecision, whoDecides, yearChoices } from '../qingming/assets/game/ai/decide';
 import { PLACE_ORDER } from '../qingming/assets/game/data/world-data';
+import { openWorld } from '../qingming/assets/game/systems/year';
 
 declare const process: { argv: string[] };
 type R = ReturnType<typeof makeRng>;
@@ -120,7 +121,8 @@ function run(n: number, mode: string, onlyRoot?: RootId) {
   const lateActs: Record<string, number> = {};
   for (let i = 0; i < n; i++) {
     const root = onlyRoot ?? (['heaven', 'dual', 'mixed'] as const)[i % 3];
-    const w = newWorld(5000 + i, { root });
+    // 出身和真玩一样由天定；灵根按要量的那一种来
+    const w = openWorld(newWorld(5000 + i, { root, origin: rollBirth(5000 + i).origin }));
     const r = makeRng(i * 7919 + 1);
     const ai = mode === 'ai' ? makeRng(i * 104729 + 3) : undefined;
     const log = newLog();
@@ -222,7 +224,7 @@ function run(n: number, mode: string, onlyRoot?: RootId) {
 
 const [a1, a2, a3] = [process.argv[2], process.argv[3], process.argv[4]];
 if (a2 === 'story') {
-  const w = newWorld(Number(a1));
+  const w = openWorld(newWorld(Number(a1)));
   const r = makeRng(1);
   const log = newLog();
   const out: News[] = [];

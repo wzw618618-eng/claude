@@ -38,7 +38,7 @@ export const PEOPLE: PersonDef[] = [
   {
     id: 'wen', name: '温玄', short: '温玄', gender: 'm', age: 86, realm: 2, stage: 2, talent: 0.9, sect: 'qinglan', home: 'qinglan',
     traits: ['careful', 'cunning'], values: V(0.6, 0.2, 0.2, 0.5, 0.3),
-    goal: { kind: 'longevity', secret: true, cover: '闭关参悟大道' }, stones: 400, items: ['pill'],
+    goal: { kind: 'longevity', secret: true, cover: '贫道近来闭关参悟大道' }, stones: 400, items: ['pill'],
     bio: '青岚宗宗主，三十年前接下宗主之位，寿元只剩二十来年了。',
     voice: '说话慢，滴水不漏，自称「贫道」。',
     secret: '三十年前和师兄云鹤同闯玄冥洞府，为了独吞机缘，把重伤的师兄丢在洞府深处，回来说师兄失踪了。二十年前又以「剿灭魔修」为名灭了墨家满门。',
@@ -82,7 +82,7 @@ export const PEOPLE: PersonDef[] = [
   {
     id: 'han', name: '韩烈', short: '韩烈', gender: 'm', age: 44, realm: 1, stage: 2, talent: 0.95, sect: 'chixiao', home: 'chixiao',
     traits: ['cruel', 'cunning', 'grudge'], values: V(0.8, 0.5, 0.1, 0.2, 0.1),
-    goal: { kind: 'throne', target: 'chixiao', secret: true, cover: '替门主分忧', after: 14 }, stones: 150,
+    goal: { kind: 'throne', target: 'chixiao', secret: true, cover: '不过是替门主分忧罢了', after: 14 }, stones: 150,
     bio: '赤霄门长老，管着门里的账和刑罚。',
     voice: '阴阳怪气，说话爱留半句。',
     secret: '他和青岚宗的陆沉舟暗中有来往，想趁厉擎闯洞府的时候夺门主之位。',
