@@ -1,0 +1,73 @@
+/* Illustration layer: shared by engine UI and the visual review pages. */
+.qm { --faint: #756a59; --r: 4px; background-image: repeating-linear-gradient(0deg, transparent 0 3px, #92785004 3px 4px), radial-gradient(ellipse at top, #e2dbc9, transparent 65%); }
+.qm-app { max-width: 760px; }
+.qm .card { border-radius: 4px; box-shadow: 0 3px 18px #3e352308; }
+.qm button { transition: background-color .18s, border-color .18s, transform .18s; }
+.qm button:active:not(:disabled) { transform: translateY(1px); }
+.qm .primary { background: #913e31; border-color: #913e31; color: #fff9ec; letter-spacing: .12em; min-height: 46px; }
+.qm .title { position: relative; isolation: isolate; padding-top: 56px; }
+.qm .title-ink { position: absolute; inset: 0 0 auto; height: 620px; z-index: -1; opacity: .7; pointer-events: none; background: none; overflow: hidden; mask-image: linear-gradient(#000 60%, transparent); }
+.qm .title-ink img { width: 100%; height: 100%; object-fit: cover; object-position: center 45%; mix-blend-mode: multiply; }
+.qm .title-kicker { font-size: 12px; letter-spacing: .4em; color: var(--azure); margin-bottom: 18px; }
+.qm .title h1 { font-size: clamp(64px, 13vw, 96px); letter-spacing: .2em; padding-left: .2em; text-shadow: 0 2px 15px var(--paper); }
+.qm .title .sub { margin-top: 20px; text-shadow: 0 1px 5px var(--paper); }
+.qm .setup { margin-top: 180px; background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(8px); border-top: 3px solid var(--cinnabar); }
+.qm .portrait { display: inline-block; width: 52px; height: 62px; flex: 0 0 52px; overflow: hidden; border-radius: 3px 3px 14px 3px; border: 1px solid var(--line); background: #ede9de; box-shadow: 2px 2px 0 var(--paper-2); vertical-align: middle; }
+.qm .portrait img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.qm .portrait.big { width: 72px; height: 86px; flex-basis: 72px; }
+.qm .portrait.t1 { border-color: var(--azure); }
+.qm .portrait.t2 { border-color: var(--jade); }
+.qm .portrait.t3 { border-color: var(--cinnabar); }
+.qm .portrait.foe { border-color: var(--ink); }
+.qm .gone { filter: grayscale(1); opacity: .65; }
+.qm .seals .portrait { width: 30px; height: 36px; flex-basis: 30px; }
+.qm .landscape { overflow: hidden; position: relative; background: #f5f1e7; }
+.qm .landscape img { display: block; width: 100%; height: 100%; object-fit: cover; mix-blend-mode: multiply; }
+.qm .banner { padding: 0 0 20px; overflow: hidden; border: 1px solid var(--line); background: var(--card); }
+.qm .banner .landscape { height: clamp(180px, 43vw, 300px); margin-bottom: 20px; mask-image: linear-gradient(#000 78%, transparent); }
+.qm .banner h2, .qm .banner p { margin-left: 24px; margin-right: 24px; }
+.qm .banner h2 { font-size: 32px; }
+.qm .places { gap: 14px; }
+.qm .place-card { padding: 0 14px 15px; overflow: hidden; display: flex; flex-direction: column; gap: 9px; }
+.qm .place-card > b { font-size: 18px; }
+.qm .place-thumbnail { height: 135px; margin: 0 -14px 3px; width: calc(100% + 28px); }
+.qm .place-card .seals { margin-top: auto; }
+.qm .place-card.cur { border-color: var(--cinnabar); box-shadow: inset 0 -3px var(--cinnabar); }
+.qm .character-art { margin: 0 0 20px; height: min(53vh, 480px); overflow: hidden; background: #f5f1e7; border-bottom: 1px solid var(--line); mask-image: linear-gradient(#000 88%, transparent); }
+.qm .character-art img { display: block; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.qm .sheet-landscape { height: 230px; margin: 0 0 18px; border-radius: 3px; }
+.qm .ending-art { height: 270px; margin-bottom: 22px; mask-image: linear-gradient(#000 75%, transparent); }
+.qm .sheet-head { position: sticky; top: -20px; z-index: 2; background: var(--card); padding-top: 12px; padding-bottom: 12px; }
+.qm .sheet-head .x { min-width: 44px; min-height: 44px; }
+.qm .person { padding-top: 13px; padding-bottom: 13px; }
+.qm .who > span:last-child { min-width: 0; }
+.qm .dock { max-width: 760px; backdrop-filter: blur(16px); border-top: 1px solid var(--line); }
+.qm .dock button { min-height: 56px; }
+.qm .dock button.on { border-top: 2px solid var(--cinnabar); background: var(--cinnabar-soft); }
+.qm .steps li { border-radius: 2px; }
+.qm input, .qm select, .qm textarea { font-size: 16px; }
+.qm .chat-sheet .sheet-head .portrait { width: 58px; height: 70px; flex-basis: 58px; }
+@media (min-width: 900px) { .qm-app { border-inline: 1px solid var(--line); box-shadow: 0 0 100px #2c302318; } .qm .main { padding: 24px; } }
+@media (max-width: 380px) { .qm .place-thumbnail { height: 105px; } .qm .setup { margin-top: 130px; } .qm .portrait { width: 44px; height: 54px; flex-basis: 44px; } }
+@media (prefers-color-scheme: dark) {
+ .qm { --faint: #b7ad9a; background-image: radial-gradient(ellipse at top, #26332f, transparent 65%); }
+ .qm .landscape, .qm .character-art { background: #d9d5cc; }
+ .qm .landscape img, .qm .character-art img, .qm .portrait img { filter: brightness(.76) saturate(.8); }
+ .qm .title-ink { opacity: .34; }
+ .qm .title-ink img { mix-blend-mode: normal; }
+ .qm .primary { background: #a84b3c; }
+}
+@media (prefers-reduced-motion: reduce) { .qm *, .qm *::before, .qm *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+.qm .item-art, .qm .item-icon { width: 48px; height: 48px; flex: 0 0 48px; object-fit: contain; border-radius: 4px; background: #f4efe2; }
+.qm .item-icon { fill: none; stroke: var(--azure); stroke-width: 1.4; padding: 5px; }
+.qm .item-icon.heal { stroke: var(--jade); }
+.qm .item-icon.life { stroke: var(--gold); }
+.qm .ware { gap: 12px; }
+.qm .ware > div { flex: 1; min-width: 0; }
+.qm .map { border-block: 1px solid var(--line); margin-block: 16px; background: var(--card); }
+.qm .map .name { paint-order: stroke; stroke: var(--card); stroke-width: 4px; stroke-linejoin: round; fill: var(--ink); }
+.qm .sheet-head > div { min-width: 0; }
+.qm .sheet-head p { overflow-wrap: anywhere; }
+.qm .dock { margin-inline: auto; }
+.qm .ending > .primary.wide { width: calc(100% - 24px); }
+@media (prefers-color-scheme: dark) { .qm .item-icon { background: var(--paper-2); } }

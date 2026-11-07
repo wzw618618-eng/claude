@@ -14,7 +14,9 @@
     "doctor": "forgeax project check",
     "test": "forgeax project test",
     "typecheck": "pnpm exec tsc --noEmit",
-    "live": "tsx scripts/live.ts"
+    "live": "tsx scripts/live.ts",
+    "art": "node scripts/build-art.mjs",
+    "preview:build": "node scripts/build-preview.mjs"
   },
   "forgeax": {
     "metrics": {
@@ -48,7 +50,9 @@
     "@webgpu/types": "0.1.71",
     "tsx": "4.23.1",
     "typescript": "6.0.3",
-    "vitest": "4.0.18"
+    "vitest": "4.0.18",
+    "sharp": "0.34.5",
+    "esbuild": "0.28.2"
   },
   "description": "青冥录：NPC 会自己过日子的原创修仙沙盒（天工引擎版）"
 }

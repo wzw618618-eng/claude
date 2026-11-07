@@ -15,6 +15,7 @@ import { heardText } from '../game/ai/souls.ts';
 import type { AiView } from '../world/protocol.ts';
 import type { SoulView } from '../souls/soul-client.ts';
 import { mapSvg } from './map.ts';
+import { art, portraitKey } from './art.ts';
 
 // ───────────── 界面状态 ─────────────
 
@@ -87,6 +88,11 @@ export function sealText(name: string) {
 }
 const seal = (name: string, cls = '', big = false) => `<span class="seal ${cls}${big ? ' big' : ''}" aria-hidden="true">${[...sealText(name)].map((c) => `<i>${esc(c)}</i>`).join('')}</span>`;
 
+const portrait = (n: Npc, cls = '', big = false) => `<span class="portrait ${cls}${big ? ' big' : ''}${n.alive ? '' : ' gone'}"><img src="${art(portraitKey(n), 'avatar')}" alt="" width="96" height="96" loading="lazy" decoding="async"></span>`;
+const landscape = (id: string, cls = '') => `<div class="landscape ${cls}" aria-hidden="true"><img src="${art(id)}" alt="" width="960" height="640" loading="lazy" decoding="async"></div>`;
+
+const itemArt = (id: string) => id === 'sword' || id === 'letter' ? `<img class="item-art" src="${art(id)}" alt="" width="56" height="56" loading="lazy">` : `<svg class="item-icon ${id}" viewBox="0 0 48 48" aria-hidden="true"><path d="M18 5h12v8l6 8v16q0 6-12 6T12 37V21l6-8Z"/><path d="M17 8h14M13 26h22M18 35q6-10 12 0"/><circle cx="24" cy="25" r="5"/></svg>`;
+
 const soulOf = (m: Model, id: string) => m.souls.find((s) => s.soulId === `qingming.${id}`);
 const LOD: Record<string, string> = { spotlight: '聚光', ambient: '在场', offstage: '离场' };
 const SEX = (g: 'm' | 'f') => (g === 'f' ? '女' : '男');
@@ -123,7 +129,7 @@ function titleScreen(m: Model): string {
       <input type="radio" name="root" value="${r}"${ui.setup.root === r ? ' checked' : ''}><b>${ROOTS[r].name}</b><small>${esc(ROOTS[r].desc)}</small>
     </label>`).join('');
   return `<main class="title">
-    <div class="title-ink" aria-hidden="true"></div>
+    <div class="title-ink" aria-hidden="true"><img src="${art('title')}" alt="" width="800" height="1200" fetchpriority="high"></div><p class="title-kicker">山河有灵 · 人间有情</p>
     <h1 class="brush">青冥录</h1>
     <p class="sub">一州七地，十二个有名有姓的修士。<br>他们各有心事，也会记得你。</p>
     ${ui.hasSave && m.w && m.w.phase === 'year' ? `<div class="resume">${btn(`接着走下去 · 第${m.w.year}年 · ${esc(m.w.me.name)}`, 'continue', { cls: 'primary wide' })}</div>` : ''}
@@ -204,12 +210,12 @@ function hereTab(m: Model): string {
   const here = npcs(w).filter((n) => n.place === w.me.place).sort((a, b) => bondScore(w, b) - bondScore(w, a));
   const heard = (w.heard ?? []).filter((h) => h.y === w.year && h.at === w.me.place);
   const offer = w.offer && w.offer.y === w.year ? w.people[w.offer.who] : null;
-  return `<section class="banner">
+  return `<section class="banner">${landscape(w.me.place)}
       <h2 class="brush">${esc(p.name)}</h2>
       <p>${esc(p.desc)}</p>
       <p class="tags"><span>修炼 ×${p.cultivate}</span>${p.danger >= 0.1 ? '<span class="bad">凶险</span>' : p.danger > 0.02 ? '<span>有些危险</span>' : '<span>太平</span>'}</p>
     </section>
-    ${offer ? `<section class="card offer-bar">${seal(offer.name, tierOf(m, offer).cls)}<p><b>${esc(offer.name)}</b>在等你答复。</p>${btn('去看看', 'chat', { id: offer.id, cls: 'primary' })}</section>` : ''}
+    ${offer ? `<section class="card offer-bar">${portrait(offer, tierOf(m, offer).cls)}<p><b>${esc(offer.name)}</b>在等你答复。</p>${btn('去看看', 'chat', { id: offer.id, cls: 'primary' })}</section>` : ''}
     <section class="card acts">
       <h3>今年的主事 <small>${w.turn.main ? '做完了' : '选一件'}</small></h3>
       <div class="grid4">${mainActs(w).map((a) => btn(`<b>${a.label}</b><small>${esc(a.hint)}</small>`, 'main', { v: a.id, disabled: !a.ok || w.turn.main })).join('')}</div>
@@ -240,7 +246,7 @@ function shopCard(m: Model): string {
   return `<section class="card shop"><h3>坊市 <small>灵石 ${w.me.stones}</small></h3>
     ${Object.entries(SHOP).map(([id, price]) => {
       const sold = id === 'life' && stock <= 0;
-      return `<div class="ware"><div><b>${ITEMS[id].name}</b><small>${esc(ITEMS[id].desc)}${sold ? '（卖完了）' : ''}</small></div>${btn(`${price} 灵石`, 'buy', { v: id, disabled: sold || w.me.stones < price })}</div>`;
+      return `<div class="ware">${itemArt(id)}<div><b>${ITEMS[id].name}</b><small>${esc(ITEMS[id].desc)}${sold ? '（卖完了）' : ''}</small></div>${btn(`${price} 灵石`, 'buy', { v: id, disabled: sold || w.me.stones < price })}</div>`;
     }).join('')}
   </section>`;
 }
@@ -249,9 +255,10 @@ function placeCard(m: Model, p: PlaceId): string {
   const w = m.w!;
   const ppl = npcs(w).filter((n) => n.place === p);
   return `<button type="button" class="place-card${w.me.place === p ? ' cur' : ''}" data-act="place" data-v="${p}">
+    ${landscape(p, 'place-thumbnail')}
     <b>${esc(PLACES[p].name)}${w.me.place === p ? '<small>（你在这）</small>' : ''}</b>
     <small>${esc(PLACES[p].desc)}</small>
-    <span class="seals">${ppl.slice(0, 6).map((n) => seal(n.name, tierOf(m, n).cls)).join('')}${ppl.length > 6 ? `<em>+${ppl.length - 6}</em>` : ''}${ppl.length ? '' : '<em>没有人</em>'}</span>
+    <span class="seals">${ppl.slice(0, 6).map((n) => portrait(n, tierOf(m, n).cls)).join('')}${ppl.length > 6 ? `<em>+${ppl.length - 6}</em>` : ''}${ppl.length ? '' : '<em>没有人</em>'}</span>
   </button>`;
 }
 
@@ -263,7 +270,7 @@ function personRow(m: Model, n: Npc, here = false): string {
   const sect = n.sect ? SECT_NAME[n.sect] : '散修';
   return `<div class="person">
     <button type="button" class="who" data-act="person" data-id="${n.id}">
-      ${seal(n.name, t.cls)}
+      ${portrait(n, t.cls)}
       <span><b>${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em></b><small>${realmText(n)} · ${sect}${here ? '' : ` · 在${placeName(n.place)}`}</small>${plan ? `<small class="plan">${plan}</small>` : ''}</span>
     </button>
     ${here && w.turn.moved ? btn('说话', 'chat', { id: n.id, cls: 'talk', disabled: !canTalk(w, n.id) && !(w.chat[n.id] ?? []).length }) : ''}
@@ -295,7 +302,7 @@ function peopleTab(m: Model): string {
   return `${group('身边的人', here)}
     ${group('有交情的人', close, '交情越深，演得越用心')}
     ${group('其他人', rest)}
-    ${dead.length ? `<section class="card dead"><h3>故人</h3>${dead.map((n) => `<button type="button" class="dead-row" data-act="person" data-id="${n.id}">${seal(n.name, 'gone')}<span><b>${esc(n.name)}</b><small>${esc(n.died?.note ?? '已故')}${n.died ? ` · 第${n.died.y}年` : ''}</small></span></button>`).join('')}</section>` : ''}`;
+    ${dead.length ? `<section class="card dead"><h3>故人</h3>${dead.map((n) => `<button type="button" class="dead-row" data-act="person" data-id="${n.id}">${portrait(n, 'gone')}<span><b>${esc(n.name)}</b><small>${esc(n.died?.note ?? '已故')}${n.died ? ` · 第${n.died.y}年` : ''}</small></span></button>`).join('')}</section>` : ''}`;
 }
 
 // 江湖
@@ -346,7 +353,7 @@ function selfTab(m: Model): string {
       ${items.length ? items.map((id) => {
         const n = me.items.filter((x) => x === id).length;
         const use = id === 'heal' ? btn('服下', 'use', { v: id, disabled: me.hp >= 100 }) : id === 'life' ? btn('服下', 'use', { v: id }) : '';
-        return `<div class="ware"><div><b>${esc(ITEMS[id]?.name ?? id)}${n > 1 ? ` ×${n}` : ''}</b><small>${esc(ITEMS[id]?.desc ?? '')}</small></div>${use}</div>`;
+        return `<div class="ware">${itemArt(id)}<div><b>${esc(ITEMS[id]?.name ?? id)}${n > 1 ? ` ×${n}` : ''}</b><small>${esc(ITEMS[id]?.desc ?? '')}</small></div>${use}</div>`;
       }).join('') : '<p class="empty">空空如也。</p>'}
     </section>
     <section class="card"><h3>你知道的事</h3>${secrets.length ? `<ul class="secrets">${secrets.join('')}</ul>` : '<p class="empty">还不知道谁的秘密。交情深了，有人会说给你听。</p>'}</section>
@@ -411,7 +418,8 @@ function personSheet(m: Model, id: string): string {
   const souls = soul?.affordances.filter((a) => a.kind === 'soul').map((a) => a.label) ?? [];
   const mems = aboutMe(n).slice(0, 6).map((x) => `<li><b>第${x.y}年</b>${esc(describe(w, x, n.id))}</li>`);
   const traits = n.mind.traits.map((k) => `<span title="${esc(TRAITS[k].desc)}">${TRAITS[k].name}</span>`).join('');
-  return `${sheetHead(`${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em>`, `${SEX(n.gender)} · ${n.age}岁 · ${realmText(n)} · ${n.sect ? SECT_NAME[n.sect] : '散修'}${n.alive ? ` · 在${placeName(n.place)}` : ` · ${esc(n.died?.note ?? '已故')}`}`, seal(n.name, t.cls, true))}
+  return `${sheetHead(`${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em>`, `${SEX(n.gender)} · ${n.age}岁 · ${realmText(n)} · ${n.sect ? SECT_NAME[n.sect] : '散修'}${n.alive ? ` · 在${placeName(n.place)}` : ` · ${esc(n.died?.note ?? '已故')}`}`, portrait(n, t.cls, true))}
+    <figure class="character-art${n.alive ? '' : ' gone'}"><img src="${art(portraitKey(n))}" alt="${esc(n.name)}立绘" width="800" height="1200" decoding="async"></figure>
     ${n.mind.heart ? `<blockquote class="heart"><p>「${esc(n.mind.heart)}」</p><cite>心里的你 · 第${n.mind.heartY ?? w.year}年</cite></blockquote>` : ''}
     <section class="opinion">
       <p>对你：<b>${feel(n)}</b></p>
@@ -450,7 +458,7 @@ function chatSheet(m: Model, id: string): string {
   const stream = thinking ? `<div class="bubble them live"><p>${m.ui.stream?.id === id && m.ui.stream.text ? esc(m.ui.stream.text) : '<span class="dots"><i></i><i></i><i></i></span>'}</p></div>` : '';
   const offer = w.offer && w.offer.who === id && w.offer.y === w.year ? `<div class="offer card"><p><b>${esc(n.name)}</b>提出：${esc(offerLabel(w.offer.kind))}</p><div class="row2">${btn('婉拒', 'offer', { v: 'no' })}${btn('答应', 'offer', { v: 'yes', cls: 'primary' })}</div></div>` : '';
   const why = !w.turn.moved ? '先选好今年去哪' : n.place !== w.me.place ? `${n.gender === 'f' ? '她' : '他'}不在这里` : w.pending.length ? '先处理找上门的事' : left <= 0 ? '今年说不上话了' : '';
-  return `${sheetHead(`${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em>`, can ? `今年还能说 ${left} 句${!u ? '（第一句用掉一次打交道）' : ''}` : esc(why), seal(n.name, t.cls))}
+  return `${sheetHead(`${esc(n.name)}<em class="tier ${t.cls}">${t.name}</em>`, can ? `今年还能说 ${left} 句${!u ? '（第一句用掉一次打交道）' : ''}` : esc(why), portrait(n, t.cls))}
     <div class="log" aria-live="polite">${log || `<p class="aside">你们还没说过话。</p>`}${stream}</div>
     ${offer}
     <form class="say" data-form="talk" data-id="${id}">
@@ -558,7 +566,7 @@ function encounterModal(m: Model): string {
   const t = n ? tierOf(m, n) : { cls: '', name: '' };
   const voiced = typeof e.vars.say === 'string' && e.vars.say;
   return `<div class="scrim center encounter-scrim"><div class="encounter card" role="dialog" aria-modal="true">
-    <header>${n ? seal(n.name, t.cls, true) : ''}<div><p class="kicker">找上门${w.pending.length > 1 ? ` · 还有 ${w.pending.length - 1} 件` : ''}</p><h2 class="brush">${esc(v.title)}</h2></div></header>
+    <header>${n ? portrait(n, t.cls, true) : ''}<div><p class="kicker">找上门${w.pending.length > 1 ? ` · 还有 ${w.pending.length - 1} 件` : ''}</p><h2 class="brush">${esc(v.title)}</h2></div></header>
     <p class="speech">${esc(v.text)}</p>
     ${!voiced && m.ai?.online && n ? '<p class="hint pulse">…</p>' : ''}
     <div class="choices">${v.choices.map((c, i) => btn(`<b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}`, 'choose', { i, disabled: c.disabled })).join('')}</div>
@@ -576,7 +584,7 @@ function endingScreen(m: Model): string {
   const hearts = Object.values(w.people).filter((n) => n.mind.heart).sort((a, b) => bondScore(w, b) - bondScore(w, a));
   const friends = Object.values(w.people).filter((n) => (n.mind.op[ME]?.aff ?? 0) >= 40).length;
   const foes = Object.values(w.people).filter((n) => (n.mind.op[ME]?.aff ?? 0) <= -40).length;
-  return `<main class="ending">
+  return `<main class="ending">${landscape(`ending_${kind}`, 'ending-art')}
     <h1 class="brush">${title}</h1>
     <p class="sub">${line}<br>修行 ${w.year} 年，享年 ${me.age} 岁。</p>
     <dl class="stats"><div><dt>境界</dt><dd>${realmText(me)}</dd></div><div><dt>知交</dt><dd>${friends}</dd></div><div><dt>仇家</dt><dd>${foes}</dd></div><div><dt>知道的秘密</dt><dd>${w.knows.length}</dd></div></dl>

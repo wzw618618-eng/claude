@@ -12,7 +12,9 @@ import { type HostLink, linkProvider } from '../souls/host.ts';
 import { createMeter, totalsText } from '../souls/meter.ts';
 import type { SoulView } from '../souls/soul-client.ts';
 import { type Act, type AiView, CHANNEL, type ToEngine, type ToHost } from '../world/protocol.ts';
-import css from './style.css?raw';
+import baseCss from './style.css?raw';
+import illustrationCss from './illustrations.css?raw';
+const css = baseCss + '\n' + illustrationCss;
 import { type AiKind, type Model, newUI, screen, type Sheet, type Tab, type UI } from './view.ts';
 
 const SAVE_KEY = 'qingming.save.v1';

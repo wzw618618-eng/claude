@@ -3,6 +3,7 @@
 
 import type { PlaceId, World } from '../game/core/types.ts';
 import { npcs } from '../game/core/world.ts';
+import { art } from './art.ts';
 import { PLACES } from '../game/data/world-data.ts';
 
 /** 每个地方在图上的位置（viewBox 360×300） */
@@ -54,6 +55,7 @@ export function mapSvg(w: World, opts: { here?: PlaceId | null; label?: boolean 
     </g>`;
   }).join('');
   return `<svg class="map" viewBox="0 0 360 300" role="group" aria-label="青冥州舆图">
+    <image href="${art('qinglan')}" x="0" y="0" width="360" height="300" preserveAspectRatio="xMidYMid slice" opacity=".16" aria-hidden="true"/>
     <g class="ridges">${RIDGES.map((d) => `<path d="${d}"/>`).join('')}</g>
     <path class="river" d="${RIVER}"/>
     <g class="roads">${roads}</g>

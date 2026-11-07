@@ -105,7 +105,8 @@ describe('正式界面', () => {
       s.w.chat.hua = [{ y: 1, from: 'me', text: '婆婆好' }, { y: 1, from: 'them', text: '<img src=x onerror=alert(1)>坐。' }];
     }, { sheet: { kind: 'chat', id: 'hua' } });
     const html = screen(m);
-    expect(html).not.toContain('<img');
+    expect(html).not.toContain('<img src=x');
+    expect(html.match(/<img[^>]*onerror/)).toBeNull();
     expect(html).toContain('&#60;img');
     expect(html).toContain('data-form="talk"');
     const live = screen({ ...m, ai: { ...m.ai!, thinking: 'hua' }, ui: { ...m.ui, stream: { id: 'hua', text: '娃儿来' } } });
