@@ -1,10 +1,10 @@
 // 脚本化的玩家：只用游戏里能拿到的信息（线索簿 + 角色档案上的特征）推理。
 // 用于整局回放测试：模板应答模式下无头跑完一局。
 
-import { deriveContradictions, placements, type Fact } from '../../src/case/facts';
-import type { DiscipleId, LocationId } from '../../src/data/types';
-import type { GameSession } from '../../src/game/state';
-import { quickQuestions } from '../../src/game/quick';
+import { deriveContradictions, placements, type Fact } from '../../assets/game/case/facts';
+import type { DiscipleId, LocationId } from '../../assets/game/data/types';
+import type { GameSession } from '../../assets/game/game/state';
+import { quickQuestions } from '../../assets/game/game/quick';
 
 const LOCATIONS: LocationId[] = ['library', 'dorm', 'alchemy', 'kitchen', 'training', 'bamboo', 'gate'];
 

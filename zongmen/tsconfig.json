@@ -3,12 +3,26 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM"],
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "vitest/globals"
+    ]
   },
-  "include": ["src", "tools", "tests"]
+  "include": [
+    "assets/**/*.ts",
+    "assets/**/*.d.ts",
+    "tools/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

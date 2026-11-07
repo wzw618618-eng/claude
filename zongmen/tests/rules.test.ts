@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defaultData } from '../src/data/index';
-import { generateCase, type CaseData } from '../src/case/generator';
+import { defaultData } from '../assets/game/data/index';
+import { generateCase, type CaseData } from '../assets/game/case/generator';
 import {
   initialDiscipleState,
   judgeEvidence,
@@ -9,9 +9,9 @@ import {
   shouldRefuse,
   toneStressDelta,
   evidenceStressDelta,
-} from '../src/game/rules';
-import { GameSession } from '../src/game/state';
-import { TemplateClient } from '../src/ai/templateResponder';
+} from '../assets/game/game/rules';
+import { GameSession } from '../assets/game/game/state';
+import { TemplateClient } from '../assets/game/ai/templateResponder';
 
 const data = defaultData();
 const cfg = data.config;

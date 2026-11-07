@@ -7,11 +7,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { argv, env } from 'node:process';
-import { defaultData, type LocationId } from '../../src/data/index';
-import { GameSession } from '../../src/game/state';
-import { createClient } from '../../src/ai/factory';
-import { quickQuestions } from '../../src/game/quick';
-import { GRADE_NAMES } from '../../src/game/rules';
+import { defaultData, type LocationId } from '../../assets/game/data/index';
+import { GameSession } from '../../assets/game/game/state';
+import { createClient } from '../../assets/game/ai/factory';
+import { quickQuestions } from '../../assets/game/game/quick';
+import { GRADE_NAMES } from '../../assets/game/game/rules';
 import { deduce } from '../../tests/helpers/bot';
 
 const data = defaultData();

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { defaultData } from '../src/data/index';
-import { generateCase, type CaseData } from '../src/case/generator';
-import { initialDiscipleState, permissions } from '../src/game/rules';
-import { validateOutput, truncateReply, type DiscipleOutput } from '../src/ai/validate';
-import { buildMessages, buildSystemPrompt, buildTurnMessage, estimateTokens, mustRevealFacts, personaAndCardText } from '../src/ai/prompt';
-import { runDiscipleTurn } from '../src/ai/runner';
-import { AIClientError, type AIClient, type ChatRequest } from '../src/ai/client';
-import { GameSession } from '../src/game/state';
-import { TemplateClient } from '../src/ai/templateResponder';
+import { defaultData } from '../assets/game/data/index';
+import { generateCase, type CaseData } from '../assets/game/case/generator';
+import { initialDiscipleState, permissions } from '../assets/game/game/rules';
+import { validateOutput, truncateReply, type DiscipleOutput } from '../assets/game/ai/validate';
+import { buildMessages, buildSystemPrompt, buildTurnMessage, estimateTokens, mustRevealFacts, personaAndCardText } from '../assets/game/ai/prompt';
+import { runDiscipleTurn } from '../assets/game/ai/runner';
+import { AIClientError, type AIClient, type ChatRequest } from '../assets/game/ai/client';
+import { GameSession } from '../assets/game/game/state';
+import { TemplateClient } from '../assets/game/ai/templateResponder';
 import { playBot } from './helpers/bot';
 
 const data = defaultData();

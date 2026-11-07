@@ -1,0 +1,9 @@
+{
+  "id": "zongmen",
+  "name": "宗门内奸",
+  "schemaVersion": "3.0.0",
+  "roots": {
+    "engine": "a2bee432-10c8-5b1c-a094-c62c373ce92e",
+    "frontend": "67aa90aa-e6bd-5c00-98c9-2f247a6e205f"
+  }
+}

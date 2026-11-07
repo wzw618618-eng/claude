@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const OUT = join(root, 'src/data/bundle.gen.ts');
+export const OUT = join(root, 'assets/game/data/bundle.gen.ts');
 
 const json = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 const text = (p: string) => readFileSync(join(root, p), 'utf8');

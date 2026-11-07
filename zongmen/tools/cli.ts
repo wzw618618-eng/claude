@@ -15,14 +15,14 @@
 
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout, argv, env, exit } from 'node:process';
-import { defaultData, type LocationId } from '../src/data/index';
-import { generateCase } from '../src/case/generator';
-import { solveCase } from '../src/case/solver';
-import { describeCase } from '../src/case/describe';
-import { GameSession } from '../src/game/state';
-import { createClient, type ProviderName } from '../src/ai/factory';
-import { GRADE_NAMES } from '../src/game/rules';
-import { quickQuestions } from '../src/game/quick';
+import { defaultData, type LocationId } from '../assets/game/data/index';
+import { generateCase } from '../assets/game/case/generator';
+import { solveCase } from '../assets/game/case/solver';
+import { describeCase } from '../assets/game/case/describe';
+import { GameSession } from '../assets/game/game/state';
+import { createClient, type ProviderName } from '../assets/game/ai/factory';
+import { GRADE_NAMES } from '../assets/game/game/rules';
+import { quickQuestions } from '../assets/game/game/quick';
 
 const data = defaultData();
 const args = argv.slice(2);

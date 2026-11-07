@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createRng, hashSeed } from '../src/core/rng';
-import { defaultData } from '../src/data/index';
-import { generateCase } from '../src/case/generator';
-import { solveCase } from '../src/case/solver';
-import { contradicts, deriveContradictions, type ClaimFact, type Fact } from '../src/case/facts';
+import { createRng, hashSeed } from '../assets/game/core/rng';
+import { defaultData } from '../assets/game/data/index';
+import { generateCase } from '../assets/game/case/generator';
+import { solveCase } from '../assets/game/case/solver';
+import { contradicts, deriveContradictions, type ClaimFact, type Fact } from '../assets/game/case/facts';
 import { readFileSync } from 'node:fs';
 import { buildBundleSource, OUT } from '../tools/bundle-data';
 
