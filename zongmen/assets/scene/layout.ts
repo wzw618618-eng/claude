@@ -73,13 +73,30 @@ export function fitOverviewShot(width: number, height: number): CameraShot {
   const pts = (Object.keys(LOCATION_POS) as LocationId[]).map((l) => [LOCATION_POS[l][0], LOCATION_LABEL_HEIGHT[l], LOCATION_POS[l][2]] as Vec3);
   for (let d = 24; d <= 90; d += 1) {
     const shot = { ...base, distance: d };
+    // 标签本身约 90 像素宽，边距至少留半个标签
+    const mx = Math.max(width * 0.06, 52);
     const ok = pts.every((p) => {
       const s = projectToScreen(p, shot, width, height);
-      return !!s && s.x > width * 0.06 && s.x < width * 0.94 && s.y > height * 0.12 && s.y < height * 0.7;
+      return !!s && s.x > mx && s.x < width - mx && s.y > height * 0.12 && s.y < height * 0.7;
     });
     if (ok) return shot;
   }
   return { ...base, distance: 90 };
+}
+
+/** 广场机位：5 名弟子连同头顶的情绪图标都在画面里，且在底部头像栏之上 */
+export function fitPlazaShot(width: number, height: number): CameraShot {
+  const base = SHOTS.plaza;
+  const pts: Vec3[] = PLAZA_SLOTS.flatMap((p) => [[p[0], 0, p[2]] as Vec3, [p[0], 2.3, p[2]] as Vec3]);
+  for (let d = base.distance; d <= 40; d += 0.5) {
+    const shot = { ...base, distance: d };
+    const ok = pts.every((p) => {
+      const s = projectToScreen(p, shot, width, height);
+      return !!s && s.x > width * 0.08 && s.x < width * 0.92 && s.y > height * 0.1 && s.y < height * 0.7;
+    });
+    if (ok) return shot;
+  }
+  return { ...base, distance: 40 };
 }
 
 export function locationShot(loc: LocationId): CameraShot {

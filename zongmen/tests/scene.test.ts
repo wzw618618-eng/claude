@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultData } from '../assets/game/data/index';
 import { characterHeight, characterModel, lookOf, LOCATION_MODELS, PAL } from '../assets/scene/models';
 import { voxelMesh, VoxelModel } from '../assets/scene/voxel';
-import { fitOverviewShot, LOCATION_LABEL_HEIGHT, LOCATION_POS, PLAZA_SLOTS, projectToScreen, SHOTS, stepShot } from '../assets/scene/layout';
+import { fitOverviewShot, fitPlazaShot, LOCATION_LABEL_HEIGHT, LOCATION_POS, PLAZA_SLOTS, projectToScreen, SHOTS, stepShot } from '../assets/scene/layout';
 import { portraitGrid } from '../assets/ui/portrait';
 import { esc, relatedClues } from '../assets/ui/view';
 import { GameSession } from '../assets/game/game/state';
@@ -83,10 +83,13 @@ describe('镜头与投影', () => {
       }
     }
   });
-  it('广场镜头里 5 个站位都在画面里', () => {
-    for (const p of PLAZA_SLOTS) {
-      const s = projectToScreen(p, SHOTS.plaza, 1280, 720)!;
-      expect(s.x > 0 && s.x < 1280 && s.y > 0 && s.y < 720).toBe(true);
+  it('广场镜头里 5 个站位都在画面里（横屏和竖屏）', () => {
+    for (const [w, h] of [[1280, 720], [390, 844]]) {
+      const shot = fitPlazaShot(w, h);
+      for (const p of PLAZA_SLOTS) {
+        const s = projectToScreen(p, shot, w, h)!;
+        expect(s.x > 0 && s.x < w && s.y > 0 && s.y < h * 0.75, `${w}x${h}`).toBe(true);
+      }
     }
   });
   it('镜头过渡最终吸附到目标（标签不会无限微动）', () => {

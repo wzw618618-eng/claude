@@ -91,6 +91,8 @@ button.danger { background: #7a2b25; border-color: #b8463a; }
 .talk { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(820px, 96vw); max-height: 58vh;
   display: flex; flex-direction: column; padding: 10px 12px 12px; }
 .talk header { display: flex; align-items: center; gap: 10px; }
+.talk header button { white-space: nowrap; flex-shrink: 0; }
+.talk header .notice { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .talk header canvas, .talk header img { width: 44px; height: 44px; image-rendering: pixelated; border-radius: 8px; background: #26344c; }
 .talk header .who { font-size: 18px; font-weight: 800; color: var(--gold2); }
 .talk header .stress { width: 120px; }
@@ -136,7 +138,7 @@ table.truth { width: 100%; border-collapse: collapse; font-size: 14px; margin-to
 table.truth th, table.truth td { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: left; vertical-align: top; }
 table.truth tr.culprit td { background: rgba(169,139,217,.16); }
 table.truth .flaw { color: #ffcf9e; font-size: 13px; }
-.stats { position: absolute; left: 10px; bottom: 10px; font-size: 12px; color: var(--muted); padding: 4px 8px; pointer-events: none; }
+.stats { position: absolute; left: 10px; top: 66px; font-size: 12px; color: var(--muted); padding: 4px 8px; pointer-events: none; }
 .notice { font-size: 13px; color: var(--muted); }
 .mutebtn { min-width: 44px; padding: 6px 10px; }
 
@@ -152,6 +154,9 @@ table.truth .flaw { color: #ffcf9e; font-size: 13px; }
   .log { max-height: none; }
   .sheet { bottom: 0; width: 100%; border-radius: 14px 14px 0 0; }
   .censer .lbl { display: none; }
+  .talk header { gap: 6px; }
+  .talk header .stress { display: none; }
+  .talk header button { padding: 6px 10px; }
   .case-info { display: none; }
 }
 `;

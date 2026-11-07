@@ -4,7 +4,7 @@ import { GAME_DATA } from '../game/data/bundle.gen';
 import type { DiscipleId, Emotion, GameData, LocationId } from '../game/data/types';
 import { GameSession, type SessionState } from '../game/game/state';
 import { askAboutQuestion, quickQuestions } from '../game/game/quick';
-import { closeupShot, fitOverviewShot, stepShot, LOCATION_LABEL_HEIGHT, LOCATION_POS, locationShot, PLAZA_SLOTS, projectToScreen, SHOTS, type CameraShot, type Vec3 } from '../scene/layout';
+import { closeupShot, fitOverviewShot, fitPlazaShot, stepShot, LOCATION_LABEL_HEIGHT, LOCATION_POS, locationShot, PLAZA_SLOTS, projectToScreen, SHOTS, type CameraShot, type Vec3 } from '../scene/layout';
 import { characterHeight, lookOf } from '../scene/models';
 import { STAGE_CHANNEL } from '../scene/refs';
 import type { Pose, StageCommand } from '../scene/stage-protocol';
@@ -92,6 +92,10 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     hostEl.dataset.cameraSettled = instant ? '1' : '0';
     if (instant) currentShot = s;
     send({ kind: 'shot', shot: s, instant });
+  };
+  const plazaShot = () => {
+    const r = hostEl.getBoundingClientRect();
+    return fitPlazaShot(r.width || 1280, r.height || 720);
   };
   const mapShot = () => {
     const r = hostEl.getBoundingClientRect();
@@ -232,7 +236,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     if (restore && game.state.phase !== 'title' && game.state.phase !== 'intro') {
       ui.screen = game.state.phase === 'ending' ? 'ending' : 'main';
       if (game.state.phase === 'accuse') ui.modal = 'accuse';
-      shot(SHOTS.plaza, true);
+      shot(plazaShot(), true);
     } else {
       game.start();
       ui.screen = 'intro';
@@ -248,7 +252,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     ui.screen = 'main';
     ui.modal = undefined;
     ui.focus = undefined;
-    shot(SHOTS.plaza);
+    shot(plazaShot());
     syncPoses();
     draw();
   };
@@ -354,7 +358,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
         if (finishTyping()) return;
         if (ui.introStep < game!.introLines().length - 1) {
           ui.introStep++;
-          shot(INTRO_SHOTS[ui.introStep] ?? SHOTS.plaza);
+          shot(ui.introStep >= 2 ? plazaShot() : INTRO_SHOTS[ui.introStep] ?? plazaShot());
           draw();
           typeLatest();
           return;
