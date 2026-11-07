@@ -54,6 +54,15 @@ export function mountQingming(host: QingmingHost) {
   shell.append(fonts, style, app);
   host.uiRoot.append(shell);
 
+  // A shared clock keeps decorative motion continuous across streaming rerenders.
+  const motionStart = win?.performance.now() ?? 0;
+  const syncVisibility = () => shell.classList.toggle('motion-paused', doc.hidden);
+  doc.addEventListener('visibilitychange', syncVisibility);
+  syncVisibility();
+  const motionObserver = win?.IntersectionObserver ? new win.IntersectionObserver((entries) => {
+    for (const entry of entries) entry.target.classList.toggle('motion-offscreen', !entry.isIntersecting);
+  }, { root: shell }) : null;
+
   let w: World | null = null;
   let ai: AiView | null = null;
   let souls: SoulView[] = [];
@@ -100,6 +109,12 @@ export function mountQingming(host: QingmingHost) {
 
     const model: Model = { w, ai, souls, ui };
     app.innerHTML = screen(model);
+    motionObserver?.disconnect();
+    const elapsed = ((win?.performance.now() ?? 0) - motionStart) / 1000;
+    app.querySelectorAll<HTMLElement>('.character-art:not(.gone), .landscape, .title-ink').forEach((el) => {
+      el.style.setProperty('--motion-delay', `${-elapsed}s`);
+      motionObserver?.observe(el);
+    });
 
     const overlay = !!app.querySelector('.scrim');
     shell.classList.toggle('lock', overlay);
@@ -333,6 +348,8 @@ export function mountQingming(host: QingmingHost) {
 
   return {
     dispose() {
+      motionObserver?.disconnect();
+      doc.removeEventListener('visibilitychange', syncVisibility);
       host.port.removeEventListener('message', receive);
       app.removeEventListener('click', onClick);
       app.removeEventListener('submit', onSubmit);

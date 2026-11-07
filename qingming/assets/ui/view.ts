@@ -89,7 +89,7 @@ export function sealText(name: string) {
 const seal = (name: string, cls = '', big = false) => `<span class="seal ${cls}${big ? ' big' : ''}" aria-hidden="true">${[...sealText(name)].map((c) => `<i>${esc(c)}</i>`).join('')}</span>`;
 
 const portrait = (n: Npc, cls = '', big = false) => `<span class="portrait ${cls}${big ? ' big' : ''}${n.alive ? '' : ' gone'}"><img src="${art(portraitKey(n), 'avatar')}" alt="" width="96" height="96" loading="lazy" decoding="async"></span>`;
-const landscape = (id: string, cls = '') => `<div class="landscape ${cls}" aria-hidden="true"><img src="${art(id)}" alt="" width="960" height="640" loading="lazy" decoding="async"></div>`;
+const landscape = (id: string, cls = '') => `<div class="landscape ${cls}" data-scene="${esc(id)}" aria-hidden="true"><img src="${art(id)}" alt="" width="960" height="640" loading="lazy" decoding="async"></div>`;
 
 const itemArt = (id: string) => id === 'sword' || id === 'letter' ? `<img class="item-art" src="${art(id)}" alt="" width="56" height="56" loading="lazy">` : `<svg class="item-icon ${id}" viewBox="0 0 48 48" aria-hidden="true"><path d="M18 5h12v8l6 8v16q0 6-12 6T12 37V21l6-8Z"/><path d="M17 8h14M13 26h22M18 35q6-10 12 0"/><circle cx="24" cy="25" r="5"/></svg>`;
 

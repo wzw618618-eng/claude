@@ -71,3 +71,33 @@
 .qm .dock { margin-inline: auto; }
 .qm .ending > .primary.wide { width: calc(100% - 24px); }
 @media (prefers-color-scheme: dark) { .qm .item-icon { background: var(--paper-2); } }
+
+/* Lightweight atmosphere; a shared phase survives streaming rerenders. */
+.qm .character-art:not(.gone) img { transform-origin: 50% 85%; animation: qm-breathe 5.8s ease-in-out infinite; }
+.qm .landscape, .qm .title-ink { isolation: isolate; overflow: hidden; }
+.qm .landscape img { animation: qm-drift 18s ease-in-out infinite alternate; }
+.qm .title-ink img { animation: qm-drift 24s ease-in-out infinite alternate; }
+.qm .landscape::after, .qm .title-ink::after {
+ content: ''; position: absolute; inset: 15% -20% -10%; pointer-events: none;
+ background: radial-gradient(ellipse at 25% 70%, #fff9 0, transparent 48%), radial-gradient(ellipse at 80% 85%, #e6efdf80 0, transparent 40%);
+ opacity: .2; animation: qm-mist 14s ease-in-out infinite alternate;
+}
+.qm .landscape[data-scene="market"]::after, .qm .landscape[data-scene="chixiao"]::after {
+ background: radial-gradient(ellipse at 60% 65%, #ffc46d66, transparent 55%); animation: qm-glow 4.7s ease-in-out infinite;
+}
+.qm .landscape[data-scene="cave"]::after, .qm .landscape[data-scene="vein"]::after {
+ background: radial-gradient(ellipse at 50% 65%, #94dcd955, transparent 55%); animation: qm-glow 6s ease-in-out infinite;
+}
+.qm .landscape[data-scene="ending_dead"] img, .qm .landscape[data-scene="ending_dead"]::after { animation: none; }
+.qm .character-art img, .qm .landscape img, .qm .title-ink img,
+.qm .landscape::after, .qm .title-ink::after { animation-delay: var(--motion-delay, 0s); }
+.qm.motion-paused *, .qm.motion-paused *::after,
+.qm .motion-offscreen img, .qm .motion-offscreen::after { animation-play-state: paused !important; }
+.qm button { transition: background-color .18s ease, color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.qm button:active:not(:disabled) { transform: translateY(1px); }
+@media (hover: hover) { .qm .place-card:hover { box-shadow: 0 5px 18px #25382c18; } }
+@keyframes qm-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.008, 1.012); } }
+@keyframes qm-drift { from { transform: scale(1.025) translateX(-.4%); } to { transform: scale(1.045) translateX(.4%); } }
+@keyframes qm-mist { from { transform: translateX(-5%); opacity: .14; } to { transform: translateX(6%); opacity: .32; } }
+@keyframes qm-glow { 0%, 100% { opacity: .15; } 45% { opacity: .45; } 70% { opacity: .28; } }
+@media (prefers-reduced-motion: reduce) { .qm *, .qm *::before, .qm *::after { animation: none !important; transition: none !important; } }
