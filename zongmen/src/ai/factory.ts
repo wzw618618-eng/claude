@@ -25,6 +25,7 @@ export function createClient(data: GameData, provider: ProviderName = data.confi
     model: opts.model ?? opts.env?.ZONGMEN_MODEL ?? oc.model,
     apiKey: opts.env?.[oc.api_key_env],
     timeoutMs: m.timeout_ms,
+    extraBody: oc.extra_body,
     fetchImpl: opts.fetchImpl,
   });
 }

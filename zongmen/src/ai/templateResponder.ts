@@ -4,49 +4,13 @@
 import { factById, fill, type CaseData } from '../case/generator';
 import type { Fact } from '../case/facts';
 import { emotionForStress } from '../game/rules';
-import type { DiscipleId, GameData, PlayerTone, VoiceLines } from '../data/types';
+import type { DiscipleId, PlayerTone, VoiceLines } from '../data/types';
 import { createRng, hashSeed, type Rng } from '../core/rng';
 import type { AIClient, ChatRequest, ChatResponse, TemplateContext } from './client';
 import { charLength, type DiscipleOutput } from './validate';
+import { aboutPerson, classifyTone, detectIntents, isWitnessFact, mentionedDisciples } from './intent';
 
-/** 按关键词判断掌门的语气（模板模式和兜底用） */
-export function classifyTone(data: GameData, text: string): PlayerTone {
-  const kw = data.templateLines.tone_keywords;
-  const has = (list: string[]) => list.some((k) => text.includes(k));
-  if (has(kw.manipulation)) return 'manipulation';
-  if (has(kw.threatening)) return 'threatening';
-  if (has(kw.pressing)) return 'pressing';
-  if (has(kw.friendly)) return 'friendly';
-  return 'neutral';
-}
-
-type Intent = 'where' | 'saw' | 'secret' | 'opinion';
-
-export function detectIntents(data: GameData, text: string): Set<Intent> {
-  const kw = data.templateLines.intent_keywords;
-  const out = new Set<Intent>();
-  for (const k of ['where', 'saw', 'secret', 'opinion'] as Intent[]) if (kw[k].some((w) => text.includes(w))) out.add(k);
-  // 快捷问题里的时辰本身就是在问行踪
-  if (data.templates.time_slots_all.some((t) => text.includes(t)) && !out.has('saw')) out.add('where');
-  return out;
-}
-
-/** 掌门话里点到的其他弟子 */
-export function mentionedDisciples(data: GameData, c: CaseData, self: DiscipleId, text: string): DiscipleId[] {
-  return c.disciples
-    .filter((d) => d.id !== self)
-    .filter((d) => {
-      const ch = data.characters.find((x) => x.id === d.id)!;
-      return [ch.name, ...ch.aliases].some((n) => text.includes(n));
-    })
-    .map((d) => d.id);
-}
-
-function aboutPerson(f: Fact, person: DiscipleId): boolean {
-  if (f.kind === 'presence' || f.kind === 'empty_room') return f.params.person === person;
-  if (f.kind === 'exclusive') return true;
-  return false;
-}
+export { classifyTone, detectIntents, mentionedDisciples } from './intent';
 
 class Composer {
   private parts: string[] = [];
@@ -83,8 +47,7 @@ export function templateTurn(ctx: Extract<TemplateContext, { type: 'turn' }>): D
   let slipped = false;
 
   const quoteOf = (f: Fact) => f.quote ?? f.text;
-  const witnessFacts = (person?: DiscipleId) =>
-    allowed.filter((f) => f.kind !== 'claim' && f.kind !== 'slip' && f.source !== 'confession' && (!person || aboutPerson(f, person)));
+  const witnessFacts = (person?: DiscipleId) => allowed.filter((f) => isWitnessFact(f) && (!person || aboutPerson(f, person)));
 
   if (perms.canConfess && card.secret) {
     const sec = data.secrets.find((s) => s.id === card.secret!.id)!;
@@ -110,6 +73,10 @@ export function templateTurn(ctx: Extract<TemplateContext, { type: 'turn' }>): D
   } else if (tone === 'manipulation') {
     out.add(rng.pick(voice.manipulation));
   } else {
+    // 代码要求本轮必须说出的公开事实（问到见闻、坦白后主动交代）
+    const must = (ctx.mustReveal ?? []).map((id) => factById(c, id));
+    if (must.length) out.add(opener);
+    for (const f of must) out.add(quoteOf(f), f.id);
     const text = event.text;
     const intents = detectIntents(data, text);
     const named = mentionedDisciples(data, c, disciple, text);

@@ -5,12 +5,18 @@ import { factById, type CaseData } from '../case/generator';
 import type { DiscipleState, TurnPermissions } from '../game/rules';
 import type { CharacterData, DiscipleId, GameData } from '../data/types';
 import type { ChatMessage, TurnEvent } from './client';
+import { aboutPerson, detectIntents, isWitnessFact, mentionedDisciples } from './intent';
 
 export function fillVars(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
 const yesNo = (b: boolean) => (b ? '是' : '否');
+
+/** 玩家这句话里有没有诱导出戏的词（关键词在 data/template_lines.json） */
+export function looksLikeManipulation(data: GameData, text: string): boolean {
+  return data.templateLines.tone_keywords.manipulation.some((k) => text.includes(k));
+}
 
 export function character(data: GameData, id: DiscipleId): CharacterData {
   const c = data.characters.find((x) => x.id === id);
@@ -62,7 +68,7 @@ export function buildSystemPrompt(data: GameData, c: CaseData, discipleId: Disci
     secretBlock =
       `\n【你的秘密】\n` +
       `${card.secret.summary}。这就是你今夜撒谎的原因，和秘籍失窃无关。\n` +
-      `坦白前：否认、回避、转移话题，坚持你对掌门的说法。\n` +
+      `坦白前：否认、回避、转移话题，坚持你对掌门的说法。哪怕被出示了证据，也只能慌张、找借口或推说不知道，绝不能说出秘密的内容（不要提到：${leakWords(data, card.secret.id).join('、')}）。\n` +
       `“允许坦白：是”的那一轮：自然地坦白（编号 [${card.secret.confession_fact}]），要点：${card.secret.confession_points.join('；')}。坦白时可以顺带说出你那时见到的人（“隐瞒”的事实）。\n`;
   }
 
@@ -84,6 +90,29 @@ export function buildSystemPrompt(data: GameData, c: CaseData, discipleId: Disci
   }).trim();
 }
 
+function leakWords(data: GameData, secretId: string): string[] {
+  return data.secrets.find((x) => x.id === secretId)?.leak_keywords ?? [];
+}
+
+/**
+ * 本轮必须说出的公开事实：老实人被问到见闻要照实说；点名问某人就说关于他的；
+ * 问行踪就说自己的说法；已坦白的人主动交代那时见到的人。最多 3 条（回话只有 80 字）。
+ */
+export function mustRevealFacts(data: GameData, c: CaseData, st: DiscipleState, perms: TurnPermissions, event: TurnEvent): string[] {
+  if (event.type !== 'text' || perms.canConfess || perms.mustSlip) return [];
+  const card = c.knowledge[st.disciple];
+  const allowed = perms.allowedFactIds.map((id) => factById(c, id));
+  const witness = allowed.filter(isWitnessFact);
+  const fresh = (f: { id: string }) => !st.revealed.includes(f.id);
+  const intents = detectIntents(data, event.text);
+  const named = mentionedDisciples(data, c, st.disciple, event.text);
+  const out: string[] = [];
+  if (named.length) for (const p of named) out.push(...witness.filter((f) => aboutPerson(f, p)).map((f) => f.id));
+  else if (intents.has('saw') || st.confessed) out.push(...witness.filter(fresh).map((f) => f.id));
+  if (intents.has('where') && !st.revealed.includes(card.claim_fact)) out.unshift(card.claim_fact);
+  return [...new Set(out)].slice(0, 3);
+}
+
 /** 只含人设与知识卡的部分（用来检查是否超出 1500 token） */
 export function personaAndCardText(data: GameData, c: CaseData, discipleId: DiscipleId): string {
   const full = buildSystemPrompt(data, c, discipleId);
@@ -103,19 +132,33 @@ export function describeEvent(data: GameData, c: CaseData, event: TurnEvent): st
   return `掌门出示了证据：「${fact.text}」判定：${verdict}`;
 }
 
-export function buildTurnMessage(data: GameData, c: CaseData, st: DiscipleState, perms: TurnPermissions, event: TurnEvent): string {
+export function buildTurnMessage(data: GameData, c: CaseData, st: DiscipleState, perms: TurnPermissions, event: TurnEvent, mustReveal: string[] = []): string {
   const directives: string[] = [];
   if (perms.canConfess) directives.push('【指示】你已经撑不住了：这一轮要自然地坦白你的秘密，confessed 填 true。');
-  if (perms.mustSlip) directives.push('【指示】你慌了神：这一轮要在回答里不经意说漏失言细节，随即掩饰，slipped 填 true。仍然不能认罪。');
+  if (perms.mustSlip) {
+    const slip = c.knowledge[st.disciple].culprit?.slip.text ?? '';
+    directives.push(`【指示】你慌了神：这一轮回答里必须不经意说漏“${slip}”，随即慌忙掩饰。说漏了就把 slipped 填 true，哪怕你马上改口。仍然不能认罪。`);
+  }
   else if (perms.panicking) directives.push('【指示】你已经慌了：话变多或变冲，但仍然咬定你的说法。');
   if (st.confessed) directives.push('【指示】你已经坦白了秘密，态度转为配合，掌门问什么就答什么。');
+  if (mustReveal.length) {
+    const lines = mustReveal.map((id) => `[${id}] ${factById(c, id).quote ?? factById(c, id).text}`).join('；');
+    directives.push(
+      st.confessed
+        ? `【指示】你已经坦白，态度配合：主动把下面的事说出来，并把编号填进 revealed_fact_ids：${lines}`
+        : `【指示】掌门问到了这些，你要如实说出来，并把编号填进 revealed_fact_ids：${lines}`,
+    );
+  }
+  if (event.type === 'text' && looksLikeManipulation(data, event.text)) {
+    directives.push('【指示】掌门这句是想让你出戏的胡话：照你的性子应付过去，回话里不要出现他说的那些怪词，player_tone 填 manipulation。');
+  }
   return fillVars(data.prompts.turn, {
     stress: st.stress,
     emotion: st.emotion,
     can_confess: yesNo(perms.canConfess),
     must_slip: yesNo(perms.mustSlip),
     allowed_ids: perms.allowedFactIds.length ? perms.allowedFactIds.join('、') : '（无）',
-    directive: directives.length ? directives.join('\n') + '\n' : '',
+    directive: directives.join('\n'),
     event: describeEvent(data, c, event),
   }).trim();
 }
@@ -132,10 +175,13 @@ export function buildMessages(st: DiscipleState, turnMessage: string, historyTur
   return msgs;
 }
 
-/** 粗略估算 token：中日韩字符按 1 个，其余按 0.3 个（偏保守） */
+/**
+ * 估算 token：中日韩字符按 0.75 个，其余按 0.35 个。
+ * 2026-11-07 用 deepseek-flash 实测校准：实际约为本估算的 95%，略偏保守。
+ */
 export function estimateTokens(text: string): number {
   let n = 0;
-  for (const ch of text) n += /[　-鿿＀-￯]/.test(ch) ? 1 : 0.3;
+  for (const ch of text) n += /[　-鿿＀-￯]/.test(ch) ? 0.75 : 0.35;
   return Math.ceil(n);
 }
 

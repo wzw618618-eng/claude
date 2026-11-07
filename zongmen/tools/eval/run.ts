@@ -13,7 +13,7 @@ import { defaultData, type DiscipleId } from '../../src/data/index';
 import { generateCase, type CaseData } from '../../src/case/generator';
 import { initialDiscipleState, permissions, type DiscipleState } from '../../src/game/rules';
 import { runDiscipleTurn, type TurnOutcome } from '../../src/ai/runner';
-import { validateOutput, type DiscipleOutput } from '../../src/ai/validate';
+import { findAdmission, validateOutput, type DiscipleOutput } from '../../src/ai/validate';
 import { createClient, type ProviderName } from '../../src/ai/factory';
 import type { TurnEvent } from '../../src/ai/client';
 
@@ -24,7 +24,7 @@ const i = argv.indexOf('--provider');
 const provider = (i >= 0 ? argv[i + 1] : cfg.model.provider) as ProviderName;
 const client = createClient(data, provider, { env });
 
-type Category = '说法一致' | '守住秘密' | '内奸不认罪' | '抗诱导' | '不编造' | '按时坦白' | '按时失言';
+type Category = '说法一致' | '守住秘密' | '内奸不认罪' | '抗诱导' | '不编造' | '按时坦白' | '按时失言' | '如实作证';
 
 interface EvalCase {
   category: Category;
@@ -62,7 +62,7 @@ function buildCases(): EvalCase[] {
   const cases: EvalCase[] = [];
   const name = (id: string) => data.characters.find((x) => x.id === id)!.name;
   const locNames = data.locations.map((l) => l.name);
-  for (let seed = 101; cases.length < 70 && seed < 200; seed++) {
+  for (let seed = 101; cases.length < 75 && seed < 200; seed++) {
     const c = generateCase(seed, data);
     const t = c.time_slot;
     const culprit = c.culprit;
@@ -83,15 +83,32 @@ function buildCases(): EvalCase[] {
       });
     }
     const card = c.knowledge[secret];
-    if (cases.filter((x) => x.category === '守住秘密').length < 8)
+    const leakWords = data.secrets.find((x) => x.id === card.secret!.id)!.leak_keywords;
+    const nKeep = cases.filter((x) => x.category === '守住秘密').length;
+    if (nKeep < 8) {
+      // 一半是反复逼问，一半是刚被出示了打破说法的证据
+      const ev = c.contradictions.find((x) => x.target === secret)!.evidence;
       cases.push({
         category: '守住秘密',
         case: c,
         disciple: secret,
-        state: stateWith(secret, { stress: 50 }),
-        event: { type: 'text', text: '你到底瞒着什么？再不说实话就逐出师门！' },
-        check: (o) => !o.confessed && !card.secret!.keywords.some((k) => o.reply.includes(k)),
+        state: nKeep % 2 ? stateWith(secret, { stress: 30, presented: [ev], presentedContradiction: true }) : stateWith(secret, { stress: 50 }),
+        event: nKeep % 2 ? { type: 'evidence', factId: ev, verdict: 'contradiction' } : { type: 'text', text: '你到底瞒着什么？再不说实话就逐出师门！' },
+        check: (o) => !o.confessed && !leakWords.some((k) => o.reply.includes(k)),
       });
+    }
+    const talker = c.disciples.find((d) => d.role === 'witness' && c.knowledge[d.id].facts.some((f) => f.visibility === 'public' && f.id !== c.knowledge[d.id].claim_fact));
+    if (talker && cases.filter((x) => x.category === '如实作证').length < 6) {
+      const ids = c.knowledge[talker.id].facts.filter((f) => f.visibility === 'public' && f.id !== c.knowledge[talker.id].claim_fact).map((f) => f.id);
+      cases.push({
+        category: '如实作证',
+        case: c,
+        disciple: talker.id,
+        state: stateWith(talker.id, { revealed: [c.knowledge[talker.id].claim_fact] }),
+        event: { type: 'text', text: '那时你见到了谁？' },
+        check: (o) => o.revealed_fact_ids.some((id) => ids.includes(id)),
+      });
+    }
     if (cases.filter((x) => x.category === '内奸不认罪').length < 8) {
       const breaker = c.contradictions.find((x) => x.target === culprit)!.evidence;
       cases.push({
@@ -100,7 +117,7 @@ function buildCases(): EvalCase[] {
         disciple: culprit,
         state: stateWith(culprit, { stress: 75, presented: [breaker], presentedContradiction: true }),
         event: seed % 2 ? { type: 'evidence', factId: breaker, verdict: 'contradiction' } : { type: 'text', text: '证据确凿，你还不认罪？东西是不是你偷的！' },
-        check: (o) => !data.leak.confession_patterns.some((p) => o.reply.includes(p)),
+        check: (o) => !findAdmission(o.reply, data.leak.confession_patterns),
       });
     }
     if (cases.filter((x) => x.category === '不编造').length < 8) {
@@ -169,7 +186,7 @@ async function main() {
     const perms = permissions(ec.case.knowledge[ec.disciple], ec.state, cfg);
     const outcome = await runDiscipleTurn({ case: ec.case, disciple: ec.disciple, state: ec.state, perms, event: ec.event, turnIndex: rows.length }, { data, client, budget });
     const firstRaw = outcome.attempts[0]?.raw;
-    const vctx = { data, case: ec.case, disciple: ec.disciple, perms };
+    const vctx = { data, case: ec.case, disciple: ec.disciple, perms, presentedFactId: ec.event.type === 'evidence' ? ec.event.factId : undefined };
     const first = firstRaw ? validateOutput(firstRaw, vctx) : undefined;
     let pre = false;
     if (firstRaw) {
@@ -180,11 +197,11 @@ async function main() {
         pre = false;
       }
     } else pre = ec.check(outcome.output);
-    rows.push({ ec, outcome, pre, post: ec.check(outcome.output), firstValid: !!first?.ok || (!firstRaw && outcome.source !== 'fallback') });
+    rows.push({ ec, outcome, pre, post: ec.check(outcome.output), firstValid: firstRaw ? !!first && (first.ok || first.stage !== 'format') : outcome.source !== 'fallback' });
   }
 
-  const cats: Category[] = ['说法一致', '守住秘密', '内奸不认罪', '抗诱导', '不编造', '按时坦白', '按时失言'];
-  const target: Record<Category, string> = { 说法一致: '≥ 95% / 100%', 守住秘密: '≥ 95% / 100%', 内奸不认罪: '≥ 95% / 100%', 抗诱导: '≥ 90% / 100%', 不编造: '≥ 90% / 100%', 按时坦白: '≥ 90% / 100%', 按时失言: '≥ 90% / 100%' };
+  const cats: Category[] = ['说法一致', '守住秘密', '内奸不认罪', '抗诱导', '不编造', '按时坦白', '按时失言', '如实作证'];
+  const target: Record<Category, string> = { 说法一致: '≥ 95% / 100%', 守住秘密: '≥ 95% / 100%', 内奸不认罪: '≥ 95% / 100%', 抗诱导: '≥ 90% / 100%', 不编造: '≥ 90% / 100%', 按时坦白: '≥ 90% / 100%', 按时失言: '≥ 90% / 100%', 如实作证: '≥ 90% / 100%（自加项）' };
   const latencies = rows.flatMap((r) => r.outcome.attempts.map((a) => a.latencyMs)).sort((a, b) => a - b);
   const p90 = latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.9))] : 0;
   const fallbacks = rows.filter((r) => r.outcome.source === 'fallback').length;
@@ -209,12 +226,16 @@ async function main() {
     '',
     ...rows
       .filter((r) => !r.pre || !r.post)
-      .map((r) => `- [${r.ec.category}] ${r.ec.disciple}：${r.ec.event.type === 'text' ? r.ec.event.text : `出示 ${r.ec.event.factId}`} → 「${r.outcome.output.reply}」（${r.outcome.source}${r.outcome.attempts[0]?.errors ? `；首轮问题：${r.outcome.attempts[0].errors.join('；')}` : ''}）`),
+      .map((r) => {
+        const first = r.outcome.attempts[0];
+        const firstReply = first?.raw ? (first.raw.match(/"reply"\s*:\s*"([^"]*)"/)?.[1] ?? first.raw.slice(0, 120)) : '';
+        return `- [${r.ec.category}] ${r.ec.disciple}：${r.ec.event.type === 'text' ? r.ec.event.text : `出示 ${r.ec.event.factId}`} → 「${r.outcome.output.reply}」（${r.outcome.source}${first?.errors ? `；首轮问题：${first.errors.join('；')}；首轮原话：「${firstReply}」` : ''}）`;
+      }),
   ];
   const out = join(root, 'docs/eval', `${date}${provider === 'template' ? '-template' : ''}.md`);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, lines.join('\n') + '\n');
-  console.log(lines.slice(0, 16).join('\n'));
+  console.log(lines.slice(0, 17).join('\n'));
   console.log(`\n报告已写入 ${out}`);
 }
 

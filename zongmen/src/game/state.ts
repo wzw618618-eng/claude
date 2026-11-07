@@ -46,6 +46,8 @@ export interface Notice {
 export interface CallStats {
   calls: number;
   inputTokens: number;
+  /** 其中命中前缀缓存的输入 token */
+  cachedInputTokens: number;
   outputTokens: number;
   totalLatencyMs: number;
   turns: number;
@@ -115,7 +117,7 @@ export class GameSession {
       transcripts: Object.fromEntries(c.disciples.map((d) => [d.id, []])),
       notices: [],
       budget: { used: 0, max: cfg.budget.max_calls_per_case },
-      stats: { calls: 0, inputTokens: 0, outputTokens: 0, totalLatencyMs: 0, turns: 0, fallbackTurns: 0, templateTurns: 0 },
+      stats: { calls: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalLatencyMs: 0, turns: 0, fallbackTurns: 0, templateTurns: 0 },
       templateMode: false,
       turnIndex: 0,
     };
@@ -296,7 +298,10 @@ export class GameSession {
 
     // 记入线索簿：用案件事实表的标准文本，不用模型原话
     const newClues: string[] = [];
-    for (const fid of out.revealed_fact_ids) if (this.addClue(fid, this.name(id))) newClues.push(fid);
+    for (const fid of out.revealed_fact_ids) {
+      if (this.addClue(fid, this.name(id))) newClues.push(fid);
+      if (!st.revealed.includes(fid)) st.revealed.push(fid);
+    }
 
     if (out.confessed) {
       st.confessed = true;
@@ -306,7 +311,7 @@ export class GameSession {
     }
     if (out.slipped) st.slipped = true;
     st.emotion = out.emotion;
-    st.history.push({ user: outcome.userMessage, assistant: JSON.stringify(out) });
+    st.history.push({ user: outcome.historyMessage, assistant: JSON.stringify(out) });
 
     this.state.transcripts[id].push({ from: 'disciple', text: out.reply, emotion: out.emotion, source: outcome.source });
     let refusedNow = false;
@@ -383,13 +388,14 @@ export class GameSession {
     });
   }
 
-  private recordCalls(llmCalls: number, attempts: Array<{ latencyMs: number; usage?: { input: number; output: number } }>) {
+  private recordCalls(llmCalls: number, attempts: Array<{ latencyMs: number; usage?: { input: number; output: number; cachedInput?: number } }>) {
     const s = this.state.stats;
     s.calls += llmCalls;
     if (llmCalls === 0) return;
     for (const a of attempts) {
       s.totalLatencyMs += a.latencyMs;
       s.inputTokens += a.usage?.input ?? 0;
+      s.cachedInputTokens += a.usage?.cachedInput ?? 0;
       s.outputTokens += a.usage?.output ?? 0;
     }
   }

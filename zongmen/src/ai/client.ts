@@ -26,6 +26,8 @@ export type TemplateContext =
       event: TurnEvent;
       /** 本局第几次问话，用来让模板台词有变化 */
       turnIndex: number;
+      /** 本轮必须说出的公开事实 */
+      mustReveal?: string[];
     }
   | {
       type: 'epilogue';
@@ -46,7 +48,8 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   text: string;
-  usage?: { input: number; output: number };
+  /** input 含缓存命中的部分（cachedInput） */
+  usage?: { input: number; output: number; cachedInput?: number };
 }
 
 export interface AIClient {
@@ -70,6 +73,7 @@ export interface OpenAICompatibleOptions {
   /** 只在 Node（本机开发、评测）里传。浏览器里必须指向不需要密钥的自建代理。 */
   apiKey?: string;
   timeoutMs: number;
+  extraBody?: Record<string, unknown>;
   fetchImpl?: typeof fetch;
 }
 
@@ -90,6 +94,7 @@ export class OpenAICompatibleClient implements AIClient {
       temperature: req.temperature,
       max_tokens: req.maxTokens,
       stream: false,
+      ...(this.opts.extraBody ?? {}),
     };
     if (req.json) body.response_format = { type: 'json_object' };
     let res: Response;
@@ -108,13 +113,15 @@ export class OpenAICompatibleClient implements AIClient {
     if (!res.ok) throw new AIClientError(`模型服务返回 ${res.status}`, 'http');
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number };
     };
     const text = json.choices?.[0]?.message?.content ?? '';
     if (!text) throw new AIClientError('模型返回了空内容', 'empty');
     return {
       text,
-      usage: json.usage ? { input: json.usage.prompt_tokens ?? 0, output: json.usage.completion_tokens ?? 0 } : undefined,
+      usage: json.usage
+        ? { input: json.usage.prompt_tokens ?? 0, output: json.usage.completion_tokens ?? 0, cachedInput: json.usage.prompt_cache_hit_tokens ?? 0 }
+        : undefined,
     };
   }
 }

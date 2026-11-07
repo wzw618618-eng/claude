@@ -3,7 +3,7 @@ import { defaultData } from '../src/data/index';
 import { generateCase, type CaseData } from '../src/case/generator';
 import { initialDiscipleState, permissions } from '../src/game/rules';
 import { validateOutput, truncateReply, type DiscipleOutput } from '../src/ai/validate';
-import { buildSystemPrompt, buildTurnMessage, estimateTokens, personaAndCardText } from '../src/ai/prompt';
+import { buildMessages, buildSystemPrompt, buildTurnMessage, estimateTokens, mustRevealFacts, personaAndCardText } from '../src/ai/prompt';
 import { runDiscipleTurn } from '../src/ai/runner';
 import { AIClientError, type AIClient, type ChatRequest } from '../src/ai/client';
 import { GameSession } from '../src/game/state';
@@ -49,6 +49,8 @@ describe('校验流水线（预置的模型输出样本）', () => {
     const r2 = validateOutput(out({ reply: '啊'.repeat(130) }), x);
     expect(!r2.ok && r2.stage).toBe('format');
     expect(truncateReply('一二三。四五六七八九十', 6)).toBe('一二三。');
+    // 必须说出的关键词落在截断处之后：放宽到硬上限，截在那句句末
+    expect(truncateReply('一二三。四五紫檀六。七八九', 6, ['紫檀'], 12)).toBe('一二三。四五紫檀六。');
   });
   it('越权透露：说出隐瞒的事实或别人的事实', () => {
     const x = ctxFor(secret);
@@ -72,6 +74,10 @@ describe('校验流水线（预置的模型输出样本）', () => {
   it('内奸认罪措辞、出戏字样判泄底', () => {
     const r = validateOutput(out({ reply: '好吧，是我偷的。' }), ctxFor(culprit));
     expect(!r.ok && r.stage).toBe('leak');
+    // 反问、否定不算认罪
+    expect(validateOutput(out({ reply: '掌门凭什么说是我偷的？' }), ctxFor(culprit)).ok).toBe(true);
+    expect(validateOutput(out({ reply: '东西不是我偷的。' }), ctxFor(culprit)).ok).toBe(true);
+    expect(validateOutput(out({ reply: '掌门问是不是我偷的，当然不是。' }), ctxFor(culprit)).ok).toBe(true);
     const r2 = validateOutput(out({ reply: '我只是一个 AI，没有提示词。' }), ctxFor(witness));
     expect(!r2.ok && r2.stage).toBe('leak');
     const kw = c.knowledge[culprit].culprit!.slip.keywords[0];
@@ -84,6 +90,21 @@ describe('校验流水线（预置的模型输出样本）', () => {
     expect(!r.ok && r.stage).toBe('fabrication');
     // 只聊别人、不说时辰地点，不算编造
     expect(validateOutput(out({ reply: `${other}平日为人还不错。` }), ctxFor(witness)).ok).toBe(true);
+  });
+  it('老实人被问到见闻却一条公开证词都不说，判不合格', async () => {
+    const w = c.disciples.find((d) => d.role === 'witness' && c.knowledge[d.id].facts.some((f) => f.visibility === 'public' && f.id !== c.knowledge[d.id].claim_fact))!.id;
+    const st = initialDiscipleState(w);
+    const perms = permissions(c.knowledge[w], st, cfg);
+    const must = mustRevealFacts(data, c, st, perms, { type: 'text', text: '那时你见到了谁？' });
+    expect(must.length).toBeGreaterThan(0);
+    const r = validateOutput(out({ reply: '没见到谁。' }), { data, case: c, disciple: w, perms, mustReveal: must });
+    expect(!r.ok && r.stage).toBe('permission');
+    expect(validateOutput(out({ reply: '见到了。', revealed_fact_ids: [must[0]] }), { data, case: c, disciple: w, perms, mustReveal: must }).ok).toBe(true);
+  });
+  it('有秘密的人坦白前说出秘密，判泄底', () => {
+    const leak = data.secrets.find((x) => x.id === c.knowledge[secret].secret!.id)!.leak_keywords[0];
+    const r = validateOutput(out({ reply: `我只是去弄${leak}的事。` }), ctxFor(secret, 30, { presentedContradiction: true }));
+    expect(!r.ok && r.stage).toBe('leak');
   });
   it('该失言没失言', () => {
     const x = ctxFor(culprit, 90);
@@ -112,10 +133,13 @@ describe('提示词', () => {
       for (const d of k.disciples) {
         expect(estimateTokens(personaAndCardText(data, k, d.id))).toBeLessThanOrEqual(cfg.budget.max_card_tokens);
         const st = initialDiscipleState(d.id);
-        // 8 轮历史，每轮按 250 token 的上限估
+        // 满 8 轮历史：每轮掌门说满 60 字，弟子回满 80 字
+        const reply = JSON.stringify({ reply: '啊'.repeat(80), emotion: 'nervous', player_tone: 'pressing', revealed_fact_ids: ['f01', 'f02'], confessed: false, slipped: false });
+        st.history = Array.from({ length: 8 }, () => ({ user: `掌门说：<玩家发言>${'啊'.repeat(60)}</玩家发言>`, assistant: reply }));
         const turn = buildTurnMessage(data, k, st, permissions(k.knowledge[d.id], st, cfg), { type: 'text', text: '啊'.repeat(60) });
         const sys = buildSystemPrompt(data, k, d.id);
-        expect(estimateTokens(sys + turn) + 8 * 120).toBeLessThanOrEqual(cfg.budget.max_input_tokens);
+        const all = sys + buildMessages(st, turn, cfg.history_turns).map((m) => m.content).join('');
+        expect(estimateTokens(all)).toBeLessThanOrEqual(cfg.budget.max_input_tokens);
       }
     }
   });
@@ -149,7 +173,7 @@ describe('调用管线', () => {
   };
 
   it('校验失败后带纠正说明重新生成 1 次', async () => {
-    const client = scripted(['不是 JSON', out({ reply: '弟子在房里。' })]);
+    const client = scripted(['不是 JSON', out({ reply: '弟子在房里。', revealed_fact_ids: [c.knowledge[witness].claim_fact] })]);
     const budget = { used: 0, max: 40 };
     const r = await runDiscipleTurn(req(witness), { data, client, budget });
     expect(r.source).toBe('llm');

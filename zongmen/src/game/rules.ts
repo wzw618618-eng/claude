@@ -4,7 +4,7 @@ import type { CaseData, KnowledgeCard } from '../case/generator';
 import type { DiscipleId, Emotion, GameConfig, PlayerTone } from '../data/types';
 
 export interface ChatTurn {
-  /** 发给模型的本轮用户消息（含状态与事件） */
+  /** 本轮事件（掌门说的话或出示的证据），不含状态块 */
   user: string;
   /** 校验后的模型输出 JSON */
   assistant: string;
@@ -21,6 +21,8 @@ export interface DiscipleState {
   presented: string[];
   /** 是否已被出示过成立的矛盾（坦白的前提） */
   presentedContradiction: boolean;
+  /** 他已经对掌门说出过的事实 */
+  revealed: string[];
   history: ChatTurn[];
 }
 
@@ -34,6 +36,7 @@ export function initialDiscipleState(disciple: DiscipleId): DiscipleState {
     refused: false,
     presented: [],
     presentedContradiction: false,
+    revealed: [],
     history: [],
   };
 }

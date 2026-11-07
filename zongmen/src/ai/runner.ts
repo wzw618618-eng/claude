@@ -5,7 +5,7 @@ import type { CaseData } from '../case/generator';
 import type { DiscipleState, TurnPermissions } from '../game/rules';
 import type { DiscipleId, GameData, PlayerTone } from '../data/types';
 import { AIClientError, type AIClient, type ChatMessage, type TemplateContext, type TurnEvent } from './client';
-import { buildEpiloguePrompt, buildMessages, buildSystemPrompt, buildTurnMessage, estimateTokens } from './prompt';
+import { buildEpiloguePrompt, buildMessages, buildSystemPrompt, buildTurnMessage, describeEvent, estimateTokens, mustRevealFacts } from './prompt';
 import { classifyTone, TemplateClient } from './templateResponder';
 import { correctionNote, fallbackOutput, validateEpilogue, validateOutput, type DiscipleOutput, type Stage } from './validate';
 
@@ -21,7 +21,7 @@ export interface AttemptLog {
   stage?: Stage;
   errors?: string[];
   latencyMs: number;
-  usage?: { input: number; output: number };
+  usage?: { input: number; output: number; cachedInput?: number };
 }
 
 export type TurnSource = 'llm' | 'template' | 'fallback';
@@ -29,8 +29,10 @@ export type TurnSource = 'llm' | 'template' | 'fallback';
 export interface TurnOutcome {
   output: DiscipleOutput;
   source: TurnSource;
-  /** 本轮发给模型的用户消息（存进对话历史） */
+  /** 本轮发给模型的完整用户消息（含状态） */
   userMessage: string;
+  /** 存进对话历史的精简版：只有本轮事件，不重复状态块 */
+  historyMessage: string;
   attempts: AttemptLog[];
   /** 模型服务出错，会话应切到模板应答 */
   clientFailed: boolean;
@@ -61,8 +63,16 @@ export async function runDiscipleTurn(req: TurnRequest, deps: RunnerDeps): Promi
   const now = deps.now ?? (() => Date.now());
   const cfg = data.config;
   const system = buildSystemPrompt(data, req.case, req.disciple);
-  const userMessage = buildTurnMessage(data, req.case, req.state, req.perms, req.event);
-  const messages = buildMessages(req.state, userMessage, cfg.history_turns);
+  const mustReveal = mustRevealFacts(data, req.case, req.state, req.perms, req.event);
+  const userMessage = buildTurnMessage(data, req.case, req.state, req.perms, req.event, mustReveal);
+  const historyMessage = describeEvent(data, req.case, req.event);
+  // 单次输入超出上限时，从最早的历史轮次开始丢
+  let historyTurns = cfg.history_turns;
+  let messages = buildMessages(req.state, userMessage, historyTurns);
+  while (historyTurns > 0 && estimateTokens(system + messages.map((m) => m.content).join('')) > cfg.budget.max_input_tokens) {
+    historyTurns--;
+    messages = buildMessages(req.state, userMessage, historyTurns);
+  }
   const context: TemplateContext = {
     type: 'turn',
     data,
@@ -72,9 +82,10 @@ export async function runDiscipleTurn(req: TurnRequest, deps: RunnerDeps): Promi
     perms: req.perms,
     event: req.event,
     turnIndex: req.turnIndex,
+    mustReveal,
   };
   const estimatedInputTokens = estimateTokens(system + messages.map((m) => m.content).join(''));
-  const vctx = { data, case: req.case, disciple: req.disciple, perms: req.perms };
+  const vctx = { data, case: req.case, disciple: req.disciple, perms: req.perms, presentedFactId: req.event.type === 'evidence' ? req.event.factId : undefined, mustReveal };
   const playerTone: PlayerTone = req.event.type === 'text' ? classifyTone(data, req.event.text) : 'neutral';
   const attempts: AttemptLog[] = [];
 
@@ -113,7 +124,7 @@ export async function runDiscipleTurn(req: TurnRequest, deps: RunnerDeps): Promi
     clientFailed = false;
     const v = validateOutput(raw, vctx);
     if (v.ok) {
-      return { output: v.output, source: client.kind === 'llm' ? 'llm' : 'template', userMessage, attempts, clientFailed: false, notes: v.notes, estimatedInputTokens };
+      return { output: v.output, source: client.kind === 'llm' ? 'llm' : 'template', userMessage, historyMessage, attempts, clientFailed: false, notes: v.notes, estimatedInputTokens };
     }
     attempts[attempts.length - 1].stage = v.stage;
     attempts[attempts.length - 1].errors = v.errors;
@@ -124,13 +135,14 @@ export async function runDiscipleTurn(req: TurnRequest, deps: RunnerDeps): Promi
   // 模型服务出错（或预算用尽）：这一轮改由模板应答
   if (clientFailed || (client.kind === 'llm' && attempts.length === 0)) {
     const v = validateOutput((await templateClient.chat({ system, messages, maxTokens: 0, temperature: 0, json: true, context })).text, vctx);
-    if (v.ok) return { output: v.output, source: 'template', userMessage, attempts, clientFailed, notes: v.notes, estimatedInputTokens };
+    if (v.ok) return { output: v.output, source: 'template', userMessage, historyMessage, attempts, clientFailed, notes: v.notes, estimatedInputTokens };
   }
 
   return {
     output: fallbackOutput(data, req.case, req.disciple, req.perms, playerTone, req.turnIndex),
     source: 'fallback',
     userMessage,
+    historyMessage,
     attempts,
     clientFailed,
     notes: lastErrors.length ? [`校验未通过，已用兜底：${lastErrors.join('；')}`] : ['已用兜底'],

@@ -55,6 +55,8 @@ export interface SecretData {
   confession_quote: string;
   evidence: string;
   keywords: string[];
+  /** 坦白前说出这些字眼就算泄露秘密（不含物证文字里就有的词） */
+  leak_keywords: string[];
   fallback_confession: string;
 }
 
@@ -150,7 +152,14 @@ export interface GameConfig {
   model: {
     provider: 'template' | 'openai_compatible' | 'platform';
     providers: {
-      openai_compatible: { base_url: string; model: string; api_key_env: string };
+      openai_compatible: {
+        base_url: string;
+        model: string;
+        api_key_env: string;
+        /** 原样并进请求体的额外参数，如 DeepSeek 的 thinking 开关 */
+        extra_body?: Record<string, unknown>;
+        price_usd_per_million?: { input_miss: number; input_hit: number; output: number };
+      };
       [k: string]: unknown;
     };
     dialogue: { temperature: number; max_tokens: number };

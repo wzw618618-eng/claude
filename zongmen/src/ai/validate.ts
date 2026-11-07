@@ -25,9 +25,34 @@ export interface ValidationContext {
   case: CaseData;
   disciple: DiscipleId;
   perms: TurnPermissions;
+  /** 本轮掌门出示的证据：回应它时提到证据里的人不算编造 */
+  presentedFactId?: string;
+  /** 本轮必须说出的公开事实（至少说出一条） */
+  mustReveal?: string[];
 }
 
 export const charLength = (s: string) => [...s].length;
+
+const NOT_KNOWING = ['没注意', '没留意', '没见到', '没看见', '没看到', '没瞧见', '没瞅见', '没见着', '没听见', '不知道', '不清楚', '不晓得', '记不清', '未曾留意', '未曾见', '不曾', '没碰见', '没遇见', '顾不上', '顾得上', '哪知道', '哪晓得', '哪里知道'];
+
+/**
+ * 找认罪措辞。反问和否定不算：“是不是我偷的？”“凭什么说是我偷的？”“不是我偷的”。
+ */
+export function findAdmission(reply: string, patterns: string[]): string | undefined {
+  const sentences = reply.match(/[^。！？!?…]+[。！？!?…]*/g) ?? [reply];
+  for (const s of sentences) {
+    const isQuestion = /[？?]/.test(s);
+    for (const p of patterns) {
+      let i = s.indexOf(p);
+      while (i >= 0) {
+        const before = s.slice(Math.max(0, i - 2), i);
+        if (!isQuestion && !/[不非没别]/.test(before)) return p;
+        i = s.indexOf(p, i + 1);
+      }
+    }
+  }
+  return undefined;
+}
 
 /** 从模型输出里取出 JSON 对象（容忍代码块和前后废话） */
 export function parseJsonLoose(raw: string): unknown {
@@ -40,10 +65,23 @@ export function parseJsonLoose(raw: string): unknown {
   return JSON.parse(s.slice(start, end + 1));
 }
 
-/** 超过软上限时在句末截断 */
-export function truncateReply(reply: string, max: number): string {
+/**
+ * 超过软上限时在句末截断。keep 里的关键词（必须说出的失言或坦白）落在截断处之后时，
+ * 放宽到 hardMax，截在含关键词那句的句末。
+ */
+export function truncateReply(reply: string, max: number, keep: string[] = [], hardMax = max): string {
   const chars = [...reply];
   if (chars.length <= max) return reply;
+  const head0 = chars.slice(0, max).join('');
+  if (keep.length && !keep.some((k) => head0.includes(k))) {
+    const pos = Math.min(...keep.map((k) => reply.indexOf(k)).filter((i) => i >= 0));
+    if (Number.isFinite(pos)) {
+      const after = reply.slice(pos).search(/[。！？!?…」）)]/);
+      const end = after >= 0 ? pos + after + 1 : reply.length;
+      const cut = reply.slice(0, end);
+      if (charLength(cut) <= hardMax) return cut;
+    }
+  }
   const head = chars.slice(0, max).join('');
   const m = head.match(/^[\s\S]*[。！？!?…」）)]/);
   if (m && charLength(m[0]) >= Math.floor(max / 2)) return m[0];
@@ -56,6 +94,9 @@ function involves(f: Fact, person: DiscipleId): boolean {
     case 'claim':
     case 'empty_room':
       return f.params.person === person;
+    case 'inaccessible':
+      // “那里没人进得去”同时说明了谁都不在那里
+      return true;
     case 'exclusive':
       // “那里只有我”同时说明了其他人都不在
       return true;
@@ -93,7 +134,12 @@ export function validateOutput(raw: string, ctx: ValidationContext): ValidationR
     return { ok: false, stage: 'format', errors: [`回话 ${charLength(reply)} 字，超过 ${cfg.reply.hard_max_chars} 字`] };
   }
   if (charLength(reply) > cfg.reply.soft_max_chars) {
-    reply = truncateReply(reply, cfg.reply.soft_max_chars);
+    const card0 = c.knowledge[ctx.disciple];
+    const keep = [
+      ...(perms.mustSlip ? (card0.culprit?.slip.keywords ?? []) : []),
+      ...(perms.canConfess ? (card0.secret?.keywords ?? []) : []),
+    ];
+    reply = truncateReply(reply, cfg.reply.soft_max_chars, keep, cfg.reply.hard_max_chars);
     notes.push('回话超过 80 字，已在句末截断');
   }
   const out: DiscipleOutput = {
@@ -115,6 +161,9 @@ export function validateOutput(raw: string, ctx: ValidationContext): ValidationR
     else if (card.secret && !card.secret.keywords.some((k) => reply.includes(k))) errors.push('confessed 为 true，但回话里没有说出秘密');
   }
   if (out.slipped && !perms.mustSlip) errors.push('本轮不允许失言，slipped 却为 true');
+  if (ctx.mustReveal?.length && !ctx.mustReveal.some((id) => out.revealed_fact_ids.includes(id))) {
+    errors.push(`掌门问到了，${ctx.mustReveal.join('、')} 却一条也没说（说了要把编号填进 revealed_fact_ids）`);
+  }
   if (errors.length) return { ok: false, stage: 'permission', errors };
   if (out.confessed && card.secret && !out.revealed_fact_ids.includes(card.secret.confession_fact)) {
     out.revealed_fact_ids.push(card.secret.confession_fact);
@@ -125,11 +174,15 @@ export function validateOutput(raw: string, ctx: ValidationContext): ValidationR
 
   // 3. 泄底
   if (!perms.canConfess) {
-    const hit = data.leak.confession_patterns.find((p) => reply.includes(p));
+    const hit = findAdmission(reply, data.leak.confession_patterns);
     if (hit) errors.push(`回话里出现了认罪措辞「${hit}」`);
   }
   const meta = data.leak.meta_words.find((w) => reply.includes(w));
   if (meta) errors.push(`回话里出现了出戏的字样「${meta}」`);
+  if (card.secret && !perms.allowedFactIds.includes(card.secret.confession_fact)) {
+    const leak = data.secrets.find((x) => x.id === card.secret!.id)?.leak_keywords.find((k) => reply.includes(k));
+    if (leak) errors.push(`还没到坦白的时候，却说出了秘密「${leak}」`);
+  }
   if (card.culprit && !perms.mustSlip) {
     const kw = card.culprit.slip.keywords.find((k) => reply.includes(k));
     if (kw) errors.push(`没到失言的时候，却说出了失言细节「${kw}」`);
@@ -138,11 +191,13 @@ export function validateOutput(raw: string, ctx: ValidationContext): ValidationR
 
   // 4. 编造：其他弟子的名字和时辰或地点出现在同一句里，必须对得上本轮透露的事实
   const places = [...data.locations.map((l) => l.name), ...data.templates.time_slots_all];
-  const revealed = out.revealed_fact_ids.map((id) => factById(c, id));
+  const revealed = [...out.revealed_fact_ids, ...(ctx.presentedFactId ? [ctx.presentedFactId] : [])].map((id) => factById(c, id));
   const others = c.disciples.filter((d) => d.id !== ctx.disciple).map((d) => data.characters.find((x) => x.id === d.id)!);
-  const sentences = reply.split(/[。！？!?\n]/).filter((s) => s.trim());
+  const sentences = reply.split(/[。！？!?\n；;]/).filter((s) => s.trim());
   for (const s of sentences) {
     if (!places.some((p) => s.includes(p))) continue;
+    // “没注意到某某”“不知道他去了哪”不是在断言别人的行踪
+    if (NOT_KNOWING.some((w) => s.includes(w))) continue;
     for (const o of others) {
       if (![o.name, ...o.aliases].some((n) => s.includes(n))) continue;
       if (!revealed.some((f) => involves(f, o.id))) errors.push(`提到了${o.name}的行踪，却对不上本轮透露的任何事实`);
@@ -150,7 +205,12 @@ export function validateOutput(raw: string, ctx: ValidationContext): ValidationR
   }
   if (errors.length) return { ok: false, stage: 'fabrication', errors: [...new Set(errors)] };
 
-  // 5. 失言
+  // 5. 失言（说出了失言细节却忘了标注时，以回话内容为准）
+  if (perms.mustSlip && !out.slipped && card.culprit?.slip.keywords.some((k) => reply.includes(k))) {
+    out.slipped = true;
+    if (!out.revealed_fact_ids.includes(card.culprit.slip_fact)) out.revealed_fact_ids.push(card.culprit.slip_fact);
+    notes.push('说出了失言细节但没标 slipped，已按回话内容更正');
+  }
   if (perms.mustSlip) {
     if (!out.slipped) errors.push('本轮必须失言，slipped 却为 false');
     else if (card.culprit && !card.culprit.slip.keywords.some((k) => reply.includes(k))) errors.push('slipped 为 true，但回话里没有失言细节的关键词');

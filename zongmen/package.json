@@ -9,7 +9,8 @@
     "test": "vitest run",
     "check": "tsc --noEmit",
     "cli": "tsx tools/cli.ts",
-    "eval": "tsx tools/eval/run.ts"
+    "eval": "tsx tools/eval/run.ts",
+    "playthrough": "tsx tools/eval/playthrough.ts"
   },
   "devDependencies": {
     "@types/node": "20.19.40",
