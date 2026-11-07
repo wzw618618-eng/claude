@@ -77,7 +77,7 @@ export const CHARACTER_IDS = [...GAME_DATA.characters.map((c) => c.id), 'elder']
 function buildAll() {
   const out: Record<string, unknown> = {
     'material/voxel': Materials.standard({ baseColor: [1, 1, 1, 1], metallic: 0, roughness: 0.92 }),
-    'material/glow': Materials.standard({ baseColor: [1, 0.85, 0.55, 1], emissive: [1, 0.62, 0.26], emissiveIntensity: 6, metallic: 0, roughness: 0.6 }),
+    'material/glow': Materials.standard({ baseColor: [1, 0.7, 0.35, 1], emissive: [1, 0.5, 0.16], emissiveIntensity: 1.6, metallic: 0, roughness: 0.6 }),
     'environment/night': nightSky(),
   };
   const entities: Record<string, SceneEntity> = {};

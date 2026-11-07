@@ -23,6 +23,12 @@ import {
 
 export type Phase = 'title' | 'intro' | 'investigate' | 'accuse' | 'ending';
 
+const VERDICT_LINES = {
+  contradiction: '【矛盾成立】这条证据和他的说法对不上！',
+  irrelevant: '【不构成矛盾】这条证据和他的说法并不冲突。',
+  explained: '【已坦白过】他已经交代过这件事了。',
+} as const;
+
 export interface ClueEntry {
   factId: string;
   order: number;
@@ -236,6 +242,7 @@ export class GameSession {
     st.stress = clampStress(st.stress + evidenceStressDelta(verdict, this.data.config));
     if (verdict === 'contradiction') st.presentedContradiction = true;
     this.state.transcripts[id].push({ from: 'player', text: `（出示证据）${this.fact(factId).text}` });
+    this.state.transcripts[id].push({ from: 'system', text: VERDICT_LINES[verdict] });
 
     const card = this.case.knowledge[id];
     if (shouldRefuse(card, st, this.data.config)) {

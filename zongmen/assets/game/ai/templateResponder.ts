@@ -22,6 +22,9 @@ class Composer {
   /** 放得下才放；返回是否放进去了 */
   add(text: string, factId?: string): boolean {
     if (!text) return true;
+    // 同一条事实、同一句话不说两遍
+    if (factId && this.revealed.includes(factId)) return true;
+    if (this.parts.includes(text)) return true;
     if (charLength(this.parts.join('') + text) > this.max) return false;
     this.parts.push(text);
     if (factId) this.revealed.push(factId);

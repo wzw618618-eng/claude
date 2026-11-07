@@ -10,7 +10,7 @@ import type { SceneAsset } from '@forgeax/engine/types';
 import { ok } from '@forgeax/engine/types';
 import type {} from '@forgeax/engine/assets-runtime';
 import type {} from '@forgeax/engine/app';
-import { blendShot, CAMERA_FOLLOW, cameraPosition, ELDER_POS, FACING_YAW, OFFSTAGE, PLAZA_SLOTS, SHOTS, type CameraShot, type Vec3 } from './layout';
+import { cameraPosition, stepShot, ELDER_POS, FACING_YAW, OFFSTAGE, PLAZA_SLOTS, SHOTS, type CameraShot, type Vec3 } from './layout';
 import { assetGuid, guidText, PACKAGE_IDS, SCENE_SOURCE_KEY } from './refs';
 import { isStageMessage, type Pose } from './stage-protocol';
 
@@ -102,9 +102,9 @@ export const stage: Plugin.Object<{ readonly scene: string }> = {
           before: [PROPAGATE_TRANSFORMS_SYSTEM],
           queries: [],
           fn: () => {
-            const dt = Math.min(0.1, world.getResource(Time).delta);
+            const dt = Math.min(0.25, world.getResource(Time).delta);
             time += dt;
-            current = blendShot(current, target, 1 - Math.exp(-CAMERA_FOLLOW * dt));
+            current = stepShot(current, target, dt);
             const eye = cameraPosition(current);
             const rot = quat.fromLookAt(quat.create(), eye, current.focus, [0, 1, 0]);
             world.set(camera, Transform, { pos: eye, quat: [rot[0] ?? 0, rot[1] ?? 0, rot[2] ?? 0, rot[3] ?? 1] }).unwrap();

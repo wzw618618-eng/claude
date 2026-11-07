@@ -38,7 +38,7 @@ export const PLAZA_SLOTS: Vec3[] = [
   [1.6, 0, 3.1],
   [3.2, 0, 2.6],
 ];
-export const ELDER_POS: Vec3 = [0, 0, -1.2];
+export const ELDER_POS: Vec3 = [2.6, 0, -2.4];
 /** 不在场的角色藏到这里 */
 export const OFFSTAGE: Vec3 = [0, -60, 0];
 
@@ -64,14 +64,34 @@ export const SHOTS = {
   libraryIntro: { focus: [-6, 3, -13], distance: 15, pitch: 32 * DEG, yaw: 35 * DEG } as CameraShot,
 };
 
-export function locationShot(loc: LocationId): CameraShot {
-  const p = LOCATION_POS[loc];
-  return { focus: [p[0], 1.2, p[2]], distance: 13, pitch: 45 * DEG, yaw: 20 * DEG };
+/**
+ * 地图机位：按屏幕宽高比拉远镜头，直到 7 个地点的标签都落在画面里
+ * （横向留 6% 边，上面留 12%，下面留出底部面板的 30%）。
+ */
+export function fitOverviewShot(width: number, height: number): CameraShot {
+  const base = SHOTS.overview;
+  const pts = (Object.keys(LOCATION_POS) as LocationId[]).map((l) => [LOCATION_POS[l][0], LOCATION_LABEL_HEIGHT[l], LOCATION_POS[l][2]] as Vec3);
+  for (let d = 24; d <= 90; d += 1) {
+    const shot = { ...base, distance: d };
+    const ok = pts.every((p) => {
+      const s = projectToScreen(p, shot, width, height);
+      return !!s && s.x > width * 0.06 && s.x < width * 0.94 && s.y > height * 0.12 && s.y < height * 0.7;
+    });
+    if (ok) return shot;
+  }
+  return { ...base, distance: 90 };
 }
 
-/** 审问时的特写：镜头低一点、近一点 */
+export function locationShot(loc: LocationId): CameraShot {
+  // 焦点往镜头这边推，建筑落在画面上半部分，下面留给地点面板
+  const p = LOCATION_POS[loc];
+  const yaw = 20 * DEG;
+  return { focus: [p[0] + 5 * Math.sin(yaw), 0, p[2] + 5 * Math.cos(yaw)], distance: 26, pitch: 40 * DEG, yaw };
+}
+
+/** 审问时的特写：人在画面上方三分之一，下面留给对话框 */
 export function closeupShot(pos: Vec3): CameraShot {
-  return { focus: [pos[0], pos[1] + 0.85, pos[2]], distance: 4.6, pitch: 18 * DEG, yaw: 20 * DEG };
+  return { focus: [pos[0], pos[1] - 0.9, pos[2]], distance: 9, pitch: 12 * DEG, yaw: 20 * DEG };
 }
 
 export function cameraPosition(shot: CameraShot): Vec3 {
@@ -92,6 +112,24 @@ export function blendShot(from: CameraShot, to: CameraShot, t: number): CameraSh
     pitch: lerp(from.pitch, to.pitch),
     yaw: lerp(from.yaw, to.yaw),
   };
+}
+
+/** 两个机位是否已经足够接近（用来在过渡末尾直接吸附，避免画面和标签无限微动） */
+export function shotsClose(a: CameraShot, b: CameraShot, eps = 1e-3): boolean {
+  return (
+    Math.abs(a.focus[0] - b.focus[0]) < eps &&
+    Math.abs(a.focus[1] - b.focus[1]) < eps &&
+    Math.abs(a.focus[2] - b.focus[2]) < eps &&
+    Math.abs(a.distance - b.distance) < eps &&
+    Math.abs(a.pitch - b.pitch) < eps * 0.1 &&
+    Math.abs(a.yaw - b.yaw) < eps * 0.1
+  );
+}
+
+/** 往目标机位走一步；足够近时直接吸附 */
+export function stepShot(current: CameraShot, target: CameraShot, dt: number): CameraShot {
+  const next = blendShot(current, target, 1 - Math.exp(-CAMERA_FOLLOW * dt));
+  return shotsClose(next, target) ? target : next;
 }
 
 /** 每秒逼近目标的速度（指数平滑） */
