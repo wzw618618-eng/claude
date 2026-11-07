@@ -11,11 +11,14 @@ import type { Pose, StageCommand } from '../scene/stage-protocol';
 import { pickClient, type ProviderSetting } from './ai';
 import { portraitUrl } from './portrait';
 import { CSS } from './style';
+import { createSound } from './audio';
 import { render, type TextSpeed, type UiState } from './view';
 
 const SAVE_KEY = 'zongmen.save.v1';
 const SETTINGS_KEY = 'zongmen.settings.v1';
 const SPEED_MS: Record<TextSpeed, number> = { slow: 70, normal: 38, fast: 16, instant: 0 };
+/** 新手教学用的固定案件（嫌疑 2 人、只有 1 人有秘密） */
+const TUTORIAL_SEED = 1;
 const INTRO_SHOTS: CameraShot[] = [SHOTS.libraryIntro, SHOTS.overview, SHOTS.plaza, SHOTS.plaza];
 
 const POSE_FOR: Record<Emotion, Pose> = { calm: 'idle', relieved: 'idle', nervous: 'nervous', scared: 'nervous', angry: 'talk', sad: 'down' };
@@ -59,9 +62,15 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
   const style = doc.createElement('style');
   style.textContent = CSS;
   const mount = doc.createElement('div');
-  shadow.append(style, mount);
+  // 雨丝和闪电放在不重绘的图层里，动画才不会每次刷新界面都从头开始
+  const fx = doc.createElement('div');
+  fx.className = 'fx';
+  fx.innerHTML = '<div class="rain"></div><div class="flash"></div>';
+  shadow.append(style, fx, mount);
+  const sound = createSound(doc.defaultView as (Window & typeof globalThis) | null);
 
-  const settings = { textSpeed: 'normal' as TextSpeed, provider: 'auto' as ProviderSetting, ...load<UiState['settings']>(SETTINGS_KEY) };
+  const settings: UiState['settings'] = { textSpeed: 'normal', provider: 'auto', volume: 0.6, tutorialDone: false, ...load<Partial<UiState['settings']>>(SETTINGS_KEY) };
+  sound.setVolume(settings.volume);
   let picked = await pickClient(data, settings.provider);
   const ui: UiState = {
     screen: 'title',
@@ -75,6 +84,8 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     hasSave: !!load<SessionState>(SAVE_KEY)?.seed && load<SessionState>(SAVE_KEY)?.phase !== 'ending',
     showStats: data.config.dev.show_call_stats && picked.label.includes('代理'),
     epilogueLoading: false,
+    markPick: [],
+    markMode: false,
   };
   let game: GameSession | undefined;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -222,9 +233,46 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
   };
   doc.defaultView?.addEventListener('resize', onResize);
 
+  // ---------- 雨夜：偶尔打雷 ----------
+  const flashEl = fx.querySelector<HTMLElement>('.flash')!;
+  let thunderTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleThunder = () => {
+    thunderTimer = setTimeout(() => {
+      if (disposed) return;
+      flashEl.classList.remove('on');
+      void flashEl.offsetWidth;
+      flashEl.classList.add('on');
+      setTimeout(() => sound.thunder(), 900 + Math.random() * 900);
+      scheduleThunder();
+    }, 35000 + Math.random() * 40000);
+  };
+  scheduleThunder();
+
+  // ---------- 新手教学 ----------
+  const advanceTutorial = () => {
+    if (!game || ui.tutorialStep === undefined) return;
+    const g = game;
+    const done = [
+      () => g.state.visited.includes('library'),
+      () => g.state.turnIndex > 0,
+      () => g.case.contradictions.some((x) => g.hasClue(x.evidence) && g.hasClue(x.claim)),
+      () => Object.values(g.state.disciples).some((d) => d.presentedContradiction),
+      () => g.state.phase === 'ending',
+    ];
+    while (ui.tutorialStep < done.length && done[ui.tutorialStep]()) ui.tutorialStep++;
+    if (ui.tutorialStep >= done.length && !ui.settings.tutorialDone) {
+      ui.settings.tutorialDone = true;
+      persist();
+    }
+  };
+
   // ---------- 流程 ----------
-  const startGame = (seed: number, restore?: SessionState) => {
-    game = restore ? new GameSession(data, picked.client, { restore }) : new GameSession(data, picked.client, { seed });
+  const startGame = (seed: number, restore?: SessionState, tutorial = false) => {
+    game = restore ? new GameSession(data, picked.client, { restore }) : new GameSession(data, picked.client, { seed, options: { tutorial } });
+    ui.tutorialStep = game.case.tutorial && game.state.phase !== 'ending' ? 0 : undefined;
+    ui.markPick = [];
+    ui.markMode = false;
+    sound.rain(true);
     noticeSeen = game.state.notices.length;
     ui.accuse = { evidence: [] };
     ui.newClues = [];
@@ -242,6 +290,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       ui.screen = 'intro';
       ui.introStep = 0;
       shot(INTRO_SHOTS[0], true);
+      sound.bell();
     }
     persist();
     draw();
@@ -257,8 +306,11 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     draw();
   };
 
-  const afterTurn = (id: DiscipleId) => {
+  const afterTurn = (id: DiscipleId, r?: { verdict?: string; newClues: string[] }) => {
     ui.thinking = false;
+    if (r?.verdict === 'contradiction') sound.sting();
+    else if (r?.newClues.length) sound.page();
+    advanceTutorial();
     syncPoses();
     persist();
     if (game!.state.phase === 'accuse') {
@@ -284,7 +336,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       draw();
       return;
     }
-    afterTurn(id);
+    afterTurn(id, r);
   };
 
   const present = async (id: DiscipleId, factId: string) => {
@@ -300,7 +352,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       draw();
       return;
     }
-    afterTurn(id);
+    afterTurn(id, r);
   };
 
   const finishAccusation = async () => {
@@ -318,6 +370,8 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     shot(closeupShot(slotOf(game.case.culprit)));
     send({ kind: 'pose', id: game.case.culprit, pose: r.rating.correct ? 'down' : 'idle' });
     draw();
+    sound.ending(r.rating.correct);
+    advanceTutorial();
     await game.epilogue();
     ui.epilogueLoading = false;
     persist();
@@ -327,6 +381,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
 
   // ---------- 输入 ----------
   const onClick = async (ev: Event) => {
+    sound.unlock();
     const target = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!target) {
       finishTyping();
@@ -338,6 +393,9 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     switch (act) {
       case 'new':
         startGame(Math.floor(Math.random() * 1e8));
+        return;
+      case 'tutorial':
+        startGame(TUTORIAL_SEED, undefined, true);
         return;
       case 'replay':
         if (game) startGame(game.case.seed);
@@ -370,7 +428,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
         noticeSeen = game!.state.notices.length;
         persist();
         goMain();
-        toast('<b>严长老：</b>点下方的弟子审问，点「勘察各处」去现场看看。');
+        if (ui.tutorialStep === undefined) toast('<b>严长老：</b>点下方的弟子审问，点「勘察各处」去现场看看。');
         draw();
         return;
       case 'plaza':
@@ -393,6 +451,8 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
         ui.screen = 'location';
         ui.location = loc;
         ui.newClues = r.found;
+        if (r.found.length) sound.page();
+        advanceTutorial();
         shot(locationShot(loc));
         persist();
         draw();
@@ -430,8 +490,42 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       case 'cluebook':
         ui.modal = 'cluebook';
         ui.clueMode = 'view';
+        ui.markMode = false;
+        ui.markPick = [];
+        sound.page();
         draw();
         return;
+      case 'intuition': {
+        const r = game!.useIntuition();
+        toast(r.ok ? '<b>掌门直觉：</b>紫框里的这两条，好像对不上……' : escapeHtml(r.error));
+        persist();
+        draw();
+        return;
+      }
+      case 'mark-mode':
+        ui.markMode = !ui.markMode;
+        ui.markPick = [];
+        draw();
+        return;
+      case 'mark-pick': {
+        const f = target.dataset.fact!;
+        ui.markPick = ui.markPick.includes(f) ? ui.markPick.filter((x) => x !== f) : [...ui.markPick, f];
+        if (ui.markPick.length === 2) {
+          game!.toggleMark(ui.markPick[0], ui.markPick[1]);
+          ui.markPick = [];
+          ui.markMode = false;
+          persist();
+        }
+        draw();
+        return;
+      }
+      case 'unmark': {
+        const m = game!.state.marks[Number(target.dataset.i)];
+        if (m) game!.toggleMark(m[0], m[1]);
+        persist();
+        draw();
+        return;
+      }
       case 'dossier':
         ui.modal = 'dossier';
         ui.focus = id ?? ui.focus;
@@ -479,6 +573,11 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
         const k = target.dataset.k as keyof UiState['settings'];
         const v = target.dataset.v!;
         if (k === 'textSpeed') ui.settings.textSpeed = v as TextSpeed;
+        if (k === 'volume') {
+          ui.settings.volume = Number(v);
+          sound.setVolume(ui.settings.volume);
+          sound.page();
+        }
         if (k === 'provider') {
           ui.settings.provider = v as ProviderSetting;
           picked = await pickClient(data, ui.settings.provider);
@@ -533,6 +632,8 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
+      if (thunderTimer) clearTimeout(thunderTimer);
+      sound.dispose();
       doc.defaultView?.removeEventListener('resize', onResize);
       if (typingTimer) clearInterval(typingTimer);
       if (toastTimer) clearTimeout(toastTimer);

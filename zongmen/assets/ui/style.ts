@@ -140,6 +140,22 @@ table.truth tr.culprit td { background: rgba(169,139,217,.16); }
 table.truth .flaw { color: #ffcf9e; font-size: 13px; }
 .stats { position: absolute; left: 10px; top: 66px; font-size: 12px; color: var(--muted); padding: 4px 8px; pointer-events: none; }
 .notice { font-size: 13px; color: var(--muted); }
+.coach { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); width: min(640px, 92vw); padding: 10px 14px;
+  line-height: 1.6; border-color: var(--gold); box-shadow: 0 0 18px rgba(240,195,90,.25); pointer-events: none; }
+.coach b { color: var(--gold); }
+.clue.intuit { outline: 3px solid var(--purple); box-shadow: 0 0 14px rgba(169,139,217,.6); }
+.markrow { font-size: 13px; color: var(--text); margin-top: 6px; padding: 6px 8px; background: rgba(169,139,217,.12); border-radius: 8px; }
+.markrow button { min-height: 32px; padding: 2px 10px; margin-left: 6px; font-size: 13px; }
+.fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.rain { position: absolute; inset: -60px; opacity: .32;
+  background-image: repeating-linear-gradient(105deg, transparent 0 22px, rgba(170,195,230,.55) 22px 23px, transparent 23px 47px),
+    repeating-linear-gradient(100deg, transparent 0 37px, rgba(170,195,230,.35) 37px 38px, transparent 38px 71px);
+  background-size: 260px 260px, 330px 330px; animation: rain .45s linear infinite; }
+@keyframes rain { from { background-position: 0 0, 0 0 } to { background-position: -60px 260px, -50px 330px } }
+.flash { position: absolute; inset: 0; background: #dfe8ff; opacity: 0; }
+.flash.on { animation: flash 1.1s ease-out; }
+@keyframes flash { 0% { opacity: 0 } 6% { opacity: .55 } 12% { opacity: .1 } 18% { opacity: .4 } 100% { opacity: 0 } }
+@media (prefers-reduced-motion: reduce) { .rain { animation: none; } .flash.on { animation: none; } }
 .mutebtn { min-width: 44px; padding: 6px 10px; }
 
 @media (max-width: 760px), (orientation: portrait) {

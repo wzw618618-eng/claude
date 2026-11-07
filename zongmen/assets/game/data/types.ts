@@ -79,7 +79,7 @@ export interface CaseTemplates {
   inaccessible: Partial<Record<LocationId, string>>;
   slip_clue: string;
   trait_clue: string;
-  elder: { intro: string[]; dawn_warning: string; dawn: string; refused: string };
+  elder: { intro: string[]; dawn_warning: string; dawn: string; refused: string; tutorial: string[] };
 }
 
 export interface VoiceLines {

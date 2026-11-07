@@ -180,4 +180,33 @@ describe('会话规则', () => {
     expect(r.ok && r.source).toBe('fallback');
     expect(called).toBe(0);
   });
+
+  it('掌门直觉每局 1 次，只高亮已收集且没出示过的矛盾', async () => {
+    const game = new GameSession(data, new TemplateClient(), { seed: 20261207 });
+    game.start();
+    game.finishIntro();
+    expect(game.useIntuition().ok).toBe(false); // 线索簿是空的
+    for (const l of ['library', 'dorm', 'alchemy', 'kitchen', 'training', 'bamboo', 'gate'] as const) game.investigate(l);
+    for (const d of game.case.disciples) await game.ask(d.id, `${game.case.time_slot}你在哪里？`);
+    const r = game.useIntuition();
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(game.hasClue(r.evidence) && game.hasClue(r.claim)).toBe(true);
+      expect(game.case.contradictions).toContainEqual({ evidence: r.evidence, claim: r.claim, target: r.target });
+    }
+    expect(game.useIntuition()).toEqual({ ok: false, error: '掌门直觉每局只能用一次' });
+  });
+
+  it('标记矛盾只是笔记：可以标、可以取消，不影响问话次数', () => {
+    const game = new GameSession(data, new TemplateClient(), { seed: 5 });
+    game.start();
+    game.finishIntro();
+    for (const l of ['library', 'dorm', 'alchemy', 'kitchen', 'training', 'bamboo', 'gate'] as const) game.investigate(l);
+    const [a, b] = game.state.clues.map((c) => c.factId);
+    expect(game.toggleMark(a, b)).toEqual({ ok: true, marked: true });
+    expect(game.state.marks).toHaveLength(1);
+    expect(game.toggleMark(b, a)).toEqual({ ok: true, marked: false });
+    expect(game.state.marks).toHaveLength(0);
+    expect(game.state.questionsLeft).toBe(30);
+  });
 });

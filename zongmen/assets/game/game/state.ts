@@ -76,6 +76,10 @@ export interface SessionState {
   /** 模型服务出过错，本局后面都用模板应答 */
   templateMode: boolean;
   turnIndex: number;
+  /** 掌门直觉：每局 1 次，高亮一对已收集但尚未出示的矛盾 */
+  intuition?: { evidence: string; claim: string; target: DiscipleId };
+  /** 玩家自己标记为“矛盾”的线索对（只是笔记，不影响判定） */
+  marks: Array<[string, string]>;
   ending?: { accused: DiscipleId; evidence: string[]; rating: Rating; epilogue?: string; epilogueSource?: TurnSource };
 }
 
@@ -103,7 +107,8 @@ export class GameSession {
   ) {
     if ('restore' in init) {
       this.case = generateCase(init.restore.seed, data, { tutorial: init.restore.tutorial });
-      this.state = init.restore;
+      // 旧存档没有后来加的字段
+      this.state = { ...init.restore, marks: init.restore.marks ?? [] };
     } else {
       this.case = generateCase(init.seed, data, init.options);
       this.state = GameSession.freshState(data, this.case);
@@ -126,6 +131,7 @@ export class GameSession {
       stats: { calls: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalLatencyMs: 0, turns: 0, fallbackTurns: 0, templateTurns: 0 },
       templateMode: false,
       turnIndex: 0,
+      marks: [],
     };
   }
 
@@ -330,6 +336,30 @@ export class GameSession {
     }
     this.afterQuestion();
     return { ok: true, reply: out.reply, emotion: st.emotion, newClues, source: outcome.source, refusedNow };
+  }
+
+  /** 掌门直觉：找一对已在线索簿里、但还没对那个人出示过的矛盾 */
+  useIntuition(): ActionResult<{ evidence: string; claim: string; target: DiscipleId }> {
+    if (this.state.intuition) return { ok: false, error: '掌门直觉每局只能用一次' };
+    const hit = this.case.contradictions.find(
+      (x) => this.hasClue(x.evidence) && this.hasClue(x.claim) && !this.state.disciples[x.target].presented.includes(x.evidence),
+    );
+    if (!hit) return { ok: false, error: '线索簿里还看不出哪两条对不上，先多查多问' };
+    this.state.intuition = hit;
+    return { ok: true, ...hit };
+  }
+
+  /** 把两条线索标记为矛盾（再标一次取消） */
+  toggleMark(a: string, b: string): ActionResult<{ marked: boolean }> {
+    if (a === b || !this.hasClue(a) || !this.hasClue(b)) return { ok: false, error: '要选线索簿里的两条不同线索' };
+    const key = [a, b].sort() as [string, string];
+    const i = this.state.marks.findIndex((m) => m[0] === key[0] && m[1] === key[1]);
+    if (i >= 0) {
+      this.state.marks.splice(i, 1);
+      return { ok: true, marked: false };
+    }
+    this.state.marks.push(key);
+    return { ok: true, marked: true };
   }
 
   /** 玩家主动进入指认 */

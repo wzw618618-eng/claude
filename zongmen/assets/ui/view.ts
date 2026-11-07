@@ -22,7 +22,12 @@ export interface UiState {
   accuse: { who?: DiscipleId; evidence: string[] };
   thinking: boolean;
   toast?: string;
-  settings: { textSpeed: TextSpeed; provider: ProviderSetting };
+  settings: { textSpeed: TextSpeed; provider: ProviderSetting; volume: number; tutorialDone: boolean };
+  /** 新手教学进行到第几步；undefined 表示不是教学局 */
+  tutorialStep?: number;
+  /** 线索簿“标记矛盾”模式下已选的线索 */
+  markPick: string[];
+  markMode: boolean;
   aiLabel: string;
   hasSave: boolean;
   showStats: boolean;
@@ -80,7 +85,8 @@ function titleView({ ui }: ViewCtx): string {
     <h1 class="serif">宗门内奸</h1>
     <div class="sub">雨夜，藏经阁的镇派秘籍失窃。五个会撒谎的弟子，天亮前找出魔门内奸。</div>
     <div class="menu">
-      <button class="primary" data-act="new">开始新案</button>
+      <button class="${ui.settings.tutorialDone ? '' : 'primary'}" data-act="tutorial">新手教学${ui.settings.tutorialDone ? '' : '（第一次玩点这里）'}</button>
+      <button class="${ui.settings.tutorialDone ? 'primary' : ''}" data-act="new">开始新案</button>
       ${ui.hasSave ? '<button data-act="continue">继续本局</button>' : ''}
       <button data-act="howto">怎么玩</button>
       <button data-act="settings">设置</button>
@@ -109,7 +115,6 @@ function topBar({ game, data, ui }: ViewCtx): string {
     <div class="spacer"></div>
     <button class="ghost" data-act="howto" title="怎么玩">？</button>
     <button class="ghost" data-act="settings" title="设置">设置</button>
-    ${ui.screen === 'main' ? '' : ''}
   </div>`;
 }
 
@@ -147,9 +152,16 @@ function statsView(ctx: ViewCtx): string {
   return `<div class="stats panel">开发 · ${esc(ctx.ui.aiLabel)} · 调用 ${s.calls}/${ctx.data.config.budget.max_calls_per_case} · token ${s.inputTokens}/${s.outputTokens}（缓存 ${s.cachedInputTokens}） · 平均 ${ctx.game.averageLatencyMs()} 毫秒 · 兜底 ${s.fallbackTurns}/${s.turns}</div>`;
 }
 
+function coachView(ctx: ViewCtx): string {
+  const step = ctx.ui.tutorialStep;
+  if (step === undefined) return '';
+  const lines = ctx.data.templates.elder.tutorial;
+  return `<div class="coach panel"><b>严长老：</b>${esc(lines[Math.min(step, lines.length - 1)])}</div>`;
+}
+
 function playView(ctx: ViewCtx): string {
   const { ui } = ctx;
-  let main = topBar(ctx);
+  let main = topBar(ctx) + coachView(ctx);
   if (ui.screen === 'main') main += floatingMoods(ctx) + castBar(ctx) + actionButtons(ctx);
   if (ui.screen === 'map') main += mapView(ctx);
   if (ui.screen === 'location') main += locationView(ctx);
@@ -170,8 +182,8 @@ function mapView(ctx: ViewCtx): string {
   return `${labels}<div class="sheet panel"><div class="row"><span style="flex:1">点一处地点前去勘察。勘察不耗问话，找到的物证会自动记进线索簿。</span><button class="primary" data-act="plaza">回广场</button></div></div>`;
 }
 
-function clueHtml(ctx: ViewCtx, f: Fact, opts: { isNew?: boolean; meta?: string; button?: string } = {}): string {
-  return `<div class="clue ${opts.isNew ? 'new' : ''} ${opts.button ? 'pickable' : ''}">${esc(f.text)}${opts.meta ? `<div class="meta">${opts.meta}</div>` : ''}${opts.button ?? ''}</div>`;
+function clueHtml(ctx: ViewCtx, f: Fact, opts: { isNew?: boolean; meta?: string; button?: string; extra?: string } = {}): string {
+  return `<div class="clue ${opts.isNew ? 'new' : ''} ${opts.button ? 'pickable' : ''} ${opts.extra ?? ''}">${esc(f.text)}${opts.meta ? `<div class="meta">${opts.meta}</div>` : ''}${opts.button ?? ''}</div>`;
 }
 
 function locationView(ctx: ViewCtx): string {
@@ -257,6 +269,8 @@ const GROUP_NAMES = { physical: '物证（勘察所得）', testimony: '证词�
 function clueBookView(ctx: ViewCtx): string {
   const g = ctx.game!;
   const present = ctx.ui.clueMode === 'present' && ctx.ui.focus;
+  const intuit = g.state.intuition;
+  const marking = !present && ctx.ui.markMode;
   const st = present ? g.state.disciples[ctx.ui.focus!] : undefined;
   const groups = (['physical', 'testimony', 'confession'] as const)
     .map((cat) => {
@@ -266,20 +280,33 @@ function clueBookView(ctx: ViewCtx): string {
         .map((c) => {
           const f = g.fact(c.factId);
           const presented = st?.presented.includes(c.factId);
+          const picked = ctx.ui.markPick.includes(c.factId);
           const button = present
             ? presented
               ? '<button disabled>已出示</button>'
               : `<button class="primary" data-act="present-fact" data-fact="${c.factId}">出示</button>`
-            : undefined;
-          return clueHtml(ctx, f, { meta: `第 ${c.order} 条 · 来自${esc(c.via)}`, button });
+            : marking
+              ? `<button class="${picked ? '' : 'primary'}" data-act="mark-pick" data-fact="${c.factId}">${picked ? '已选' : '选'}</button>`
+              : undefined;
+          const lit = intuit && (intuit.evidence === c.factId || intuit.claim === c.factId);
+          return clueHtml(ctx, f, { meta: `第 ${c.order} 条 · 来自${esc(c.via)}${lit ? ' · <b>掌门直觉：这两条对不上</b>' : ''}`, button, extra: `${lit ? 'intuit' : ''} ${picked ? 'picked' : ''}` });
         })
         .join('')}</div>`;
     })
     .join('');
   const title = present ? `向${esc(char(ctx.data, ctx.ui.focus!).name)}出示证据` : '线索簿';
+  const marks = g.state.marks
+    .map((m, i) => `<div class="markrow">你标记的矛盾：${esc(g.fact(m[0]).text)} <b>↔</b> ${esc(g.fact(m[1]).text)} <button data-act="unmark" data-i="${i}">取消</button></div>`)
+    .join('');
+  const tools = present
+    ? ''
+    : `<div class="row" style="margin-top:6px">
+        <button data-act="intuition" ${intuit ? 'disabled' : ''}>掌门直觉${intuit ? '（已用）' : '（剩 1 次）'}</button>
+        <button class="${marking ? 'primary' : ''}" data-act="mark-mode">${marking ? `标记中：选 2 条（已选 ${ctx.ui.markPick.length}）` : '标记矛盾'}</button>
+      </div>${marks}`;
   return `<div class="modal"><div class="panel">
     <div class="row"><h2 class="serif" style="flex:1">${title}</h2><button data-act="close">关闭</button></div>
-    ${present ? '<div class="notice">出示一条证据要烧掉一炷香。和他的说法对不上，他就会慌；同一条证据对同一个人只能出示一次。</div>' : ''}
+    ${present ? '<div class="notice">出示一条证据要烧掉一炷香。和他的说法对不上，他就会慌；同一条证据对同一个人只能出示一次。</div>' : tools}
     <div class="scroll">${groups || '<div class="notice">线索簿还是空的。先去各处勘察，或者问问弟子们。</div>'}</div>
   </div></div>`;
 }
@@ -387,7 +414,8 @@ function settingsView(ctx: ViewCtx): string {
     <div class="group"><h3>文字速度</h3><div class="row">${opt('textSpeed', 'slow', '慢', s.textSpeed)}${opt('textSpeed', 'normal', '中', s.textSpeed)}${opt('textSpeed', 'fast', '快', s.textSpeed)}${opt('textSpeed', 'instant', '立即', s.textSpeed)}</div></div>
     <div class="group"><h3>AI 由谁来演</h3><div class="row">${opt('provider', 'auto', '自动', s.provider)}${opt('provider', 'template', '模板应答（离线）', s.provider)}${opt('provider', 'proxy', '本地代理（开发）', s.provider)}</div>
       <div class="notice" style="margin-top:6px">当前：${esc(ctx.ui.aiLabel)}。发布版接入模型服务前，用模板应答也能完整玩一局。</div></div>
-    <div class="group"><h3>音量</h3><div class="notice">音效在打磨阶段加入。</div></div>
+    <div class="group"><h3>音量</h3><div class="row">${[['0', '关'], ['0.3', '低'], ['0.6', '中'], ['1', '高']].map(([v, l]) => `<button class="${Number(v) === s.volume ? 'primary' : ''}" data-act="set" data-k="volume" data-v="${v}">${l}</button>`).join('')}</div>
+      <div class="notice" style="margin-top:6px">雨声、钟声、翻书声都是现场合成的。</div></div>
   </div></div>`;
 }
 
