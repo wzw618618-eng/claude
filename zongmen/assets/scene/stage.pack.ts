@@ -70,6 +70,8 @@ export const stage: Plugin.Object<{ readonly scene: string }> = {
       const place = new Map<string, Vec3>([['elder', ELDER_POS]]);
       const poses = new Map<string, Pose>();
       let time = 0;
+      let needReport = true;
+      let lastWall = 0;
 
       const receive = (event: MessageEvent) => {
         const msg = event.data;
@@ -78,6 +80,7 @@ export const stage: Plugin.Object<{ readonly scene: string }> = {
           case 'shot':
             target = msg.shot;
             if (msg.instant) current = msg.shot;
+            needReport = true;
             break;
           case 'cast':
             for (const k of CHARACTER_KEYS) if (k !== 'elder') place.delete(k);
@@ -102,9 +105,19 @@ export const stage: Plugin.Object<{ readonly scene: string }> = {
           before: [PROPAGATE_TRANSFORMS_SYSTEM],
           queries: [],
           fn: () => {
-            const dt = Math.min(0.25, world.getResource(Time).delta);
+            const dt = Math.min(1, world.getResource(Time).delta);
             time += dt;
-            current = stepShot(current, target, dt);
+            // 镜头按真实经过的时间平滑：帧率再低，过渡也在一两秒内完成
+            const now = performance.now();
+            const wall = lastWall ? Math.min(1, (now - lastWall) / 1000) : dt;
+            lastWall = now;
+            const before = current;
+            current = stepShot(current, target, wall);
+            // 镜头动了就告诉界面，标签按引擎的实际镜头投影
+            if (current !== before || needReport) {
+              needReport = false;
+              host?.port?.postMessage({ channel: 'zongmen/camera', shot: current, settled: current === target });
+            }
             const eye = cameraPosition(current);
             const rot = quat.fromLookAt(quat.create(), eye, current.focus, [0, 1, 0]);
             world.set(camera, Transform, { pos: eye, quat: [rot[0] ?? 0, rot[1] ?? 0, rot[2] ?? 0, rot[3] ?? 1] }).unwrap();

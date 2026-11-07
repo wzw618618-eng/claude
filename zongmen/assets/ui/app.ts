@@ -7,7 +7,7 @@ import { askAboutQuestion, quickQuestions } from '../game/game/quick';
 import { closeupShot, fitOverviewShot, fitPlazaShot, stepShot, LOCATION_LABEL_HEIGHT, LOCATION_POS, locationShot, PLAZA_SLOTS, projectToScreen, SHOTS, type CameraShot, type Vec3 } from '../scene/layout';
 import { characterHeight, lookOf } from '../scene/models';
 import { STAGE_CHANNEL } from '../scene/refs';
-import type { Pose, StageCommand } from '../scene/stage-protocol';
+import { isCameraReport, type Pose, type StageCommand } from '../scene/stage-protocol';
 import { pickClient, type ProviderSetting } from './ai';
 import { portraitUrl } from './portrait';
 import { CSS } from './style';
@@ -66,6 +66,9 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
   const fx = doc.createElement('div');
   fx.className = 'fx';
   fx.innerHTML = '<div class="rain"></div><div class="flash"></div>';
+  // 截图验收模式下雨丝静止：画面可复现，也不拖慢软件渲染
+  const captureMode = /[?&]forgeaxCapture=/.test(doc.defaultView?.location?.search ?? '');
+  if (captureMode) fx.classList.add('still');
   shadow.append(style, fx, mount);
   const sound = createSound(doc.defaultView as (Window & typeof globalThis) | null);
 
@@ -100,7 +103,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
   let currentShot: CameraShot = SHOTS.overview;
   const shot = (s: CameraShot, instant = false) => {
     targetShot = s;
-    hostEl.dataset.cameraSettled = instant ? '1' : '0';
+    hostEl.dataset.cameraSettled = instant && !engineDrivesCamera ? '1' : '0';
     if (instant) currentShot = s;
     send({ kind: 'shot', shot: s, instant });
   };
@@ -214,11 +217,29 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       el.style.top = '0';
     }
   };
+  // 引擎回报的实际镜头；收到过就以它为准，不再自己估算
+  let engineDrivesCamera = false;
+  let reports = 0;
+  const onPortMessage = (ev: MessageEvent) => {
+    if (!isCameraReport(ev.data)) return;
+    engineDrivesCamera = true;
+    reports++;
+    hostEl.dataset.cameraReports = String(reports);
+    currentShot = ev.data.shot;
+    floatsDirty = true;
+    hostEl.dataset.cameraSettled = ev.data.settled && sameShot(ev.data.shot, targetShot) ? '1' : '0';
+  };
+  port?.addEventListener('message', onPortMessage);
   const frame = (t: number) => {
     if (disposed) return;
     const dt = last ? Math.min(0.5, (t - last) / 1000) : 0;
     last = t;
-    if (currentShot !== targetShot || floatsDirty) {
+    if (engineDrivesCamera) {
+      if (floatsDirty) {
+        floatsDirty = false;
+        positionFloats();
+      }
+    } else if (currentShot !== targetShot || floatsDirty) {
       currentShot = stepShot(currentShot, targetShot, dt);
       floatsDirty = false;
       positionFloats();
@@ -246,7 +267,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       scheduleThunder();
     }, 35000 + Math.random() * 40000);
   };
-  scheduleThunder();
+  if (!captureMode) scheduleThunder();
 
   // ---------- 新手教学 ----------
   const advanceTutorial = () => {
@@ -632,6 +653,7 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
+      port?.removeEventListener('message', onPortMessage);
       if (thunderTimer) clearTimeout(thunderTimer);
       sound.dispose();
       doc.defaultView?.removeEventListener('resize', onResize);
@@ -642,6 +664,10 @@ export async function createGameUi(opts: { uiRoot: HTMLElement; port?: MessagePo
       hostEl.remove();
     },
   };
+}
+
+function sameShot(a: CameraShot, b: CameraShot): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function escapeHtml(s: string): string {

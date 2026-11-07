@@ -156,6 +156,7 @@ table.truth .flaw { color: #ffcf9e; font-size: 13px; }
 .flash.on { animation: flash 1.1s ease-out; }
 @keyframes flash { 0% { opacity: 0 } 6% { opacity: .55 } 12% { opacity: .1 } 18% { opacity: .4 } 100% { opacity: 0 } }
 @media (prefers-reduced-motion: reduce) { .rain { animation: none; } .flash.on { animation: none; } }
+.fx.still .rain { animation: none; }
 .mutebtn { min-width: 44px; padding: 6px 10px; }
 
 @media (max-width: 760px), (orientation: portrait) {

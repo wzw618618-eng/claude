@@ -19,3 +19,14 @@ export type StageMessage = StageCommand & { channel: 'zongmen/stage' };
 export function isStageMessage(value: unknown): value is StageMessage {
   return !!value && typeof value === 'object' && (value as { channel?: unknown }).channel === 'zongmen/stage';
 }
+
+/** 引擎 → 界面：镜头这一帧实际在哪（界面用它把标签贴到画面上） */
+export interface CameraReport {
+  channel: 'zongmen/camera';
+  shot: CameraShot;
+  settled: boolean;
+}
+
+export function isCameraReport(value: unknown): value is CameraReport {
+  return !!value && typeof value === 'object' && (value as { channel?: unknown }).channel === 'zongmen/camera';
+}
