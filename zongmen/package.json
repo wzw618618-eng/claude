@@ -1,0 +1,20 @@
+{
+  "name": "zongmen-neijian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "宗门内奸：雨夜审问五个会撒谎的 AI 弟子，天亮前找出内奸",
+  "type": "module",
+  "scripts": {
+    "data": "tsx tools/bundle-data.ts",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "cli": "tsx tools/cli.ts",
+    "eval": "tsx tools/eval/run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.40",
+    "tsx": "4.23.1",
+    "typescript": "5.6.3",
+    "vitest": "4.0.18"
+  }
+}

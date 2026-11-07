@@ -1,0 +1,5 @@
+node_modules/
+# 密钥只放环境变量或本地配置，绝不提交
+.env
+.env.*
+config/local.json

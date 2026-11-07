@@ -1,0 +1,13 @@
+[
+  { "id": "robe_qing", "category": "robe", "name": "青袍", "visible": true, "clue": "窗棂上挂着一缕青色丝线", "hint": "窃贼穿青袍" },
+  { "id": "robe_bai", "category": "robe", "name": "白袍", "visible": true, "clue": "窗棂上挂着一缕白色丝线", "hint": "窃贼穿白袍" },
+  { "id": "robe_hui", "category": "robe", "name": "灰袍", "visible": true, "clue": "门槛上蹭着灰色粗布碎屑", "hint": "窃贼穿灰袍" },
+  { "id": "lefty", "category": "habit", "name": "左撇子", "visible": false, "clue": "机关锁是从左侧拨开的", "hint": "窃贼是左撇子" },
+  { "id": "tall", "category": "habit", "name": "个子高", "visible": true, "clue": "书架最高一层被翻乱，矮个子踮脚也够不着", "hint": "窃贼个子高" },
+  { "id": "herbal", "category": "habit", "name": "身带药香", "visible": false, "clue": "阁内残留淡淡药香", "hint": "窃贼身上有药香" },
+  { "id": "straw", "category": "habit", "name": "穿草鞋", "visible": true, "clue": "门口泥地上有草鞋印", "hint": "窃贼穿草鞋" },
+  { "id": "jade", "category": "item", "name": "玉佩", "visible": true, "clue": "地上一小块磕掉的玉屑", "hint": "窃贼佩着玉佩" },
+  { "id": "bell", "category": "item", "name": "铜铃", "visible": true, "clue": "一枚掉了铃舌的小铜铃", "hint": "窃贼带着铜铃" },
+  { "id": "bamboo_sword", "category": "item", "name": "竹剑", "visible": true, "clue": "书架边散落的竹屑", "hint": "窃贼带着竹剑" },
+  { "id": "sachet", "category": "item", "name": "香囊", "visible": true, "clue": "一股香囊的花香", "hint": "窃贼带着香囊" }
+]

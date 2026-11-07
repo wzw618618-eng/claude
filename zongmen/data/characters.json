@@ -1,0 +1,321 @@
+[
+  {
+    "id": "lin_qingzhu",
+    "name": "林青竹",
+    "aliases": [
+      "大师兄",
+      "林师兄"
+    ],
+    "pronoun": "他",
+    "identity": "大师兄",
+    "personality": "严肃古板，护短，孝顺",
+    "speech_style": "文绉绉，爱说“成何体统”，自称“弟子”",
+    "catchphrases": [
+      "成何体统",
+      "此事关乎宗门体面"
+    ],
+    "bio": "自幼上山，是同辈里最守规矩的人。山下只剩一位常年卧病的老母，每月的月钱都托人捎回家。",
+    "traits": [
+      "robe_qing",
+      "tall",
+      "jade"
+    ],
+    "night_spots": [
+      {
+        "location": "gate",
+        "doing": "轮值守山门",
+        "detail": "今夜轮到弟子守夜，一直站在山门的檐下"
+      },
+      {
+        "location": "dorm",
+        "doing": "在房里睡觉",
+        "detail": "今夜不当值，早早歇下了"
+      }
+    ],
+    "secret_id": "lin_parcel",
+    "look": {
+      "height": "tall",
+      "hair": "束发高冠",
+      "accent": "#d9c27a"
+    }
+  },
+  {
+    "id": "shen_mo",
+    "name": "沈墨",
+    "aliases": [
+      "二师兄",
+      "沈师兄"
+    ],
+    "pronoun": "他",
+    "identity": "二师兄",
+    "personality": "聪明傲气，爱抬杠",
+    "speech_style": "惜字如金，常反问，自称“我”",
+    "catchphrases": [
+      "那又如何？",
+      "掌门以为呢？"
+    ],
+    "bio": "悟性极高，看不上大多数同门。最爱钻研古籍，常和大师兄争论门规。",
+    "traits": [
+      "robe_qing",
+      "lefty",
+      "jade"
+    ],
+    "night_spots": [
+      {
+        "location": "dorm",
+        "doing": "在房里看书",
+        "detail": "点着灯翻了半夜的古籍"
+      },
+      {
+        "location": "training",
+        "doing": "在练武场练剑",
+        "detail": "睡不着，去练了几趟剑"
+      }
+    ],
+    "secret_id": "shen_forbidden",
+    "look": {
+      "height": "normal",
+      "hair": "散发半束",
+      "accent": "#3a3a46"
+    }
+  },
+  {
+    "id": "liu_hanshuang",
+    "name": "柳寒霜",
+    "aliases": [
+      "柳师姐",
+      "寒霜"
+    ],
+    "pronoun": "她",
+    "identity": "内门弟子",
+    "personality": "剑痴，直来直去",
+    "speech_style": "句子短，三句不离剑，自称“我”",
+    "catchphrases": [
+      "剑不会骗人。",
+      "练剑要紧。"
+    ],
+    "bio": "除了剑什么都不关心，一把竹剑从不离身。夜里常一个人在练武场练到三更。",
+    "traits": [
+      "robe_qing",
+      "straw",
+      "bamboo_sword"
+    ],
+    "night_spots": [
+      {
+        "location": "training",
+        "doing": "在练武场夜练",
+        "detail": "雨里练剑，最磨心性"
+      },
+      {
+        "location": "dorm",
+        "doing": "在房里擦剑",
+        "detail": "擦完剑就睡了"
+      }
+    ],
+    "secret_id": "liu_quench",
+    "look": {
+      "height": "normal",
+      "hair": "高马尾",
+      "accent": "#7fa36b"
+    }
+  },
+  {
+    "id": "su_xiaoyu",
+    "name": "苏小鱼",
+    "aliases": [
+      "小鱼",
+      "小师妹"
+    ],
+    "pronoun": "她",
+    "identity": "小师妹",
+    "personality": "活泼八卦，嘴快",
+    "speech_style": "语气词多，爱喊“掌门～”，自称“我”或“小鱼”",
+    "catchphrases": [
+      "掌门～",
+      "哎呀呀",
+      "我跟你说哦"
+    ],
+    "bio": "全宗门年纪最小，谁家的事都知道一点。最爱热闹，腰上的小铜铃走到哪响到哪。",
+    "traits": [
+      "robe_bai",
+      "lefty",
+      "bell"
+    ],
+    "night_spots": [
+      {
+        "location": "dorm",
+        "doing": "在房里睡觉",
+        "detail": "雨声太吵，蒙着被子睡的"
+      },
+      {
+        "location": "kitchen",
+        "doing": "在膳堂找夜宵",
+        "detail": "肚子饿了，去膳堂摸了个馒头"
+      }
+    ],
+    "secret_id": "su_lantern",
+    "look": {
+      "height": "short",
+      "hair": "双髻",
+      "accent": "#e8a0a8"
+    }
+  },
+  {
+    "id": "bai_zhi",
+    "name": "白芷",
+    "aliases": [
+      "白师姐"
+    ],
+    "pronoun": "她",
+    "identity": "丹房弟子",
+    "personality": "温柔细心，胆小",
+    "speech_style": "慢条斯理，爱拿药材打比方，自称“我”",
+    "catchphrases": [
+      "就像……",
+      "掌门莫急"
+    ],
+    "bio": "在丹房守了三年炉火，认得山上每一味草药。说话轻声细语，一被吓到就攥紧衣角。",
+    "traits": [
+      "robe_bai",
+      "herbal",
+      "sachet"
+    ],
+    "night_spots": [
+      {
+        "location": "alchemy",
+        "doing": "在丹房守炉",
+        "detail": "炉里正炼着一炉养元丹，离不得人"
+      },
+      {
+        "location": "dorm",
+        "doing": "在房里睡觉",
+        "detail": "看完炉火就回房歇下了"
+      }
+    ],
+    "secret_id": "bai_furnace",
+    "look": {
+      "height": "normal",
+      "hair": "低髻插木簪",
+      "accent": "#9fc5a8"
+    }
+  },
+  {
+    "id": "ye_wuchen",
+    "name": "叶无尘",
+    "aliases": [
+      "叶师弟",
+      "无尘"
+    ],
+    "pronoun": "他",
+    "identity": "新入门弟子",
+    "personality": "沉默有礼，来历不明",
+    "speech_style": "客气疏离，用词讲究，自称“在下”",
+    "catchphrases": [
+      "在下",
+      "承蒙掌门垂询"
+    ],
+    "bio": "三个月前独自上山拜师，举止不像寻常人家的孩子，从不提自己的家世。",
+    "traits": [
+      "robe_bai",
+      "tall",
+      "sachet"
+    ],
+    "night_spots": [
+      {
+        "location": "dorm",
+        "doing": "在房里打坐",
+        "detail": "在房中打坐调息，未曾出门"
+      },
+      {
+        "location": "training",
+        "doing": "在练武场散步",
+        "detail": "雨夜清静，在练武场走了几圈"
+      }
+    ],
+    "secret_id": "ye_envoy",
+    "look": {
+      "height": "tall",
+      "hair": "玉冠束发",
+      "accent": "#c7b8e0"
+    }
+  },
+  {
+    "id": "zhao_tiezhu",
+    "name": "赵铁柱",
+    "aliases": [
+      "铁柱"
+    ],
+    "pronoun": "他",
+    "identity": "外门弟子",
+    "personality": "憨厚老实，力气大",
+    "speech_style": "一紧张就结巴，自称“俺”",
+    "catchphrases": [
+      "俺",
+      "这、这个……"
+    ],
+    "bio": "山下农户的儿子，力气比谁都大，宗门的柴火大半是他劈的。脚大，穿的草鞋是特制的。",
+    "traits": [
+      "robe_hui",
+      "straw",
+      "bamboo_sword"
+    ],
+    "night_spots": [
+      {
+        "location": "kitchen",
+        "doing": "在膳堂备柴",
+        "detail": "明早要蒸馒头，连夜把柴劈好码齐"
+      },
+      {
+        "location": "dorm",
+        "doing": "在房里睡觉",
+        "detail": "干了一天活，倒头就睡"
+      }
+    ],
+    "secret_id": "zhao_fruit",
+    "look": {
+      "height": "normal",
+      "hair": "短发包头巾",
+      "accent": "#a0763c"
+    }
+  },
+  {
+    "id": "qian_duoduo",
+    "name": "钱多多",
+    "aliases": [
+      "多多",
+      "钱师姐"
+    ],
+    "pronoun": "她",
+    "identity": "管账弟子",
+    "personality": "精明市侩，爱占小便宜",
+    "speech_style": "三句不离灵石，爱算账，自称“我”",
+    "catchphrases": [
+      "这笔账",
+      "亏了亏了"
+    ],
+    "bio": "管着宗门上下的账本和丹房库存，算盘打得比谁都快，铜铃似的嗓门一响就是要钱。",
+    "traits": [
+      "robe_hui",
+      "herbal",
+      "bell"
+    ],
+    "night_spots": [
+      {
+        "location": "dorm",
+        "doing": "在房里对账",
+        "detail": "月底了，点灯把这个月的账对了一遍"
+      },
+      {
+        "location": "alchemy",
+        "doing": "在丹房盘库存",
+        "detail": "顺手把丹房的库存点了一遍"
+      }
+    ],
+    "secret_id": "qian_resell",
+    "look": {
+      "height": "normal",
+      "hair": "圆髻戴珠花",
+      "accent": "#e0b040"
+    }
+  }
+]
