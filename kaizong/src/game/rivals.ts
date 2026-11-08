@@ -109,7 +109,7 @@ export function applyRivalMove(w: World, r: Rng, rv: Rival, c: RivalChoice, work
         w.sect.stones -= loss;
         const traveler = members(w).find((p) => p.job === 'travel');
         if (traveler) { traveler.hp = clamp(traveler.hp - 35, 5, 100); addLife(w, traveler, `在外被${rv.name}的人截杀，重伤`, 'bad', true); }
-        report(w, { text: `${rv.name}来抢了一回，损失${loss}灵石${traveler ? `，在外的${traveler.name}也被打伤了` : ''}。巡山的人手不够。`, tone: 'bad', about: traveler ? [traveler.id] : [], big: true });
+        report(w, { text: `${rv.name}来抢了一回，损失${loss}灵石${traveler ? `，在外的${traveler.name}也被打伤了` : ''}。巡山的人手不够。`, tone: 'bad', about: traveler ? [traveler.id] : [], big: true, chronicle: traveler ? undefined : false });
       }
       return;
     }
@@ -122,7 +122,7 @@ export function applyRivalMove(w: World, r: Rng, rv: Rival, c: RivalChoice, work
       w.decisions.push({ id: `d${w.nextId++}`, kind: 'ev:rival_ally', title: `${rv.name}提议结盟`, text: `${rv.name}派使者来，想和你结为同盟，互不侵犯、共御外敌。`, options: [{ id: 'yes', label: '结盟' }, { id: 'no', label: '婉拒' }], params: { rival: rv.id }, about: [], fallback: 'no' });
       return;
     case 'insult':
-      w.decisions.push({ id: `d${w.nextId++}`, kind: 'ev:rival_insult', title: `${rv.name}上门挑衅`, text: `${rv.name}派了个弟子在山门外叫阵，说${w.sect.name}都是些缩头乌龟。`, options: [{ id: 'fight', label: '派人应战' }, { id: 'ignore', label: '不理', hint: '名望受损，弟子们憋屈' }, { id: 'gift', label: '送点灵石打发走' }], params: { rival: rv.id }, about: [], fallback: 'ignore' });
+      w.decisions.push({ id: `d${w.nextId++}`, kind: 'ev:rival_insult', title: `${rv.name}上门挑衅`, text: `${rv.name}派了个弟子在山门外叫阵，说${w.sect.name}都是些缩头乌龟。`, options: [{ id: 'fight', label: '派人应战' }, { id: 'ignore', label: '不理', hint: '名望受损，弟子们憋屈' }, { id: 'gift', label: '送 40 灵石打发走', cost: { stones: 40 } }], params: { rival: rv.id }, about: [], fallback: 'ignore' });
       return;
     case 'gift':
       w.sect.stones += 50; rv.attitude += 5;
@@ -205,7 +205,7 @@ export function resolveRivalEvent(w: World, kind: string, x: Record<string, stri
     } else if (o === 'ignore') {
       w.sect.rep -= 5;
       for (const p of members(w)) if (disp(p, 'pride') > 0 || disp(p, 'temper') > 0) p.grudge = clamp(p.grudge + 6, 0, 100);
-    } else if (w.sect.stones >= 40) { w.sect.stones -= 40; rv.attitude += 3; }
+    } else if (o === 'gift') rv.attitude += 3;
     return true;
   }
   return false;

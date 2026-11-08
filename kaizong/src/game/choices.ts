@@ -101,8 +101,19 @@ export function choicesFor(w: World, p: Person, ctx: Ctx): Choice[] {
   if (wish?.kind === 'found' && p.realm >= 1 && (p.grudge >= 30 || p.loyalty < 45)) add({ kind: 'found', label: '带几个亲近的人下山，自立门户', score: 3 + D('ambition') * 0.5 });
   if (p.job !== 'travel' && (D('courage') > 0 || wish?.kind === 'treasure' || hasTrait(p, 'curious'))) add({ kind: 'adventure', label: '求宗主准自己下山历练', score: D('courage') * 0.5 + (wish?.kind === 'treasure' ? 1.5 : 0) + (hasTrait(p, 'curious') ? 1 : 0) - (working ? 0.5 : 0) });
 
+  // 这一季刚被宗主敲打过：不敢乱来
+  if (p.warned !== undefined && p.warned >= w.t) {
+    for (const c of out) {
+      if (['slack', 'steal', 'scheme', 'faction', 'defect'].includes(c.kind)) c.score -= 2.5;
+      if (c.kind === 'leak') c.score -= 1.5;
+      if (c.kind === 'work' || c.kind === 'diligent') c.score += 1;
+    }
+  }
   return out;
 }
+
+/** 见不得光的事：只有被抓到、被撞破，宗主才知道 */
+export const SECRET_ACTS: ActKind[] = ['leak', 'steal', 'scheme', 'faction'];
 
 function pickBy<T>(arr: T[], score: (x: T) => number): T | undefined {
   let best: T | undefined;

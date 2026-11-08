@@ -12,6 +12,13 @@ export const WISH_NAME: Record<WishKind, string> = {
   recognition: '得宗主看重', leave: '回家', glory: '宗门扬名', mentor: '收个好徒弟', treasure: '得一件好法宝', spy: '完成密令',
 };
 
+/** 别人看得见的心愿：奸细嘴上说的是另一套 */
+export function visibleWish(p: Person): Wish | null {
+  const x = p.wish;
+  if (x?.kind === 'spy' && p.secret && !p.secret.exposed) return { kind: 'realm', param: String(p.realm + 1), text: `想早日${REALM_NAME[p.realm + 1] ?? '突破'}，在宗门里站稳脚跟`, since: x.since, by: 'rule' };
+  return x;
+}
+
 /** 心愿的一个选项（给规则挑，也列给 AI 看） */
 export interface WishOption { kind: WishKind; target?: string; param?: string; text: string; weight: number }
 

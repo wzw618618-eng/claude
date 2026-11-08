@@ -148,6 +148,7 @@ export function admit(w: World, r: Rng, c: Candidate, rank: Rank): boolean {
   }
   p.sect = 'me';
   w.members.push(p.id);
+  if (!w.alumni.includes(p.id)) w.alumni.push(p.id);
   p.rank = 'outer';
   setRank(w, p, rank);
   if (rank === 'probation') p.probation = 0;

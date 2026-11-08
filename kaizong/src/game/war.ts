@@ -179,6 +179,7 @@ export function endWar(w: World, r: Rng, retreat = false): { win: boolean; text:
       for (const p of members(w)) { p.mood = clamp(p.mood - 15, 0, 100); if (disp(p, 'courage') < 0) p.loyalty = clamp(p.loyalty - 5, 0, 100); }
     }
   }
+  if (win) w.stats.warsWon += 1; else w.stats.warsLost += 1;
   rv.status = 'truce';
   rv.truceUntil = w.t + 12;
   rv.attitude = clamp(rv.attitude + 20, -100, 100);

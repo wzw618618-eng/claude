@@ -114,6 +114,10 @@ export interface Person {
   honestOrigin: boolean;
   /** 说话的口气（给 AI 和离线台词） */
   voice: string;
+  /** 被宗主敲打过的那一季：这一季不敢乱来 */
+  warned?: number;
+  /** 这一季被宗主召见过，聊过哪些话题 */
+  talked?: { t: number; topics: string[] };
 }
 
 export interface Candidate {
@@ -191,13 +195,18 @@ export interface Rival {
   intel?: number;
 }
 
+/** 选这一项要花的东西；不够就选不了 */
+export interface Cost { stones?: number; pills?: number; fpills?: number }
+
+export interface DecisionOption { id: string; label: string; hint?: string; cost?: Cost }
+
 export interface Decision {
   id: string;
   kind: string;
   title: string;
   text: string;
   about: string[];
-  options: { id: string; label: string; hint?: string }[];
+  options: DecisionOption[];
   params: Record<string, string | number>;
   /** 不处理会怎么样（过季时自动选） */
   fallback: string;
@@ -211,6 +220,8 @@ export interface ReportItem {
   big?: boolean;
   /** 弟子自己的话 */
   quote?: { who: string; text: string };
+  /** 大事但年年有（被抢、发不出月例），不写进宗门志 */
+  chronicle?: false;
 }
 
 /** 本季玩家亲手做的事：用来判断心愿被成全时是不是该记在宗主头上 */
@@ -282,4 +293,14 @@ export interface World {
   offers: Record<string, string>;
   /** 本季谁干了坏事（告发用） */
   misdeeds: { who: string; what: string; t: number }[];
+  /** 宗门志：开山以来的大事，结局时回顾 */
+  annals: { t: number; text: string; tone: ReportItem['tone'] }[];
+  /** 入过山门的所有人（结局时看他们的去向） */
+  alumni: string[];
+  /** 一局的战绩 */
+  stats: { warsWon: number; warsLost: number; credited: number };
+  /** 上一季过完，各项家底变了多少 */
+  delta: Record<string, number>;
+  /** 新手指引已经关掉 */
+  guideOff?: boolean;
 }

@@ -1,8 +1,8 @@
 // 过季：一季发生的所有事按顺序结算。
 // planSeason 先列出每个人能做的事和谁该交给 AI；界面拿去问 AI（或不问），再交回 advanceSeason。
 
-import { aiOptions, choicesFor, rulePick, type Choice } from './choices';
-import { lifespan, lvl, power as powerOf, realmText } from './cult';
+import { aiOptions, choicesFor, rulePick, SECRET_ACTS, type Choice } from './choices';
+import { atBottleneck, lifespan, lvl, power as powerOf, realmText } from './cult';
 import { addDecision, drift, refreshDecision, resolveDecision } from './decisions';
 import { HALL, POLICY, SKILLS, TECH } from './data/world';
 import { rollEvents, travelTick } from './events';
@@ -74,10 +74,15 @@ export interface Summary {
   deaths: Person[];
 }
 
+/** 季报顶上显示的家底 */
+export const RES_KEYS = ['stones', 'herbs', 'pills', 'fpills', 'armory', 'rep', 'authority', 'veins'] as const;
+
 export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>, rivalPicks: Record<string, Pick>): Summary {
   const r = rngOf(w);
   const s = w.sect;
-  if (w.report.length) w.history.unshift({ t: w.t - 1 < 0 ? 0 : w.t, items: w.report });
+  const before = Object.fromEntries(RES_KEYS.map((k) => [k, s[k]])) as Record<string, number>;
+  // 往事按"哪一季发生的"记：t = -1 是开山那一季
+  if (w.report.length) w.history.unshift({ t: w.t - 1, items: w.report });
   w.history = w.history.slice(0, 8);
   w.report = [];
   s.ledger = {};
@@ -97,6 +102,9 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     p.lastWhy = pk?.why && pk.id === c.id ? pk.why : undefined;
     if (!p.lastWhy && c.kind !== 'work' && r.chance(0.6)) p.lastWhy = templateWhy(w, r, p, c);
     applyChoice(w, r, p, c, emptyWork());
+    // 见不得光的事不进季报、不进经历，心里话也不让宗主看见；叛逃在 leaveSect 里已经报过
+    if (SECRET_ACTS.includes(c.kind)) { p.lastWhy = undefined; continue; }
+    if (c.kind === 'defect') continue;
     const routine = ['work', 'diligent', 'cultivate', 'slack'].includes(c.kind);
     if (!routine || p.starred || p.lastWhy) notable.push({ p, c, why: p.lastWhy, routine });
   }
@@ -106,8 +114,10 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   const work = doWork(w, r, unc);
   // 三、修炼
   const cul = cultivate(w, r, work);
-  for (const p of cul.bottleneck) {
-    if (p.id === w.me) continue;
+  // 刚修到圆满的人来求冲关；被"压一压"的人，每年开春再来求一次
+  const stuck = w.t % 4 === 3 ? members(w).filter((p) => atBottleneck(p)) : [];
+  for (const p of new Set([...cul.bottleneck, ...stuck])) {
+    if (p.id === w.me || !p.alive || p.sect !== 'me') continue;
     addDecision(w, 'breakthrough', { who: p.id });
   }
   for (const p of cul.leveled) if (p.realm >= 1 || p.starred) addLife(w, p, `修为精进到${realmText(p)}`, 'good');
@@ -147,7 +157,7 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   const income = Math.round(base * (s.veinDebuff && s.veinDebuff > w.t ? 0.8 : 1));
   s.stones += income;
   s.ledger.income = income;
-  if (!payUpkeep(w)) report(w, { text: '灵石不够发月例了！弟子们怨声载道。', tone: 'bad', about: [], big: true });
+  if (!payUpkeep(w)) report(w, { text: '灵石不够发月例了！弟子们怨声载道。', tone: 'bad', about: [], big: true, chronicle: false });
   if (s.policy === 'hide') s.rep = Math.max(0, s.rep - 1.5);
 
   // 六、历练、事件、奇遇
@@ -175,6 +185,7 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   // 八、试用期、心愿
   probationTick(w);
   const wishNews = settleWishes(w, r);
+  w.stats.credited += wishNews.filter((x) => x.credit).length;
   for (const x of thwarted(w)) report(w, { text: x.text, tone: 'bad', about: [x.p.id] });
   const newWishes: string[] = [];
   for (const p of members(w)) {
@@ -239,11 +250,17 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   if (year(w.t) > w.endYear && !w.war) w.over = endText(w);
   if (members(w).length === 0) w.over = { win: false, text: '弟子走的走、死的死，山上只剩你一个人。宗门散了。' };
   if (!w.people[w.me].alive) w.over = { win: false, text: '你寿元耗尽，坐化了。' };
+  w.delta = Object.fromEntries(RES_KEYS.map((k) => [k, Math.round((s[k] - before[k]) * 10) / 10]));
   r.save();
   return { t: w.t, wishNews, newWishes, deaths };
 }
 
 function emptyWork() { return { cultBonus: 1, lawPower: 1, recruitPower: 0, guardPower: 0, byHall: {} as Record<string, number> } as Parameters<typeof applyChoice>[4]; }
+
+/** 一局到年头了（打完仗、收兵时也要查一下） */
+export function checkEnd(w: World) {
+  if (!w.over && !w.war && year(w.t) > w.endYear) w.over = endText(w);
+}
 
 /** 试玩版十年到了 */
 function endText(w: World): { win: boolean; text: string } {

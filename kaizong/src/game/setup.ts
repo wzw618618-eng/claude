@@ -38,6 +38,7 @@ export function newWorld(c: StartChoice): World {
   const w: World = {
     v: 1, seed: c.seed, rng: 0, t: 0, me: '', people: {}, members: [], candidates: [], rivals: [], war: null, decisions: [], report: [], history: [], acts: [],
     needPolicy: true, needTech: true, over: null, nextId: 1, endYear: c.endYear ?? 10, pairings: {}, misdeeds: [], offers: {},
+    annals: [], alumni: [], stats: { warsWon: 0, warsLost: 0, credited: 0 }, delta: {},
     sect: {
       name: c.sectName, site: c.site, origin: c.origin, heritage: c.heritage,
       stones: 320 + (c.heritage === 'trade' ? 150 : 0) + (c.site === 'vein' ? 80 : c.site === 'deep' ? -60 : 0),
@@ -67,6 +68,7 @@ export function newWorld(c: StartChoice): World {
     p.rank = i === 0 ? 'inner' : 'outer';
     w.people[p.id] = p;
     w.members.push(p.id);
+    w.alumni.push(p.id);
     adjust(p, m.id, 40, 30);
     addLife(w, p, `跟着${m.name}开山，成了${c.sectName}的开山弟子`, 'good', true);
   }

@@ -103,9 +103,9 @@ const SECT_EVENTS: SectEvent[] = [
   },
   {
     id: 'vein_decay', weight: (w) => w.sect.site === 'vein' ? 0.6 : 0.3,
-    start: () => ({ title: '灵脉衰减', text: '山中灵脉近来灵气变弱，阵法师说要花一笔灵石加固。', options: [{ id: 'fix', label: '花 150 灵石加固' }, { id: 'no', label: '先不管', hint: '收入会降一阵' }], fallback: 'no' }),
+    start: () => ({ title: '灵脉衰减', text: '山中灵脉近来灵气变弱，阵法师说要花一笔灵石加固。', options: [{ id: 'fix', label: '花 150 灵石加固', cost: { stones: 150 } }, { id: 'no', label: '先不管', hint: '收入会降一阵' }], fallback: 'no' }),
     resolve(w, _r, _x, o) {
-      if (o === 'fix' && w.sect.stones >= 150) { w.sect.stones -= 150; return; }
+      if (o === 'fix') { report(w, { text: '花 150 灵石加固了灵脉。', tone: 'info', about: [] }); return; }
       w.sect.veinDebuff = w.t + 8;
       report(w, { text: '灵脉衰减，之后两年收入少两成。', tone: 'bad', about: [] });
     },
@@ -123,10 +123,15 @@ const SECT_EVENTS: SectEvent[] = [
   },
   {
     id: 'fair', weight: () => 0.8,
-    start: (w) => ({ title: '坊市大会', text: '山下坊市三年一次的大会开了，各家都去摆摊。', options: [{ id: 'sell', label: `拿丹药去卖`, hint: `库里有${Math.floor(w.sect.pills)}颗` }, { id: 'buy', label: '花 200 灵石买一颗筑基丹' }, { id: 'no', label: '不去' }], fallback: 'no' }),
+    start: (w) => ({ title: '坊市大会', text: '山下坊市三年一次的大会开了，各家都去摆摊。', options: [{ id: 'sell', label: `拿丹药去卖`, hint: `库里有${Math.floor(w.sect.pills)}颗` }, { id: 'buy', label: '花 200 灵石买一颗筑基丹', cost: { stones: 200 } }, { id: 'no', label: '不去' }], fallback: 'no' }),
     resolve(w, _r, _x, o) {
-      if (o === 'sell') { const n = Math.floor(w.sect.pills * 0.6); w.sect.pills -= n; w.sect.stones += n * 12; w.sect.rep += 2; report(w, { text: `在坊市卖了${n}颗丹药，得${n * 12}灵石。`, tone: 'good', about: [] }); }
-      if (o === 'buy' && w.sect.stones >= 200) { w.sect.stones -= 200; w.sect.fpills += 1; report(w, { text: '在坊市买到一颗筑基丹。', tone: 'good', about: [] }); }
+      if (o === 'sell') {
+        const n = Math.floor(w.sect.pills * 0.6);
+        if (n <= 0) { report(w, { text: '库里没剩几颗丹药，在坊市转了一圈就回来了。', tone: 'info', about: [] }); return; }
+        w.sect.pills -= n; w.sect.stones += n * 12; w.sect.rep += 2;
+        report(w, { text: `在坊市卖了${n}颗丹药，得${n * 12}灵石。`, tone: 'good', about: [] });
+      }
+      if (o === 'buy') { w.sect.fpills += 1; report(w, { text: '在坊市买到一颗筑基丹。', tone: 'good', about: [] }); }
     },
   },
   {
@@ -215,22 +220,21 @@ const SECT_EVENTS: SectEvent[] = [
     id: 'family_visit', weight: (w) => members(w).length ? 0.6 : 0,
     start: (w, r) => {
       const p = r.pick(members(w));
-      return { title: `${p.name}的家人找上山`, text: `${p.name}的家人找上山来，说家里出了事，要${pronoun(p)}回去。`, options: [{ id: 'let', label: '准假一年', hint: '他会感激你' }, { id: 'help', label: '派人带 50 灵石去帮衬' }, { id: 'no', label: '修行要紧，不准' }], params: { who: p.id }, fallback: 'no', about: [p.id] };
+      return { title: `${p.name}的家人找上山`, text: `${p.name}的家人找上山来，说家里出了事，要${pronoun(p)}回去。`, options: [{ id: 'let', label: '准假一年', hint: '他会感激你' }, { id: 'help', label: '派人带 50 灵石去帮衬', cost: { stones: 50 } }, { id: 'no', label: '修行要紧，不准' }], params: { who: p.id }, fallback: 'no', about: [p.id] };
     },
     resolve(w, _r, x, o) {
       const p = P(w, String(x.who));
       if (!p?.alive) return;
       if (o === 'let') { p.job = 'travel'; p.head = undefined; p.travelUntil = w.t + 4; adjust(p, w.me, 15, 5); p.loyalty = clamp(p.loyalty + 10, 0, 100); addLife(w, p, '家中有事，宗主准假一年回家', 'good'); w.acts.push({ kind: 'gift', who: p.id, text: `准${p.name}回家` }); }
-      else if (o === 'help' && w.sect.stones >= 50) { w.sect.stones -= 50; adjust(p, w.me, 20, 8); p.loyalty = clamp(p.loyalty + 15, 0, 100); addLife(w, p, '家中有难，宗主派人送去了灵石', 'good', true); w.acts.push({ kind: 'gift', who: p.id, text: `替${p.name}照顾家人` }); }
+      else if (o === 'help') { adjust(p, w.me, 20, 8); p.loyalty = clamp(p.loyalty + 15, 0, 100); addLife(w, p, '家中有难，宗主派人送去了灵石', 'good', true); w.acts.push({ kind: 'gift', who: p.id, text: `替${p.name}照顾家人` }); }
       else { p.mood = clamp(p.mood - 20, 0, 100); p.grudge = clamp(p.grudge + (hasTrait(p, 'filial') ? 25 : 10), 0, 100); addLife(w, p, '家中出事，宗主不准回去', 'bad', true); }
     },
   },
   {
     id: 'sage', weight: () => 0.4,
-    start: () => ({ title: '云游高人', text: '一位云游的高人路过山门，愿意留下指点几天——但要一笔供奉。', options: [{ id: 'pay', label: '奉上 120 灵石，请他指点' }, { id: 'no', label: '婉谢' }], fallback: 'no' }),
+    start: () => ({ title: '云游高人', text: '一位云游的高人路过山门，愿意留下指点几天——但要一笔供奉。', options: [{ id: 'pay', label: '奉上 120 灵石，请他指点', cost: { stones: 120 } }, { id: 'no', label: '婉谢' }], fallback: 'no' }),
     resolve(w, r, _x, o) {
-      if (o !== 'pay' || w.sect.stones < 120) return;
-      w.sect.stones -= 120;
+      if (o !== 'pay') return;
       for (const p of members(w)) { const sk = r.pick(SKILLS); p.skills[sk] = Math.min(p.caps[sk], p.skills[sk] + 6); p.exp += 10; stepUp(p); }
       report(w, { text: '高人在山上讲道三日，人人都有所得。', tone: 'good', about: [] });
     },
@@ -264,11 +268,11 @@ const SECT_EVENTS: SectEvent[] = [
   },
   {
     id: 'vein_dispute', weight: (w) => w.sect.veins >= 2 && rivalAlive(w).length ? 0.5 : 0,
-    start: (w, r) => { const rv = r.pick(rivalAlive(w)); return { title: '灵脉之争', text: `${rv.name}派人来说，你山下那条灵脉本该归他们。`, options: [{ id: 'refuse', label: '寸土不让', hint: '对方会记恨' }, { id: 'pay', label: '赔 100 灵石了事' }, { id: 'give', label: '让给他们', hint: '少一条灵脉，换对方好感' }], params: { rival: rv.id }, fallback: 'refuse' }; },
+    start: (w, r) => { const rv = r.pick(rivalAlive(w)); return { title: '灵脉之争', text: `${rv.name}派人来说，你山下那条灵脉本该归他们。`, options: [{ id: 'refuse', label: '寸土不让', hint: '对方会记恨' }, { id: 'pay', label: '赔 100 灵石了事', cost: { stones: 100 } }, { id: 'give', label: '让给他们', hint: '少一条灵脉，换对方好感' }], params: { rival: rv.id }, fallback: 'refuse' }; },
     resolve(w, _r, x, o) {
       const rv = w.rivals.find((v) => v.id === x.rival)!;
       if (o === 'refuse') { rv.attitude -= 12; w.sect.authority = clamp(w.sect.authority + 3, 0, 100); }
-      if (o === 'pay' && w.sect.stones >= 100) { w.sect.stones -= 100; rv.attitude += 6; }
+      if (o === 'pay') rv.attitude += 6;
       if (o === 'give') { w.sect.veins -= 1; rv.veins += 1; rv.attitude += 20; w.sect.rep -= 5; for (const p of members(w)) if (disp(p, 'pride') > 0) p.grudge = clamp(p.grudge + 6, 0, 100); report(w, { text: `把一条灵脉让给了${rv.name}。几个心气高的弟子很不服气。`, tone: 'bad', about: [] }); }
     },
   },

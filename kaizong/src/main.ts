@@ -5,16 +5,19 @@ import { createMeter, loadConfig, saveConfig, type AiConfig } from './ai/config'
 import { chatPrompt } from './ai/prompts';
 import { afterSeason, askSeason, cleanLine } from './ai/runner';
 import type { RANK_ORDER } from './game/data/world';
-import { resolveDecision } from './game/decisions';
+import { REALM_NAME } from './game/cult';
+import { breakNow, resolveDecision, type BreakWay } from './game/decisions';
 import { admit, checkOrigin, dismiss, heartTest, testRoot, testSkill } from './game/recruit';
 import { diplomacy } from './game/rivals';
-import { advanceSeason, AI_LIMIT, choosePolicy, giftPill, holdTourney, learnTech, planSeason, upgradeHall, vouch } from './game/season';
+import { migrate } from './game/save';
+import { advanceSeason, AI_LIMIT, checkEnd, choosePolicy, giftPill, holdTourney, learnTech, planSeason, upgradeHall, vouch } from './game/season';
 import { assignJob, setHead, setRank, unconvinced } from './game/sect';
 import { expel } from './game/decisions';
 import { newWorld, randomStart, type StartChoice } from './game/setup';
 import type { HallId, JobId, Skill, World } from './game/types';
+import { noteFreeTalk, talk, type Topic } from './game/talk';
 import { endWar, fightRound, healTeam } from './game/war';
-import { adjust, clamp, members, P, rngOf } from './game/world';
+import { adjust, clamp, P, pronoun, rngOf } from './game/world';
 import { gameView, setupView, titleView, type Tab, type Ui } from './ui/views';
 
 const SAVE = 'kaizong.save.v1';
@@ -32,7 +35,7 @@ function load(): World | null {
     const s = localStorage.getItem(SAVE);
     if (!s) return null;
     const o = JSON.parse(s) as World;
-    return o && o.v === 1 ? o : null;
+    return o && o.v === 1 ? migrate(o) : null;
   } catch { return null; }
 }
 function save() {
@@ -95,7 +98,7 @@ function afterChange() {
 // ───────────── 过季 ─────────────
 
 async function advance() {
-  if (!w || ui.busy) return;
+  if (!w || ui.busy || w.over) return;
   if (w.needPolicy || w.needTech) { ui.modal = { kind: 'year' }; render(); return; }
   const client = ai();
   const mode = client ? cfg.mode : 'off';
@@ -143,25 +146,61 @@ async function chat(id: string, said: string) {
   if (!w || !client) return;
   const p = P(w, id);
   if (!p) return;
+  const note = noteFreeTalk(w, p);
+  if (!note.ok) { toast(note.why); render(); return; }
   const lines = (ui.chats[id] ??= []);
   lines.push({ from: 'me', text: said });
   ui.streaming = '';
+  save();
   render();
   const q = chatPrompt(w, p);
-  const history = lines.slice(-9, -1).map((l) => ({ role: l.from === 'me' ? 'user' as const : 'assistant' as const, content: l.from === 'me' ? `宗主对你说：${l.text}` : JSON.stringify({ reply: l.text, mood: 0 }) }));
   try {
-    const res = await client.chat({ system: q.system, prompt: q.prompt(said, unconvinced(w)), history, maxTokens: 160, onText: (t) => { ui.streaming = replySoFar(t); render(); } });
+    const res = await client.chat({ system: q.system, prompt: q.prompt(said, unconvinced(w)), history: chatHistory(lines.slice(0, -1)), maxTokens: 160, onText: (t) => { ui.streaming = replySoFar(t); render(); } });
     const o = asJson(res.text);
     const reply = cleanLine(o?.reply, 80) ?? '……';
     const mood = Math.max(-2, Math.min(2, Math.round(Number(o?.mood) || 0)));
     lines.push({ from: 'them', text: reply });
-    p.mood = clamp(p.mood + mood * 3, 0, 100);
-    adjust(p, w.me, mood * 2);
+    if (note.counts && mood) {
+      p.mood = clamp(p.mood + mood * 3, 0, 100);
+      adjust(p, w.me, mood * 2);
+      lines.push({ from: 'note', text: mood > 0 ? `${pronoun(p)}心里很受用` : `${pronoun(p)}听了不太舒服` });
+    }
   } catch (e) {
     lines.push({ from: 'them', text: `（没说上话：${e instanceof Error ? e.message : e}）` });
   }
   ui.streaming = null;
   afterChange();
+}
+
+/** 召见时挑一个话题：后果按规矩算；接了 AI 就让 AI 照这个意思说 */
+async function chatTopic(id: string, topic: Topic) {
+  if (!w || ui.streaming !== null) return;
+  const p = P(w, id);
+  if (!p) return;
+  const r = rngOf(w);
+  const res = talk(w, r, p, topic);
+  r.save();
+  if (typeof res === 'string') { toast(res); render(); return; }
+  const lines = (ui.chats[id] ??= []);
+  lines.push({ from: 'me', text: res.said });
+  const client = ai();
+  if (!client) { lines.push({ from: 'them', text: res.reply }, { from: 'note', text: res.effect }); afterChange(); return; }
+  ui.streaming = '';
+  save();
+  render();
+  const q = chatPrompt(w, p);
+  let reply = res.reply;
+  try {
+    const out = await client.chat({ system: q.system, prompt: q.prompt(res.said, unconvinced(w), res.reply), history: chatHistory(lines.slice(0, -1)), maxTokens: 160, onText: (t) => { ui.streaming = replySoFar(t); render(); } });
+    reply = cleanLine(asJson(out.text)?.reply, 80) ?? res.reply;
+  } catch { /* 没连上就用规则的话 */ }
+  lines.push({ from: 'them', text: reply }, { from: 'note', text: res.effect });
+  ui.streaming = null;
+  afterChange();
+}
+
+function chatHistory(lines: Ui['chats'][string]) {
+  return lines.filter((l) => l.from !== 'note').slice(-8).map((l) => ({ role: l.from === 'me' ? 'user' as const : 'assistant' as const, content: l.from === 'me' ? `宗主对你说：${l.text}` : JSON.stringify({ reply: l.text, mood: 0 }) }));
 }
 
 // ───────────── 点击 ─────────────
@@ -170,7 +209,7 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
   const r = w ? rngOf(w) : null;
   const done = (msg?: string | null) => { if (msg) toast(msg); r?.save(); afterChange(); };
   switch (a) {
-    case 'continue': w = load(); if (w) { ui.screen = 'game'; ui.modal = w.over ? { kind: 'end' } : null; meter.resetGame(); } render(); return;
+    case 'continue': w = load(); if (w) { ui.screen = 'game'; ui.modal = w.over ? { kind: 'end' } : w.war ? { kind: 'war' } : null; meter.resetGame(); } render(); return;
     case 'new': ui.screen = 'setup'; ui.modal = null; ui.setup = randomStart(Date.now() % 1e9); render(); return;
     case 'back-title': ui.screen = 'title'; render(); return;
     case 'setup-pick': (ui.setup as unknown as Record<string, string>)[id] = v; render(); return;
@@ -186,7 +225,7 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     }
     case 'help': ui.modal = { kind: 'help' }; render(); return;
     case 'settings': ui.modal = { kind: 'settings' }; render(); return;
-    case 'close': case 'close-bg': ui.modal = null; render(); return;
+    case 'close': case 'close-bg': ui.modal = w?.over && ui.screen === 'game' ? { kind: 'end' } : null; render(); return;
     case 'quit': ui.screen = 'title'; ui.modal = null; ui.hasSave = !!load(); render(); return;
     case 'ai-kind': cfg = { ...cfg, kind: id as AiConfig['kind'] }; saveConfig(cfg); render(); return;
     case 'ai-mode': cfg = { ...cfg, mode: id as AiConfig['mode'] }; saveConfig(cfg); render(); return;
@@ -205,8 +244,17 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     case 'open-year': ui.modal = { kind: 'year' }; render(); return;
     case 'open-war': ui.modal = { kind: 'war' }; render(); return;
     case 'toggle-history': ui.showHistory = !ui.showHistory; render(); return;
-    case 'decide': resolveDecision(w, r, id, v); return done();
-    case 'star': { const p = P(w, id)!; p.starred = !p.starred; return done(p.starred ? `已标记${p.name}，他每季都会由 AI 来想` : null); }
+    case 'decide': return done(resolveDecision(w, r, id, v));
+    case 'star': { const p = P(w, id)!; p.starred = !p.starred; return done(p.starred ? `已标记${p.name}，${pronoun(p)}的事排在季报最前面${cfg.kind === 'deepseek' && cfg.apiKey ? `，每季由 AI 来想` : ''}` : null); }
+    case 'break': {
+      const p = P(w, id)!;
+      const was = p.realm;
+      const e = breakNow(w, r, p, v as BreakWay);
+      if (e) return done(e);
+      return done(p.realm > was ? `${p.name}冲关成功，踏入${REALM_NAME[p.realm]}！` : `${p.name}冲关失败，受了内伤。`);
+    }
+    case 'topic': void chatTopic(id, v as Topic); return;
+    case 'guide-off': w.guideOff = true; return done();
     case 'unassign': { const p = P(w, id)!; assignJob(w, p, 'none'); return done(); }
     case 'upgrade': return done(upgradeHall(w, id as HallId));
     case 'tourney': return done(holdTourney(w));
@@ -227,8 +275,8 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     case 'war-go': warRound(false); return;
     case 'war-round': warRound(v === 'master'); return;
     case 'war-heal': healTeam(w); return done();
-    case 'war-retreat': { const res = endWar(w, r); if (res.wiped) w.over = { win: false, text: res.text }; return done(); }
-    case 'war-close': w.war = null; ui.modal = w.needPolicy || w.needTech ? { kind: 'year' } : null; return done();
+    case 'war-retreat': { const res = endWar(w, r, true); if (res.wiped) w.over = { win: false, text: res.text }; return done(); }
+    case 'war-close': w.war = null; checkEnd(w); ui.modal = w.needPolicy || w.needTech ? { kind: 'year' } : null; return done();
     case 'play-on': w.endYear += 10; w.over = null; ui.modal = null; return done('再玩十年。');
   }
   if (a.startsWith('expel-yes:')) { const p = P(w, a.slice(10))!; expel(w, r, p, '宗主之命'); ui.modal = null; return done(); }
@@ -297,7 +345,7 @@ async function importSave(input: HTMLInputElement) {
   try {
     const o = JSON.parse(await f.text()) as World;
     if (o?.v !== 1 || !o.sect) throw new Error('不是开宗立派的存档');
-    w = o;
+    w = migrate(o);
     ui.screen = 'game'; ui.modal = null;
     afterChange();
     toast('存档已导入');
@@ -344,5 +392,4 @@ document.addEventListener('keydown', (e) => {
 });
 
 render();
-void members;
 

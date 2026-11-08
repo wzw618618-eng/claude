@@ -111,7 +111,6 @@ export function applyChoice(w: World, r: Rng, p: Person, c: Choice, work: Work) 
       } else if (r.chance(0.55 + disp(p, 'cunning') * 0.08)) {
         t.favor = Math.max(0, t.favor - 5); t.merit = Math.max(0, t.merit - 10); t.mood = clamp(t.mood - 10, 0, 100);
         addLife(w, t, '最近总有人在背后说坏话，日子不好过', 'bad');
-        if (p.starred) addLife(w, p, `在背后给${t.name}使了绊子`, 'story');
       }
       return;
     }
@@ -144,6 +143,8 @@ export function applyChoice(w: World, r: Rng, p: Person, c: Choice, work: Work) 
       w.sect.stones -= amount;
       w.misdeeds.push({ who: p.id, what: '偷了宗门的灵石', t: w.t });
       if (r.chance(0.2 + law * 0.12)) addDecision(w, 'theft', { who: p.id, what: `${amount}灵石`, amount });
+      // 没抓到人：只知道库房少了东西，不知道是谁
+      else if (amount > 0) report(w, { text: `库房对账，少了${amount}灵石，不知是谁拿的。执法堂得力，才抓得到人。`, tone: 'bad', about: [] });
       return;
     }
     case 'leak': {

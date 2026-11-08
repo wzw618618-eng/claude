@@ -7,13 +7,16 @@ import { TRAIT } from '../game/data/traits';
 import { HALL, HALL_CAP, HALL_COST, HALLS, HERITAGES, JOB_NAME, ORIGINS, POLICIES, POLICY, RANK_NAME, rankLv, SITES, SKILL_NAME, SKILLS, TECHS, UPKEEP, VALUE_NAME, VALUES } from '../game/data/world';
 import { acceptChance, ROOT_COST, visibleFacts, WANT_TEXT } from '../game/recruit';
 import { MOVE_NAME, rivalStrength } from '../game/rivals';
-import { canLearn } from '../game/season';
+import { breakOptions } from '../game/decisions';
+import { epilogue } from '../game/ending';
+import { canLearn, RES_KEYS } from '../game/season';
 import { fit, fitWord, hallHead, hallMembers, postText, sectStrength, unconvinced, underqualified } from '../game/sect';
+import { audience, TALK_LIMIT, talkBlock, TOPIC, topicsFor, topicUsed } from '../game/talk';
 import type { StartChoice } from '../game/setup';
 import type { Candidate, Decision, HallId, Person, ReportItem, Rival, World } from '../game/types';
 import { enemyPower, STANCE_NAME } from '../game/war';
-import { WISH_NAME } from '../game/wishes';
-import { members, me, nm, P, prestige, seasonName, timeText, year } from '../game/world';
+import { visibleWish, WISH_NAME } from '../game/wishes';
+import { lacks, members, me, nm, P, prestige, pronoun, seasonName, timeText, year } from '../game/world';
 import { avatar } from './avatar';
 import { mapView } from './map';
 import { bar, esc, n0, word } from './util';
@@ -38,7 +41,7 @@ export interface Ui {
   busy: string | null;
   toast: string | null;
   sort: 'rank' | 'realm' | 'grudge' | 'mood' | 'loyalty';
-  chats: Record<string, { from: 'me' | 'them'; text: string }[]>;
+  chats: Record<string, { from: 'me' | 'them' | 'note'; text: string }[]>;
   streaming: string | null;
   testPick: Record<string, string>;
   showHistory: boolean;
@@ -98,14 +101,16 @@ export function gameView(w: World, ui: Ui, cfg: AiConfig, meter: Meter) {
   const s = w.sect;
   const pend = w.decisions.length;
   const block = w.needPolicy || w.needTech;
-  const res = [
-    ['灵石', n0(s.stones), 'stones'], ['灵草', n0(s.herbs), 'herbs'], ['丹药', n0(s.pills), 'pills'], ['筑基丹', s.fpills, 'fpills'],
-    ['法器', n0(s.armory), 'armory'], ['名望', n0(s.rep), 'rep'], ['宗主威望', n0(s.authority), 'auth'], ['灵脉', s.veins, 'veins'],
-  ];
+  const label: Record<(typeof RES_KEYS)[number], string> = { stones: '灵石', herbs: '灵草', pills: '丹药', fpills: '筑基丹', armory: '法器', rep: '名望', authority: '宗主威望', veins: '灵脉' };
+  const res = RES_KEYS.map((k) => {
+    const d = Math.round(w.delta?.[k] ?? 0);
+    const dl = d ? `<small class="dlt ${d > 0 ? 'up' : 'down'}" title="上一季${d > 0 ? '多了' : '少了'} ${Math.abs(d)}">${d > 0 ? '+' : '−'}${n0(Math.abs(d))}</small>` : '';
+    return `<span class="r ${k}"><em>${label[k]}</em><span class="rv">${n0(s[k])}${dl}</span></span>`;
+  });
   return `<div class="game">
     <header class="topbar">
       <div class="brand"><b>${esc(s.name)}</b><span>${timeText(w.t)} · 第${year(w.t)}/${w.endYear}年</span></div>
-      <div class="res">${res.map(([k, v, c]) => `<span class="r ${c}"><em>${k}</em>${v}</span>`).join('')}</div>
+      <div class="res" title="小字是上一季的增减">${res.join('')}</div>
       <div class="top-btns">
         <span class="ai-chip ${cfg.kind === 'deepseek' && cfg.apiKey ? 'on' : ''}" title="AI 状态">${cfg.kind === 'deepseek' && cfg.apiKey ? `AI 已接 · 本局${money(meter.game.yuan)}` : 'AI 未接（离线台词）'}</span>
         <button class="btn ghost sm" data-act="help">怎么玩</button>
@@ -129,6 +134,7 @@ export function gameView(w: World, ui: Ui, cfg: AiConfig, meter: Meter) {
       <div class="panel-heading"><h2 id="panel-title">${{report:'宗门纪事',people:'门下弟子',staff:'执事任命',recruit:'山门迎客',sect:'宗门传承',world:'天下风云'}[ui.tab]}</h2><span>${{report:'知兴衰，察人心',people:'识其才，尽其用',staff:'各司其职，人尽其才',recruit:'仙缘初至，择才入门',sect:'薪火相传，道统不息',world:'远交近攻，纵览一州'}[ui.tab]}</span></div>
       <div class="panel" role="region" aria-labelledby="panel-title">${tabView(w, ui)}</div>
     </section>
+    <button class="fab-next" data-act="${block ? 'open-year' : w.war ? 'open-war' : 'advance'}">${block ? '定方略' : w.war ? '去部署' : '过季'}${pend && !block && !w.war ? `<i>${pend}</i>` : ''}</button>
     ${ui.modal ? modalView(w, ui, cfg, meter) : ''}
     ${ui.busy ? `<div class="busy" role="status" aria-live="polite"><div class="busy-box"><div class="spinner"></div><p>${esc(ui.busy)}</p></div></div>` : ''}
     ${ui.toast ? `<div class="toast" role="status">${esc(ui.toast)}</div>` : ''}
@@ -143,12 +149,16 @@ function overview(w: World) {
   const angry = ms.filter((p) => p.grudge >= 50);
   const neck = ms.filter((p) => atBottleneck(p));
   const foes = w.rivals.filter((r) => r.alive && !r.passive);
+  const upkeep = ms.reduce((t, p) => t + UPKEEP[p.rank], 0) * (w.sect.policy === 'hide' ? 0.8 : 1);
+  const seasons = upkeep > 0 ? Math.floor(w.sect.stones / upkeep) : 99;
+  const talkLeft = TALK_LIMIT - audience(w).length;
   const ov = (k: string, v: string, tone = '') => {
-    const tab: Tab = k === '方略' ? 'sect' : k === '弟子' || k === '不服' ? 'staff' : k === '待裁决' ? 'report' : k === '迎客堂' ? 'recruit' : k === '怨气大的' || k === '待冲关' ? 'people' : 'world';
+    const tab: Tab = k === '方略' || k === '灵石' ? 'sect' : k === '弟子' || k === '不服' ? 'staff' : k === '待裁决' ? 'report' : k === '迎客堂' ? 'recruit' : k === '怨气大的' || k === '待冲关' || k === '召见' ? 'people' : 'world';
     return `<button class="ov ${tone}" data-act="tab" data-id="${tab}"><b>${esc(k)}</b><span>${esc(v)}</span></button>`;
   };
   return `<div class="overview">
     ${w.sect.veins <= 0 ? ov('灵脉', '丢光了！再输一场守山战，山门就没了', 'bad') : ''}
+    ${seasons < 3 ? ov('灵石', seasons <= 0 ? `发不出月例了（每季要 ${n0(upkeep)}）` : `只够发 ${seasons} 季月例`, 'bad') : ''}
     ${ov('方略', w.sect.policy ? POLICY[w.sect.policy].name : '未定', w.sect.policy ? '' : 'bad')}
     ${ov('弟子', `${ms.length} 人${idle.length ? `，${idle.length} 人闲着` : ''}`, idle.length ? 'bad' : '')}
     ${ov('待裁决', w.decisions.length ? `${w.decisions.length} 件` : '没有', w.decisions.length ? 'bad' : 'good')}
@@ -156,6 +166,7 @@ function overview(w: World) {
     ${ov('怨气大的', angry.length ? angry.slice(0, 3).map((p) => p.name).join('、') : '没有', angry.length ? 'bad' : 'good')}
     ${ov('待冲关', neck.length ? neck.map((p) => p.name).join('、') : '没有', neck.length ? 'good' : '')}
     ${ov('迎客堂', w.candidates.length ? `${w.candidates.length} 人等你见` : '没人')}
+    ${ov('召见', talkLeft > 0 ? `这一季还能见 ${talkLeft} 人` : '这一季见满了')}
     ${foes.map((r) => ov(r.name, `${{ neutral: '相安无事', ally: '盟友', hostile: '交恶', war: '交战中', truce: '休战' }[r.status]} · ${word(r.attitude, [[40, '友善'], [10, '客气'], [-20, '冷淡'], [-50, '敌视'], [-100, '仇视']])}`, r.attitude <= -40 ? 'bad' : r.attitude >= 30 ? 'good' : '')).join('')}
   </div>`;
 }
@@ -178,7 +189,7 @@ function decisionCard(w: World, d: Decision) {
   return `<article class="decision">
     <div class="d-head">${ppl.slice(0, 2).map((p) => `<button class="ava-btn" data-act="person" data-id="${p.id}">${avatar(p, 40)}</button>`).join('')}<h4>${esc(d.title)}</h4></div>
     <p>${esc(d.text)}</p>
-    <div class="d-opts">${d.options.map((o) => `<button class="btn sm${o.id === d.fallback ? '' : ' primary'}" data-act="decide" data-id="${d.id}" data-v="${o.id}">${esc(o.label)}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</button>`).join('')}</div>
+    <div class="d-opts">${d.options.map((o) => { const no = lacks(w, o.cost); const hint = no ?? o.hint; return `<button class="btn sm${o.id === d.fallback ? '' : ' primary'}" data-act="decide" data-id="${d.id}" data-v="${o.id}"${no ? ' disabled' : ''}>${esc(o.label)}${hint ? `<small>${esc(hint)}</small>` : ''}</button>`; }).join('')}</div>
     <p class="fine">不管的话：${esc(d.options.find((o) => o.id === d.fallback)?.label ?? '')}</p>
   </article>`;
 }
@@ -205,11 +216,29 @@ function linkNames(w: World, text: string, ids: string[]) {
 function reportTab(w: World, ui: Ui) {
   const ds = w.decisions;
   const items = [...w.report].sort((a, b) => Number(!!b.big) - Number(!!a.big));
-  return `${ds.length ? `<h3 class="h">待裁决（${ds.length}）</h3>${ds.map((d) => decisionCard(w, d)).join('')}` : ''}
+  return `${guideView(w)}${ds.length ? `<h3 class="h">待裁决（${ds.length}）</h3>${ds.map((d) => decisionCard(w, d)).join('')}` : ''}
     <h3 class="h">${w.t === 0 ? '开山' : `${timeText(w.t - 1)}发生的事`}</h3>
     ${items.length ? `<ul class="report">${items.map((it) => reportItem(w, it)).join('')}</ul>` : '<p class="muted">风平浪静。</p>'}
     ${w.history.length ? `<button class="btn ghost sm" data-act="toggle-history">${ui.showHistory ? '收起往事' : '翻看往事'}</button>` : ''}
-    ${ui.showHistory ? w.history.map((h) => `<h4 class="h small">更早</h4><ul class="report old">${h.items.map((it) => reportItem(w, it)).join('')}</ul>`).join('') : ''}`;
+    ${ui.showHistory ? w.history.map((h) => `<h4 class="h small">${h.t < 0 ? '开山' : `${timeText(h.t)}发生的事`}</h4><ul class="report old">${h.items.map((it) => reportItem(w, it)).join('')}</ul>`).join('') : ''}`;
+}
+
+/** 开山头一年：一步步告诉新宗主该做什么 */
+function guideView(w: World) {
+  if (w.guideOff || w.t >= 4) return '';
+  const ms = members(w);
+  const steps: { done: boolean; text: string; act: string; id?: string }[] = [
+    { done: !w.needPolicy && !w.needTech, text: '定下今年的方略，点一格传承', act: 'open-year' },
+    { done: w.alumni.length > 4, text: '在「招募」里收一两个弟子：测测灵根、考考才干，看准了再收', act: 'tab', id: 'recruit' },
+    { done: ms.length > 0 && ms.every((p) => p.job !== 'none') && HALLS.some((h) => hallHead(w, h.id)), text: '在「人事」里给每个人派差事，再挑个修为高的当主事', act: 'tab', id: 'staff' },
+    { done: ms.some((p) => p.talked), text: '点开一个弟子，「召见」他问问近况（每季能见三个人）', act: 'tab', id: 'people' },
+    { done: w.t >= 1, text: '处理完待裁决的事，点「过季」，看弟子们自己拿主意', act: 'advance' },
+  ];
+  if (steps.every((x) => x.done)) return '';
+  return `<section class="guide" aria-label="新手指引">
+    <header><b>开山头一年</b><button class="btn ghost xs" data-act="guide-off">不再提示</button></header>
+    <ol>${steps.map((x) => `<li class="${x.done ? 'done' : ''}"><span>${esc(x.text)}</span>${x.done ? '<i>✓</i>' : `<button class="btn xs" data-act="${x.act}"${x.id ? ` data-id="${x.id}"` : ''}>去</button>`}</li>`).join('')}</ol>
+  </section>`;
 }
 
 // ── 弟子 ──
@@ -237,7 +266,7 @@ function peopleTab(w: World, ui: Ui) {
         <button class="star-btn${p.starred ? ' on' : ''}" data-act="star" data-id="${p.id}" title="标记">★</button>
         <button class="roster-main" data-act="person" data-id="${p.id}">${avatar(p, 44)}
           <span class="rm-text"><b>${esc(p.name)}</b><small>${esc(realmText(p))} · ${esc(postText(w, p))}</small>
-          <small class="wish">${p.wish ? `心愿：${esc(p.wish.text)}` : '暂无心愿'}</small></span></button>
+          <small class="wish">${visibleWish(p) ? `心愿：${esc(visibleWish(p)!.text)}` : '暂无心愿'}</small></span></button>
         <span class="rm-side">${moodIcons(p)}${u.length ? `<span class="tag bad">不服${esc(nm(w, u[0].over))}</span>` : ''}${underqualified(p) ? '<span class="tag bad">德不配位</span>' : ''}${atBottleneck(p) ? '<span class="tag gold">待冲关</span>' : ''}</span>
       </li>`;
     }).join('')}</ul>`;
@@ -381,13 +410,13 @@ function modalView(w: World | null, ui: Ui, cfg: AiConfig, meter: Meter) {
     case 'year': body = w ? yearModal(w) : ''; wide = true; break;
     case 'settings': body = settingsModal(cfg, meter, !!w); break;
     case 'war': body = w ? warModal(w) : ''; wide = true; break;
-    case 'chat': body = w ? chatModal(w, ui, P(w, m.id)!) : ''; break;
+    case 'chat': body = w ? chatModal(w, ui, P(w, m.id)!, cfg) : ''; break;
     case 'end': body = w ? endModal(w) : ''; break;
     case 'help': body = helpModal(); wide = true; break;
     case 'confirm': body = `<p>${esc(m.text)}</p><div class="d-opts"><button class="btn primary" data-act="${m.act}" data-v="yes">确定</button><button class="btn ghost" data-act="close">取消</button></div>`; break;
   }
   const closable = !(m.kind === 'war' || m.kind === 'end');
-  return `<div class="modal-bg"${closable ? ' data-act="close-bg"' : ''}><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-label="${{person:'弟子详情',year:'年度方略',settings:'游戏设置',war:'宗门战',chat:'交谈',end:'本局结算',help:'玩法说明',confirm:'确认操作'}[m.kind]}" tabindex="-1">${closable ? '<button class="close" data-act="close" aria-label="关闭">×</button>' : ''}${body}</div></div>`;
+  return `<div class="modal-bg"${closable ? ' data-act="close-bg"' : ''}><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-label="${{person:'弟子详情',year:'年度方略',settings:'游戏设置',war:'宗门战',chat:'召见',end:'本局结算',help:'玩法说明',confirm:'确认操作'}[m.kind]}" tabindex="-1">${closable ? '<button class="close" data-act="close" aria-label="关闭">×</button>' : ''}${body}</div></div>`;
 }
 
 function personModal(w: World, p: Person, cfg: AiConfig) {
@@ -397,22 +426,25 @@ function personModal(w: World, p: Person, cfg: AiConfig) {
   const myUnc = unc.filter((u) => u.who === p.id);
   const overMe = unc.filter((u) => u.over === p.id);
   const ties = Object.entries(p.ops).filter(([id, o]) => P(w, id)?.alive && (o.tag || Math.abs(o.aff) >= 25)).sort((a, b) => Math.abs(b[1].aff) - Math.abs(a[1].aff)).slice(0, 8);
-  const ai = cfg.kind === 'deepseek' && !!cfg.apiKey;
   const life = [...p.life].reverse();
+  const wish = visibleWish(p);
+  const tb = mine && !isMe ? talkBlock(w, p) : null;
+  void cfg;
   return `<div class="pcard">
     <div class="pc-left">
       ${avatar(p, 128)}
       <h3>${esc(p.name)}${p.starred ? ' ★' : ''}</h3>
       <p class="muted">${p.gender === 'f' ? '女' : '男'} · ${p.age}岁 · 寿元${lifespan(p)}${yearsLeft(p) < 20 ? `（<b class="bad-t">只剩${yearsLeft(p)}年</b>）` : ''}</p>
       <p><b>${esc(realmText(p))}</b>${p.realm < 4 ? ` ${bar((p.exp / need(p)) * 100, 'gold', '修为进度')}` : ''}</p>
-      ${atBottleneck(p) && !isMe ? `<p class="fine">修为圆满，冲关成算：不用丹 ${Math.round(breakChance(p, false) * 100)}% / 用丹 ${Math.round(breakChance(p, true) * 100)}%</p>` : ''}
+      ${atBottleneck(p) && !isMe && !mine ? `<p class="fine">修为圆满，冲关成算：不用丹 ${Math.round(breakChance(p, false) * 100)}% / 用丹 ${Math.round(breakChance(p, true) * 100)}%</p>` : ''}
       <p>${ROOT_NAME[p.root.kind]}（${p.root.els.join('')}）· 悟性 ${p.wit} · 战力 ${n0(power(p))}</p>
       <p>${mine ? esc(postText(w, p)) : p.sect ? esc(w.rivals.find((r) => r.id === p.sect)?.name ?? '') + ' · ' + RANK_NAME[p.rank] : '散修'}</p>
       ${mine && !isMe ? `<div class="meters-big"><span>心情 ${bar(p.mood, p.mood >= 50 ? 'good' : 'bad')}</span><span>怨气 ${bar(p.grudge, 'bad')}</span><span>忠心 ${bar(p.loyalty, 'gold')}</span><span>威望 <b>${prestige(w, p)}</b></span></div>` : ''}
       ${p.death ? `<p class="bad-t">${esc(p.death)}</p>` : ''}
     </div>
     <div class="pc-right">
-      ${p.wish && mine ? `<div class="wish-box"><b>心愿：</b>${esc(p.wish.text)}<small>${WISH_NAME[p.wish.kind]}${p.wish.by === 'ai' ? ' · 他自己说的' : ''}</small></div>` : ''}
+      ${wish && mine ? `<div class="wish-box"><b>心愿：</b>${esc(wish.text)}<small>${WISH_NAME[wish.kind]}${wish.by === 'ai' ? ` · ${pronoun(p)}自己说的` : ''}</small></div>` : ''}
+      ${mine && !isMe && atBottleneck(p) ? `<div class="break-box"><b>修为圆满，可以冲击${REALM_NAME[p.realm + 1]}了</b><div class="d-opts">${breakOptions(w, p).map((o) => { const no = lacks(w, o.cost); return `<button class="btn sm${o.id === 'go' ? '' : ' primary'}" data-act="break" data-id="${p.id}" data-v="${o.id}"${no ? ' disabled' : ''}>${esc(o.label)}<small>${esc(no ?? o.hint ?? '')}</small></button>`; }).join('')}</div><small class="fine">失败会受内伤、跌一半修为、折两年寿元；败得越多越难。</small></div>` : ''}
       ${p.lastWhy && mine ? `<div class="quote">"${esc(p.lastWhy)}"</div>` : ''}
       <h4>性格</h4><div class="chips">${p.traits.map((t) => `<span class="chip" title="${esc(TRAIT[t]?.desc)}">${esc(TRAIT[t]?.name)}<small>${esc(TRAIT[t]?.desc)}</small></span>`).join('')}</div>
       <p class="fine">看重：${[...VALUES].sort((a, b) => p.values[b] - p.values[a]).slice(0, 2).map((v) => VALUE_NAME[v]).join('、')} · 出身：${esc(p.origin)} · 怪癖：${esc(p.quirk)}</p>
@@ -427,7 +459,7 @@ function personModal(w: World, p: Person, cfg: AiConfig) {
         <select data-act="p-rank" data-id="${p.id}"><option value="">身份…</option>${(['probation', 'outer', 'inner', 'core', 'chief', 'elder'] as const).filter((r) => r !== p.rank).map((r) => `<option value="${r}">${RANK_NAME[r]}</option>`).join('')}</select>
         <button class="btn sm" data-act="vouch" data-id="${p.id}" title="花 5 点宗主威望">当众撑腰</button>
         <button class="btn sm" data-act="gift-pill" data-id="${p.id}" title="3 颗丹药">赏丹</button>
-        <button class="btn sm" data-act="chat" data-id="${p.id}" ${ai ? '' : 'disabled title="要先在设置里接 AI"'}>召见说话</button>
+        <button class="btn sm" data-act="chat" data-id="${p.id}"${tb ? ` disabled title="${esc(tb)}"` : ''}>召见${p.talked?.t === w.t ? '（这一季见过）' : ''}<small>${esc(tb ?? `这一季还能见 ${TALK_LIMIT - audience(w).length} 人`)}</small></button>
         <button class="btn sm danger" data-act="expel" data-id="${p.id}">逐出山门</button>
       </div>` : ''}
       <h4>经历</h4><ol class="life">${life.map((l) => `<li class="${l.tone}${l.big ? ' big' : ''}"><time>${timeText(l.t)}</time>${esc(l.text)}</li>`).join('') || '<li class="muted">还没什么经历。</li>'}</ol>
@@ -476,13 +508,23 @@ function warModal(w: World) {
     </div>`;
 }
 
-function chatModal(w: World, ui: Ui, p: Person) {
+function chatModal(w: World, ui: Ui, p: Person, cfg: AiConfig) {
   const lines = ui.chats[p.id] ?? [];
+  const ai = cfg.kind === 'deepseek' && !!cfg.apiKey;
+  const busy = ui.streaming !== null;
+  const block = talkBlock(w, p);
+  const left = TALK_LIMIT - audience(w).length;
+  const topics = topicsFor(p).map((t) => {
+    const used = topicUsed(w, p, t);
+    return `<button class="btn sm" data-act="topic" data-id="${p.id}" data-v="${t}"${used || block || busy ? ' disabled' : ''}>${TOPIC[t].name}<small>${used ? '这一季问过了' : esc(TOPIC[t].hint)}</small></button>`;
+  }).join('');
   return `<div class="chat">
-    <header>${avatar(p, 48)}<div><h3>${esc(p.name)}</h3><p class="fine">${esc(postText(w, p))} · ${esc(realmText(p))}</p></div></header>
-    <ol class="chat-lines">${lines.map((l) => `<li class="${l.from}">${esc(l.text)}</li>`).join('')}${ui.streaming !== null ? `<li class="them typing">${esc(ui.streaming) || '……'}</li>` : ''}</ol>
-    <form data-form="chat" data-id="${p.id}"><input name="say" maxlength="80" placeholder="对${esc(p.name)}说……" autocomplete="off" ${ui.streaming !== null ? 'disabled' : ''}><button class="btn primary" ${ui.streaming !== null ? 'disabled' : ''}>说</button></form>
-    <p class="fine">说话会影响他的心情和对你的看法，但不会改他的心愿和选择。</p>
+    <header>${avatar(p, 48)}<div><h3>${esc(p.name)}</h3><p class="fine">${esc(postText(w, p))} · ${esc(realmText(p))} · ${esc(p.voice)}</p></div></header>
+    <ol class="chat-lines">${lines.length ? '' : `<li class="note">${esc(p.name)}来了，站在一旁等你开口。</li>`}${lines.map((l) => `<li class="${l.from}">${esc(l.text)}</li>`).join('')}${busy ? `<li class="them typing">${esc(ui.streaming) || '……'}</li>` : ''}</ol>
+    ${block ? `<p class="warn">${esc(block)}</p>` : ''}
+    <div class="topics">${topics}</div>
+    ${ai ? `<form data-form="chat" data-id="${p.id}"><input name="say" maxlength="80" placeholder="或者随便说点什么……" autocomplete="off" ${busy || block ? 'disabled' : ''}><button class="btn primary" ${busy || block ? 'disabled' : ''}>说</button></form>` : ''}
+    <p class="fine">${p.talked?.t === w.t ? '这一季已经召见过' + pronoun(p) + '，接着说不再占名额。' : `这一季还能召见 ${left} 人。`}每个话题一季问一次，后果按规矩算${ai ? '；AI 照这个意思用他的口吻说。随便说的话，每季前三句会影响他的心情' : '。在设置里接上 AI，还能随便聊'}。</p>
   </div>`;
 }
 
@@ -504,10 +546,17 @@ function settingsModal(cfg: AiConfig, meter: Meter, inGame: boolean) {
 
 function endModal(w: World) {
   const o = w.over!;
-  const ms = members(w);
-  return `<h3 class="sec-title">${o.win ? '十年' : '宗门覆灭'}</h3><p>${esc(o.text)}</p>
-    ${ms.length ? `<h4>还在山上的人</h4><div class="chips">${ms.slice(0, 20).map((p) => `<button class="chip" data-act="person" data-id="${p.id}">${esc(p.name)}<small>${esc(realmText(p))}</small></button>`).join('')}</div>` : ''}
-    <div class="d-opts">${o.win ? '<button class="btn primary" data-act="play-on">再玩十年</button>' : ''}<button class="btn" data-act="new">开新局</button></div>`;
+  const e = epilogue(w);
+  return `<div class="ending">
+    <p class="eyebrow">${o.win ? `${esc(w.sect.name)} · ${w.endYear} 年` : esc(w.sect.name)}</p>
+    <h3 class="sec-title">${esc(e.title)}</h3>
+    <p>${esc(o.text)}</p><p class="muted">${esc(e.verdict)}</p>
+    <div class="end-nums">${e.numbers.map(([k, v]) => `<div><em>${esc(k)}</em><b>${esc(v)}</b></div>`).join('')}</div>
+    <h4>门人去向</h4>
+    ${e.fates.map((g) => `<div class="fate"><b class="${g.tone === 'good' ? 'good-t' : g.tone === 'bad' ? 'bad-t' : ''}">${g.group}（${g.people.length}）</b><div class="chips">${g.people.map((f) => `<button class="chip" data-act="person" data-id="${f.id}" title="${esc(f.note)}">${esc(f.name)}<small>${esc(f.note)}</small></button>`).join('')}</div></div>`).join('')}
+    ${w.annals.length ? `<h4>宗门志</h4><ol class="life annals">${w.annals.map((a) => `<li class="${a.tone}"><time>${timeText(a.t)}</time>${esc(a.text)}</li>`).join('')}</ol>` : ''}
+    <div class="d-opts">${o.win ? '<button class="btn primary" data-act="play-on">再玩十年</button>' : ''}<button class="btn" data-act="new">开新局</button><button class="btn ghost" data-act="quit">回到标题</button></div>
+  </div>`;
 }
 
 function helpModal() {
@@ -519,7 +568,11 @@ function helpModal() {
       <li><b>心愿。</b>每个人心里都有想要的东西。你的决定如果碰巧成全了谁的心愿——哪怕你根本不知道——他会记在你头上，从此更忠心。</li>
       <li><b>方略和传承。</b>每年年初定一个主攻方向，在传承树上点一格。</li>
       <li><b>天下。</b>赤霄宗霸道，玄水阁精明。送礼、结盟、挑衅、宣战都由你定。被打上门时要部署：派谁、怎么打、要不要亲自出手。</li>
+      <li><b>召见。</b>每季能当面见三个人：问近况能听出他不服谁、讨厌什么差事、有没有人挖他；安抚消怨气，勉励提心情，敲打让他这一季不敢偷懒使坏（心气高的会记恨）。离线也能召见；接上 AI 后还能随便聊。</li>
+      <li><b>冲关。</b>弟子修为圆满会来求你准他闭关；"再压一压"的人每年开春再来求。也可以在人物卡上直接下令冲关。筑基丹、灵石能提高成算，失败会受伤、折寿。</li>
+      <li><b>人心隔肚皮。</b>偷东西、使绊子、给敌宗送信的事不会写进季报。库房少了东西、有人日子莫名不好过，就是有人在搞鬼——执法堂越得力，越容易抓到人。</li>
       <li><b>标记 ★。</b>标记你关心的弟子，他们每季都由 AI 来想，事情排在季报最前面。点任何一个小人都能看他的经历。</li>
+      <li><b>十年一局。</b>到年头会给宗门下评语，列出每个入过山门的人的去向和宗门志。还想接着玩可以再玩十年。</li>
     </ol>`;
 }
 

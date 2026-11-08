@@ -4,7 +4,7 @@ import { realmPrestige } from './cult';
 import { TRAIT } from './data/traits';
 import { rankLv } from './data/world';
 import { makeRng, type Rng } from './rng';
-import type { Disp, LifeEntry, Opinion, Person, ReportItem, World } from './types';
+import type { Cost, Disp, LifeEntry, Opinion, Person, ReportItem, World } from './types';
 
 export const year = (t: number) => Math.floor(t / 4) + 1;
 export const seasonName = (t: number) => '春夏秋冬'[t % 4];
@@ -60,6 +60,28 @@ export function addLife(w: World, p: Person, text: string, tone: LifeEntry['tone
 
 export function report(w: World, item: Omit<ReportItem, 't'>) {
   w.report.push({ t: w.t, ...item });
+  // 大事记进宗门志，结局时回顾
+  if (item.big && item.chronicle !== false) {
+    (w.annals ??= []).push({ t: w.t, text: item.text, tone: item.tone });
+    if (w.annals.length > 300) w.annals.splice(0, w.annals.length - 300);
+  }
+}
+
+const COST_NAME: Record<keyof Cost, string> = { stones: '灵石', pills: '丹药', fpills: '筑基丹' };
+
+/** 家底够不够；不够就说缺什么 */
+export function lacks(w: World, c: Cost | undefined): string | null {
+  if (!c) return null;
+  for (const k of Object.keys(c) as (keyof Cost)[]) {
+    const need = c[k] ?? 0;
+    if (need > 0 && w.sect[k] < need) return `${COST_NAME[k]}不够（要 ${need}）`;
+  }
+  return null;
+}
+
+export function pay(w: World, c: Cost | undefined) {
+  if (!c) return;
+  for (const k of Object.keys(c) as (keyof Cost)[]) w.sect[k] = Math.max(0, w.sect[k] - (c[k] ?? 0));
 }
 
 /** 威望：修为、功劳、资历、战绩、宗主恩宠 */

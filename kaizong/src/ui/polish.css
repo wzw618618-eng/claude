@@ -1,0 +1,64 @@
+/* 玩法补充：家底增减、新手指引、冲关、召见、结局；修手机上卡片撑出屏幕。 */
+
+/* 顶栏：上一季的增减 */
+.res .rv { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.res .dlt { font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.res .dlt.up { color: var(--jade); }
+.res .dlt.down { color: #f09a97; }
+
+/* 新手指引 */
+.guide { margin: 14px 0 6px; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 6px; background: linear-gradient(120deg, #d8bb7a14, #d8bb7a03); }
+.guide header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.guide header b { font-family: var(--serif); color: var(--gold); letter-spacing: 2px; }
+.guide ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.guide li { font-size: 13.5px; line-height: 1.7; }
+.guide li > span { margin-right: 8px; }
+.guide li.done { color: var(--muted); }
+.guide li.done > span { text-decoration: line-through; text-decoration-color: #ffffff44; }
+.guide li i { font-style: normal; color: var(--jade); }
+.guide li .btn { vertical-align: middle; min-height: 26px; padding: 2px 12px; }
+
+/* 冲关 */
+.break-box { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: #e3ca920f; }
+.break-box > b { color: var(--gold); font-family: var(--serif); }
+.break-box .d-opts { margin-top: 10px; }
+
+/* 召见 */
+.topics { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.topics .btn { flex: 1 1 120px; }
+.chat-lines li.note { align-self: center; max-width: 100%; background: transparent; color: var(--muted); font-size: 12.5px; padding: 2px 8px; }
+.chat .chat-lines { min-height: 120px; }
+.acts .btn small { font-size: 10.5px; }
+
+/* 结局 */
+.ending .eyebrow { margin-bottom: 6px; }
+.ending .sec-title { font-size: 30px; letter-spacing: 6px; margin-bottom: 8px; }
+.end-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0 8px; }
+.end-nums div { padding: 10px 12px; border: 1px solid var(--line2); border-radius: 6px; background: #ffffff05; display: flex; flex-direction: column; gap: 2px; }
+.end-nums em { font-style: normal; font-size: 11.5px; color: var(--muted); }
+.end-nums b { font-size: 15px; }
+.fate { margin: 8px 0 12px; }
+.fate > b { display: block; font-size: 13px; margin-bottom: 6px; }
+.fate .chips { gap: 6px; }
+.fate .chips .chip small { display: inline; }
+.annals { max-height: 300px; }
+
+/* 手机：过季按钮浮在底部导航上面 */
+.fab-next { display: none; }
+
+/* 卡片里的下拉框不许把卡片撑出屏幕 */
+.halls > *, .hall-card, .cand, .rival, .decision { min-width: 0; }
+.hall-card select, .head-row select, .cand select, .acts select { max-width: 100%; min-width: 0; }
+
+@media (max-width: 860px) {
+  .fab-next {
+    display: flex; align-items: center; gap: 6px; position: fixed; right: 14px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 16;
+    padding: 12px 20px; border-radius: 999px; border: 1px solid #ecdbaf; background: linear-gradient(135deg, #ead7a8, #c5ab72); color: #24312b;
+    font: 700 15px/1 var(--serif); letter-spacing: 3px; box-shadow: 0 6px 20px #0007;
+  }
+  .fab-next i { font-style: normal; font-size: 11px; letter-spacing: 0; background: var(--red); color: #fff; border-radius: 999px; padding: 2px 6px; }
+  body:has(.modal-bg) .fab-next { display: none; }
+  .toast { max-width: calc(100vw - 32px); white-space: normal; text-align: center; }
+  .end-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .head-row select { flex-basis: 100%; }
+}

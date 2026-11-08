@@ -6,15 +6,15 @@ import { DRIFT } from './data/traits';
 import { HALL, RANK_NAME } from './data/world';
 import type { Rng } from './rng';
 import { assignJob, setHead, setRank } from './sect';
-import type { Decision, HallId, Person, Rank, World } from './types';
-import { addLife, adjust, clamp, disp, hasTrait, members, newId, nm, op, P, pronoun, report } from './world';
+import type { Decision, DecisionOption, HallId, Person, Rank, World } from './types';
+import { addLife, adjust, clamp, disp, hasTrait, lacks, members, newId, nm, op, P, pay, pronoun, report } from './world';
 
 type Params = Record<string, string | number>;
 
 interface Kind {
   title(w: World, x: Params): string;
   text(w: World, x: Params): string;
-  options(w: World, x: Params): { id: string; label: string; hint?: string }[];
+  options(w: World, x: Params): DecisionOption[];
   fallback: string;
   about(x: Params): string[];
   apply(w: World, r: Rng, x: Params, o: string): void;
@@ -72,14 +72,10 @@ const KINDS: Record<string, Kind> = {
       const left = yearsLeft(p);
       return `${p.name}修为圆满，想闭关冲击${REALM_NAME[p.realm + 1]}。不用丹药约有${pct(breakChance(p, false))}的把握，用了${BREAK_PILL[p.realm]}约${pct(breakChance(p, true))}。失败会受伤、折寿。${left < 20 ? `${pronoun(p)}只剩约${left}年寿元了。` : ''}`;
     },
-    options: (w, x) => {
-      const p = who(w, x);
-      const o = [];
-      if (p.realm === 0 && w.sect.fpills > 0) o.push({ id: 'pill', label: `赐一颗筑基丹，准闭关`, hint: `库里还有${w.sect.fpills}颗` });
-      if (p.realm >= 1) o.push({ id: 'treasure', label: `倾宗门之力助${pronoun(p)}冲关`, hint: `花 ${p.realm * 250} 灵石，成算如同用了丹药` });
-      o.push({ id: 'go', label: '准闭关，不给丹' }, { id: 'wait', label: '再压一压', hint: '修为不会丢，但他会着急' });
-      return o;
-    },
+    options: (w, x) => [
+      ...breakOptions(w, who(w, x)),
+      { id: 'wait', label: '再压一压', hint: `修为不会丢，但${pronoun(who(w, x))}会着急；明年开春再来求你` },
+    ],
     fallback: 'wait',
     about: (x) => [String(x.who)],
     apply(w, r, x, o) {
@@ -89,15 +85,7 @@ const KINDS: Record<string, Kind> = {
         p.grudge = clamp(p.grudge + (yearsLeft(p) < 20 ? 15 : 5), 0, 100);
         return;
       }
-      let pill = false;
-      if (o === 'pill' && w.sect.fpills > 0) { w.sect.fpills -= 1; pill = true; }
-      if (o === 'treasure') {
-        const cost = p.realm * 250;
-        if (w.sect.stones >= cost) { w.sect.stones -= cost; pill = true; }
-      }
-      w.acts.push({ kind: pill ? 'break_pill' : 'break_ok', who: p.id, text: pill ? `赐丹助${p.name}冲关` : `准${p.name}闭关冲关` });
-      adjust(p, w.me, pill ? 10 : 4, 5);
-      attemptBreak(w, r, p, pill);
+      breakNow(w, r, p, o as BreakWay);
     },
   },
   transfer: {
@@ -267,7 +255,7 @@ const KINDS: Record<string, Kind> = {
   },
   probation_end: {
     title: (w, x) => `${who(w, x).name}试用期满`,
-    text: (w, x) => { const p = who(w, x); return `记名弟子${p.name}在山上待满一年了。${p.lastWhy ? `这一年${pronoun(p)}${p.lastWhy}。` : ''}留不留？`; },
+    text: (w, x) => { const p = who(w, x); return `记名弟子${p.name}在山上待满一年了。这一年${pronoun(p)}${p.merit >= 25 ? '干活很卖力' : p.merit >= 10 ? '干活还算本分' : '没干出什么名堂'}，修为到了${realmLabel(p)}${p.grudge >= 40 ? '，心里似乎有些怨气' : ''}。留不留？`; },
     options: () => [{ id: 'keep', label: '转为外门弟子' }, { id: 'inner', label: '直接升内门' }, { id: 'expel', label: '请他下山' }],
     fallback: 'keep',
     about: (x) => [String(x.who)],
@@ -306,13 +294,13 @@ const KINDS: Record<string, Kind> = {
   poach_alert: {
     title: (w, x) => `${rivalName(w, String(x.rival))}在挖${who(w, x).name}`,
     text: (w, x) => { const p = who(w, x); return `外事堂打听到：${rivalName(w, String(x.rival))}私下找过${p.name}，许了好处。${p.grudge >= 40 ? `${pronoun(p)}最近本就不太痛快。` : ''}`; },
-    options: () => [{ id: 'raise', label: '加恩挽留', hint: '花 40 灵石，他会念你的好' }, { id: 'warn', label: '警告对方，别伸手' }, { id: 'ignore', label: '由他去' }],
+    options: () => [{ id: 'raise', label: '加恩挽留', hint: '花 40 灵石，他会念你的好', cost: { stones: 40 } }, { id: 'warn', label: '警告对方，别伸手' }, { id: 'ignore', label: '由他去' }],
     fallback: 'ignore',
     about: (x) => [String(x.who)],
     apply(w, _r, x, o) {
       const p = who(w, x);
       const rv = w.rivals.find((v) => v.id === x.rival);
-      if (o === 'raise') { w.sect.stones = Math.max(0, w.sect.stones - 40); p.favor += 8; p.loyalty = clamp(p.loyalty + 15, 0, 100); p.grudge = clamp(p.grudge - 15, 0, 100); delete w.offers[p.id]; w.acts.push({ kind: 'gift', who: p.id, text: `加恩挽留${p.name}` }); }
+      if (o === 'raise') { p.favor += 8; p.loyalty = clamp(p.loyalty + 15, 0, 100); p.grudge = clamp(p.grudge - 15, 0, 100); delete w.offers[p.id]; w.acts.push({ kind: 'gift', who: p.id, text: `加恩挽留${p.name}` }); }
       if (o === 'warn' && rv) { rv.attitude -= 8; delete w.offers[p.id]; w.sect.authority = clamp(w.sect.authority + 2, 0, 100); }
     },
   },
@@ -354,6 +342,35 @@ const KINDS: Record<string, Kind> = {
 };
 
 function pct(x: number) { return `${Math.round(x * 100)}%`; }
+function realmLabel(p: Person) { return p.realm === 0 ? `炼气${'一二三四五六七八九'[Math.max(0, p.stage - 1)]}层` : REALM_NAME[p.realm]; }
+
+/** 冲关的几种办法：不给丹、赐筑基丹、倾宗门之力 */
+export type BreakWay = 'go' | 'pill' | 'treasure';
+
+export function breakOptions(w: World, p: Person): DecisionOption[] {
+  const o: DecisionOption[] = [];
+  if (p.realm === 0) o.push({ id: 'pill', label: '赐一颗筑基丹，准闭关', hint: `成算 ${pct(breakChance(p, true))} · 库里有 ${w.sect.fpills} 颗`, cost: { fpills: 1 } });
+  else o.push({ id: 'treasure', label: `倾宗门之力助${pronoun(p)}冲关`, hint: `成算 ${pct(breakChance(p, true))} · 花 ${p.realm * 250} 灵石`, cost: { stones: p.realm * 250 } });
+  o.push({ id: 'go', label: '准闭关，不给丹', hint: `成算 ${pct(breakChance(p, false))}` });
+  return o;
+}
+
+/** 宗主准某人冲关（季报里的待裁决，或人物卡上直接下令） */
+export function breakNow(w: World, r: Rng, p: Person, way: BreakWay): string | null {
+  if (!p.alive || !atBottleneck(p)) return `${p.name}还没到冲关的时候`;
+  const opt = breakOptions(w, p).find((o) => o.id === way);
+  if (!opt) return '不能这样冲关';
+  const no = lacks(w, opt.cost);
+  if (no) return no;
+  pay(w, opt.cost);
+  const pill = way !== 'go';
+  // 当面准了，季报里那件"想冲关"的事就不用再管了
+  w.decisions = w.decisions.filter((d) => !(d.kind === 'breakthrough' && d.params.who === p.id));
+  w.acts.push({ kind: pill ? 'break_pill' : 'break_ok', who: p.id, text: pill ? `赐丹助${p.name}冲关` : `准${p.name}闭关冲关` });
+  adjust(p, w.me, pill ? 10 : 4, 5);
+  attemptBreak(w, r, p, pill);
+  return null;
+}
 function jobName(p: Person) { return p.job in HALL ? HALL[p.job as HallId].name : '山上'; }
 function rivalName(w: World, id: string) { return w.rivals.find((r) => r.id === id)?.name ?? '某宗'; }
 
@@ -402,16 +419,23 @@ export function refreshDecision(w: World, d: Decision) {
   d.options = k.options(w, d.params);
 }
 
-export function resolveDecision(w: World, r: Rng, id: string, option: string) {
+/** 宗主拍板。选了花不起的选项就不办，返回原因 */
+export function resolveDecision(w: World, r: Rng, id: string, option: string): string | null {
   const i = w.decisions.findIndex((d) => d.id === id);
-  if (i < 0) return;
+  if (i < 0) return null;
   const d = w.decisions[i];
+  const opt = d.options.find((o) => o.id === option);
+  const no = lacks(w, opt?.cost);
+  if (no) return no;
   w.decisions.splice(i, 1);
+  // 冲关的花费在 breakNow 里扣（还要再核一遍成算）；其余选项在这里统一扣
+  if (d.kind !== 'breakthrough') pay(w, opt?.cost);
   // 事件类的裁决由 events.ts 处理
-  if (d.kind.startsWith('ev:')) { resolveEventDecision(w, r, d, option); return; }
+  if (d.kind.startsWith('ev:')) { resolveEventDecision(w, r, d, option); return null; }
   const k = KINDS[d.kind];
   const alive = d.about.every((a) => P(w, a)?.alive !== false);
   if (k && alive) k.apply(w, r, d.params, option);
+  return null;
 }
 
 export function isDecisionKind(k: string) { return k in KINDS; }

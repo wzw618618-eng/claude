@@ -11,7 +11,7 @@ import { assignJob, fit, hallCap, hallHead, hallMembers, setHead, setRank } from
 import { newWorld, randomStart } from '../src/game/setup';
 import type { HallId, World } from '../src/game/types';
 import { endWar, fightRound, healTeam } from '../src/game/war';
-import { members, rngOf, year } from '../src/game/world';
+import { lacks, members, rngOf, year } from '../src/game/world';
 
 const N = Number(process.argv[2] ?? 200);
 const MODE = (process.argv[3] ?? 'smart') as 'smart' | 'random';
@@ -64,7 +64,7 @@ function smartManage(w: World) {
   // 裁决
   for (const d of [...w.decisions]) {
     const pref = ['pill', 'treasure', 'go', 'yes', 'swap', 'punish', 'keep', 'raise', 'coopt', 'allow', 'help', 'slay', 'sell', 'fix', 'elite', 'fight', 'mediate', 'expel'];
-    const o = d.options.find((x) => pref.includes(x.id))?.id ?? d.fallback;
+    const o = d.options.find((x) => pref.includes(x.id) && !lacks(w, x.cost))?.id ?? d.fallback;
     resolveDecision(w, r, d.id, o);
   }
   r.save();

@@ -98,7 +98,7 @@ export function rivalPrompt(w: World, rv: Rival, options: RivalChoice[]) {
 export function chatPrompt(w: World, p: Person) {
   return {
     system: `${WORLD}\n\n你在扮演宗门里的一个修士，宗主${nm(w, w.me)}召见了你，和你说话。用他的口吻、性格和说话方式回答，一两句话，不超过 60 个字。他对宗主的态度、心里的怨气和心愿都会影响他说话的样子；秘密不会轻易说出口。不要提"AI""游戏""数值"。另外判断宗主这句话让他心里怎么样：mood 填 -2 到 2 的整数（-2 很受伤，2 很受用）。只输出 JSON：{"reply":"他说的话","mood":0}\n\n${personaBlock(p)}`,
-    prompt: (said: string, unc: Unconvinced[]) => `${situationBlock(w, p, unc)}\n\n宗主对你说：${said}\n\n输出 JSON。`,
+    prompt: (said: string, unc: Unconvinced[], gist?: string) => `${situationBlock(w, p, unc)}\n\n宗主对你说：${said}${gist ? `\n（你心里的意思大致是："${gist}"。用你自己的口吻说出来，可以换个说法、多说半句，但意思别变；mood 填 0。）` : ''}\n\n输出 JSON。`,
   };
 }
 
