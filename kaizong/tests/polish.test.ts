@@ -17,7 +17,7 @@ import { gameView, type Ui } from '../src/ui/views';
 
 const fresh = (seed = 7): World => newWorld({ ...randomStart(seed), site: 'deep', origin: 'sword', heritage: 'mind' });
 const offline: AiConfig = { kind: 'offline', apiKey: '', mode: 'normal' };
-const ui = (over: Partial<Ui> = {}): Ui => ({ screen: 'game', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: true, ...over });
+const ui = (over: Partial<Ui> = {}): Ui => ({ screen: 'game', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: true, team: {}, ...over });
 
 /** 收一个奸细进门 */
 function plantSpy(w: World): Person {

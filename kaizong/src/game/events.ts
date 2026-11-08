@@ -370,7 +370,7 @@ export function rollEvents(w: World, r: Rng) {
 /** 历练的人回山 */
 export function travelTick(w: World, r: Rng) {
   for (const p of members(w)) {
-    if (p.job !== 'travel') continue;
+    if (p.job !== 'travel' || p.mission) continue;
     if (r.chance(0.04)) {
       p.alive = false; p.death = '在外历练时陨落';
       addLife(w, p, '在外历练时陨落，尸骨无存', 'bad', true);

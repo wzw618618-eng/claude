@@ -108,7 +108,7 @@ export function creditAct(w: World, p: Person): PlayerAct | null {
     case 'realm': return by((a) => (a.kind === 'break_pill' || a.kind === 'break_ok') && a.who === p.id);
     case 'post': return by((a) => a.kind === 'head' && a.who === p.id);
     case 'rank': return by((a) => a.kind === 'promote' && a.who === p.id);
-    case 'recognition': return by((a) => (a.kind === 'promote' || a.kind === 'vouch' || a.kind === 'gift') && a.who === p.id);
+    case 'recognition': return by((a) => (a.kind === 'promote' || a.kind === 'vouch' || a.kind === 'gift' || a.kind === 'teach' || a.kind === 'mission') && a.who === p.id);
     case 'revenge': return by((a) => a.kind === 'war_kill' && a.target === x.target) ?? by((a) => a.kind === 'punish' && a.who === x.target);
     case 'love': {
       const t = P(w, x.target);

@@ -6,6 +6,7 @@ import { HALL, JOB_NAME, RANK_NAME, SKILL_NAME } from './data/world';
 import type { Rng } from './rng';
 import { unconvinced } from './sect';
 import type { HallId, Person, Rank, Skill, World } from './types';
+import { talkLimit } from './goals';
 import { visibleWish } from './wishes';
 import { adjust, clamp, disp, hasTrait, members, nm, op, P, pronoun } from './world';
 
@@ -32,7 +33,7 @@ export function talkBlock(w: World, p: Person): string | null {
   if (!p.alive || p.sect !== 'me' || p.id === w.me) return '不是本门弟子';
   if (p.job === 'travel') return `${pronoun(p)}在外历练，不在山上`;
   if (p.talked?.t === w.t) return null;
-  if (audience(w).length >= TALK_LIMIT) return `这一季已经召见了 ${TALK_LIMIT} 个人，下一季再说`;
+  if (audience(w).length >= talkLimit(w)) return `这一季已经召见了 ${talkLimit(w)} 个人，下一季再说`;
   return null;
 }
 

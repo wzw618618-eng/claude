@@ -104,10 +104,9 @@ describe('招募', () => {
   });
   it('收进门的人有身份、有经历', () => {
     const w = fresh(32);
-    const c = w.candidates[0];
-    c.via = 'spy';
     const r = rngOf(w);
-    admit(w, r, c, 'outer');
+    // 收人有可能被婉拒：挨个请，直到有人来
+    const c = [...w.candidates].find((x) => { x.via = 'spy'; return admit(w, r, x, 'outer'); })!;
     expect(w.members).toContain(c.id);
     expect(w.people[c.id].life[0].text).toContain('拜入');
   });

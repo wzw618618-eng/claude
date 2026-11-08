@@ -1,6 +1,6 @@
 // 敌宗：宗主由 AI（或规则）按性格拿主意。主线威胁就是他们。
 
-import { power, stepUp } from './cult';
+import { atBottleneck, breakthrough, need, power, REALM_NAME, stepUp } from './cult';
 import { addDecision } from './decisions';
 import { RIVALS } from './data/world';
 import { genPerson } from './gen';
@@ -131,17 +131,19 @@ export function applyRivalMove(w: World, r: Rng, rv: Rival, c: RivalChoice, work
   }
 }
 
-/** 敌宗自己的日子：修炼、态度慢慢变 */
+/** 敌宗自己的日子：修炼、收人、态度慢慢变。你在长，他们也在长 */
 export function rivalTick(w: World, r: Rng) {
   for (const rv of w.rivals) {
     if (!rv.alive) continue;
     for (const id of [rv.master, ...rv.named]) {
       const p = P(w, id);
       if (!p?.alive || p.sect !== rv.id) continue;
-      p.exp += 10 * p.root.apt * r.range(0.7, 1.2);
+      // 宗主修得慢些：元婴是后几年才可能出的大事
+      p.exp += Math.max(10, need(p) * (id === rv.master ? 0.035 : 0.06)) * p.root.apt * r.range(0.7, 1.2);
       stepUp(p);
     }
     if (rv.passive) continue;
+    if (w.t % 4 === 3) rivalYear(w, r, rv);
     let d = 0;
     if (rv.style === 'aggressive') d -= w.sect.site === 'vein' ? 2.2 : 1.2;
     if (rv.style === 'proper') d += w.sect.align < -20 ? -3 : 1;
@@ -153,6 +155,26 @@ export function rivalTick(w: World, r: Rng) {
     if (rv.status === 'truce' && rv.truceUntil !== undefined && w.t >= rv.truceUntil) rv.status = rv.attitude < -30 ? 'hostile' : 'neutral';
     if (rv.status === 'neutral' && rv.attitude <= -30) rv.status = 'hostile';
     if (rv.status === 'hostile' && rv.attitude > -20) rv.status = 'neutral';
+  }
+}
+
+/** 敌宗一年到头：收一批弟子，偶尔出个有名有姓的；宗主修为圆满了会试着冲元婴 */
+function rivalYear(w: World, r: Rng, rv: Rival) {
+  rv.crowd.qi += r.int(1, 3) + (rv.style === 'aggressive' ? 1 : 0);
+  if (r.chance(0.3)) rv.crowd.found += 1;
+  if (year(w.t) % 4 === 0 && rv.named.length < 6) {
+    const p = genPerson(w, r, { sect: rv.id, realm: r.chance(0.35) ? 1 : 0, stage: r.int(4, 8) });
+    if (p.realm === 1) p.stage = r.int(0, 1);
+    p.rank = 'core';
+    w.people[p.id] = p;
+    rv.named.push(p.id);
+  }
+  const m = P(w, rv.master);
+  if (m?.alive && m.realm < 3 && atBottleneck(m) && year(w.t) >= 6 && r.chance(0.2)) {
+    breakthrough(m);
+    rv.rep += 60;
+    addLife(w, m, `闭关冲关，踏入${REALM_NAME[m.realm]}`, 'good', true);
+    report(w, { text: `${rv.name}宗主${m.name}闭关冲关，踏入${REALM_NAME[m.realm]}！一州震动。${rv.attitude < 0 ? '他们看你的眼神不一样了。' : ''}`, tone: rv.attitude < 0 ? 'bad' : 'info', about: [], big: true });
   }
 }
 

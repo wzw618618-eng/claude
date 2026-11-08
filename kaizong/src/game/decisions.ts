@@ -43,6 +43,7 @@ export function attemptBreak(w: World, r: Rng, p: Person, pill: boolean): boolea
   const target = REALM_NAME[p.realm + 1];
   if (ok) {
     breakthrough(p);
+    if (p.sect === 'me') w.stats.breaks += 1;
     p.mood = clamp(p.mood + 25, 0, 100);
     p.fame += 10;
     addLife(w, p, `闭关冲关，成功踏入${target}`, 'good', true);

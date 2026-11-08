@@ -175,7 +175,7 @@ export function newCandidates(w: World, r: Rng, recruitPower: number) {
   const acc = insight(w, recruitPower);
   const s = w.sect;
   if (w.t % 4 === 0) {
-    let n = 3 + Math.floor(s.rep / 40) + (s.tech.includes('scouting') ? 2 : 0) + (s.site === 'market' ? 1 : s.site === 'deep' ? -1 : 0) + Math.floor(recruitPower * 0.6);
+    let n = 3 + Math.floor(s.rep / 40) + (w.tier >= 2 ? 1 : 0) + (s.tech.includes('scouting') ? 2 : 0) + (s.site === 'market' ? 1 : s.site === 'deep' ? -1 : 0) + Math.floor(recruitPower * 0.6);
     if (s.policy === 'recruit') n = Math.round(n * 1.5);
     if (s.origin === 'demon') n -= 1;
     n = Math.max(1, Math.min(9, n));

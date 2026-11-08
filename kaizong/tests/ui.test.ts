@@ -4,7 +4,7 @@ import { newWorld, randomStart } from '../src/game/setup';
 import { gameView, titleView, type Tab, type Ui } from '../src/ui/views';
 
 const config: AiConfig = { kind: 'deepseek', apiKey: 'test-secret-not-to-render', mode: 'normal' };
-const freshUi = (): Ui => ({ screen: 'title', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: false });
+const freshUi = (): Ui => ({ screen: 'title', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: false, team: {} });
 
 describe('UI regression', () => {
   it('renders title settings with real configuration without exposing the key', () => {

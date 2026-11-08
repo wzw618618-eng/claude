@@ -118,7 +118,45 @@ export interface Person {
   warned?: number;
   /** 这一季被宗主召见过，聊过哪些话题 */
   talked?: { t: number; topics: string[] };
+  /** 出门执行宗门任务：回来后回到原来的差事 */
+  mission?: { id: string; job: JobId; head?: HallId };
 }
+
+/** 任务、大计的奖励 */
+export interface Reward { stones?: number; herbs?: number; pills?: number; fpills?: number; armory?: number; rep?: number; align?: number; authority?: number; gear?: number; exp?: number; candidate?: number }
+
+/** 任务栏上的一件差事 */
+export interface Mission {
+  id: string;
+  kind: string;
+  title: string;
+  desc: string;
+  /** 凶险 1–5 */
+  danger: number;
+  skill: Skill;
+  skill2?: Skill;
+  /** 要不要打：1 全看修为战力，0 全看本事 */
+  fight: number;
+  /** 要去几季 */
+  seasons: number;
+  reward: Reward;
+  /** 过了这一季就没了 */
+  expires: number;
+}
+
+/** 派出去的队伍 */
+export interface Expedition { mission: Mission; team: string[]; back: number; chance: number }
+
+/** 宗主这一季亲自做的事 */
+export type MasterAct = 'seclude' | 'teach' | 'preside' | 'roam' | 'craft' | 'visit';
+
+/** 年度大计 */
+export interface Goal { kind: string; text: string; target: number; base: number; reward: Reward; done?: boolean }
+
+/** 年初记下的家底，年末拿来比 */
+export interface YearSnap { year: number; joined: number; gone: number; dead: number; breaks: number; missions: number; warsWon: number; warsLost: number; halls: number; stones: number; rep: number; members: number }
+
+export interface YearReview { year: number; goal?: { text: string; ok: boolean; reward: string }; lines: [string, string][] }
 
 export interface Candidate {
   id: string;
@@ -298,9 +336,24 @@ export interface World {
   /** 入过山门的所有人（结局时看他们的去向） */
   alumni: string[];
   /** 一局的战绩 */
-  stats: { warsWon: number; warsLost: number; credited: number };
+  stats: { warsWon: number; warsLost: number; credited: number; breaks: number; missionsDone: number; missionsFailed: number };
   /** 上一季过完，各项家底变了多少 */
   delta: Record<string, number>;
   /** 新手指引已经关掉 */
   guideOff?: boolean;
+  /** 宗主这一季做什么（不改就一直这样） */
+  masterPlan: { act: MasterAct; target?: string };
+  /** 任务栏 */
+  missions: Mission[];
+  /** 在外面的队伍 */
+  expeditions: Expedition[];
+  /** 宗门品阶：0 草创 … 4 一方圣地 */
+  tier: number;
+  /** 今年的大计 */
+  goal: Goal | null;
+  /** 年初给宗主挑的几个大计 */
+  goalOffers: Goal[];
+  needGoal: boolean;
+  yearStart: YearSnap | null;
+  lastYear: YearReview | null;
 }

@@ -13,6 +13,9 @@ import { applyRivalMove, ruleRivalPick, rivalChoices, rivalTick, type RivalChoic
 import { cultivate, doWork, payUpkeep, underqualified, unconvinced, type Unconvinced } from './sect';
 import type { Person, World } from './types';
 import { startWar } from './war';
+import { checkGoal, checkTier, tierIncome, turnYear } from './goals';
+import { masterSeason } from './master';
+import { refreshBoard, settleExpeditions } from './missions';
 import { ruleWish, settleWishes, thwarted, type WishNews } from './wishes';
 import { addLife, clamp, disp, everyone, members, nm, op, P, report, rngOf, year } from './world';
 
@@ -121,6 +124,8 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     addDecision(w, 'breakthrough', { who: p.id });
   }
   for (const p of cul.leveled) if (p.realm >= 1 || p.starred) addLife(w, p, `修为精进到${realmText(p)}`, 'good');
+  // 宗主这一季亲自做的事（坐镇、游历会改执法和巡山的力道，所以放在算怨气、敌宗出手之前）
+  masterSeason(w, r, work);
 
   // 四、服不服、心情、忠心
   const lawCalm = 3 + work.lawPower * 1.5 + (s.tech.includes('rules') ? 2 : 0) + (s.heritage === 'mind' ? 1 : 0);
@@ -154,7 +159,7 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
 
   // 五、收支
   const base = { vein: 60, deep: 25, market: 35 }[s.site] + (s.veins - 2) * 30 + (s.tech.includes('market_shop') ? 40 : 0) + (s.site === 'market' ? 25 : 0);
-  const income = Math.round(base * (s.veinDebuff && s.veinDebuff > w.t ? 0.8 : 1));
+  const income = Math.round(base * (s.veinDebuff && s.veinDebuff > w.t ? 0.8 : 1)) + tierIncome(w);
   s.stones += income;
   s.ledger.income = income;
   if (!payUpkeep(w)) report(w, { text: '灵石不够发月例了！弟子们怨声载道。', tone: 'bad', about: [], big: true, chronicle: false });
@@ -181,6 +186,9 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     const rv = w.rivals.find((x) => x.id === rid);
     if (!p?.alive || p.sect !== 'me' || !rv?.alive) delete w.offers[pid];
   }
+
+  // 外出办差的队伍回山
+  settleExpeditions(w, r);
 
   // 八、试用期、心愿
   probationTick(w);
@@ -236,7 +244,10 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   // 敌宗明面上的动作才报；挖人、派奸细是暗地里的
   for (const rv of w.rivals) if (rv.lastMove && rv.lastWhy && rv.alive && !rv.passive && !rv.hidden) report(w, { text: `${rv.name}宗主${nm(w, rv.master)}：${rv.lastMove}。`, tone: 'info', about: [], quote: { who: rv.master, text: rv.lastWhy } });
 
-  // 十二、来人走人，时间往前
+  // 十二、品阶、大计；来人走人，时间往前
+  checkTier(w);
+  checkGoal(w);
+  if (w.t % 4 === 3) turnYear(w, r);
   ageCandidates(w);
   w.acts = [];
   w.t += 1;
@@ -246,6 +257,7 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     s.policy = null;
   }
   newCandidates(w, r, work.recruitPower);
+  refreshBoard(w, r);
   for (const d of w.decisions) refreshDecision(w, d);
   if (year(w.t) > w.endYear && !w.war) w.over = endText(w);
   if (members(w).length === 0) w.over = { win: false, text: '弟子走的走、死的死，山上只剩你一个人。宗门散了。' };

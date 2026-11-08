@@ -11,12 +11,43 @@ import { assignJob, fit, hallCap, hallHead, hallMembers, setHead, setRank } from
 import { newWorld, randomStart } from '../src/game/setup';
 import type { HallId, World } from '../src/game/types';
 import { endWar, fightRound, healTeam } from '../src/game/war';
-import { lacks, members, rngOf, year } from '../src/game/world';
+import { lacks, me, members, rngOf, year } from '../src/game/world';
+import { atBottleneck } from '../src/game/cult';
+import { chooseGoal } from '../src/game/goals';
+import { MASTER_ACTS, setMasterPlan } from '../src/game/master';
+import { canSend, dispatch, missionChance, suitability as suit } from '../src/game/missions';
+import type { Person } from '../src/game/types';
 
 const N = Number(process.argv[2] ?? 200);
 const MODE = (process.argv[3] ?? 'smart') as 'smart' | 'random';
 
+const NEW = process.env.NEW !== '0';
+
+/** 新玩法：大计、宗主亲为、派任务 */
+function smartNew(w: World) {
+  if (w.needGoal) chooseGoal(w, 0);
+  const pupil = members(w).filter((p) => p.job !== 'travel' && !atBottleneck(p)).sort((a, b) => b.root.apt - a.root.apt)[0];
+  if (atBottleneck(me(w)) || w.t % 2 === 1 || !pupil) setMasterPlan(w, 'seclude');
+  else setMasterPlan(w, 'teach', pupil.id);
+  for (const m of [...w.missions]) {
+    const pool = members(w).filter((p) => canSend(w, p) && !p.head).sort((a, b) => suit(b, m) - suit(a, m));
+    const team: Person[] = [];
+    for (const p of pool) { team.push(p); if (missionChance(m, team) >= 0.7 || team.length >= 3) break; }
+    if (team.length && missionChance(m, team) >= 0.65) dispatch(w, m.id, team.map((p) => p.id));
+  }
+}
+
+function randomNew(w: World) {
+  const r = rngOf(w);
+  if (w.needGoal) chooseGoal(w, r.int(0, w.goalOffers.length - 1));
+  const act = r.pick(MASTER_ACTS);
+  setMasterPlan(w, act, act === 'teach' ? r.pick(members(w))?.id : act === 'visit' ? r.pick(w.rivals).id : undefined);
+  for (const m of [...w.missions]) if (r.chance(0.3)) { const ps = r.shuffle(members(w).filter((p) => canSend(w, p))).slice(0, r.int(1, 2)); if (ps.length) dispatch(w, m.id, ps.map((p) => p.id)); }
+  r.save();
+}
+
 function smartManage(w: World) {
+  if (NEW) smartNew(w);
   const r = rngOf(w);
   // 招人：测灵根，资质好的收
   for (const c of [...w.candidates]) {
@@ -58,7 +89,7 @@ function smartManage(w: World) {
   }
   holdTourney(w);
   // 升级殿堂
-  for (const h of ['herb', 'alchemy', 'guard'] as HallId[]) if (w.sect.stones > 500 && w.sect.halls[h] < 2) { w.sect.stones -= [80, 200, 450][w.sect.halls[h]]; w.sect.halls[h]++; }
+  for (const h of ['herb', 'alchemy', 'guard', 'teach', 'law'] as HallId[]) if (w.sect.stones > (NEW ? 280 : 500) && w.sect.halls[h] < 2) { w.sect.stones -= [80, 200, 450][w.sect.halls[h]]; w.sect.halls[h]++; }
   // 和气的宗门送礼
   for (const rv of w.rivals) if (rv.alive && !rv.passive && rv.status !== 'war' && rv.attitude < -25 && w.sect.stones >= 120) diplomacy(w, rv, 'gift');
   // 裁决
@@ -71,6 +102,7 @@ function smartManage(w: World) {
 }
 
 function randomManage(w: World) {
+  if (NEW) randomNew(w);
   const r = rngOf(w);
   for (const c of [...w.candidates]) if (r.chance(0.5)) admit(w, r, c, 'outer'); else dismiss(w, c);
   for (const p of members(w)) if (p.job === 'none' || r.chance(0.2)) assignJob(w, p, r.pick(HALLS).id);
@@ -99,7 +131,7 @@ function playWar(w: World) {
   return res;
 }
 
-const stats = { survived: 0, wiped: 0, members: 0, found: 0, core: 0, wars: 0, warWins: 0, defect: 0, deaths: 0, credited: 0, fulfilled: 0, acts: new Map<string, number>(), uniqueActsPerPerson: 0, persons: 0, stones: 0, years: 0 };
+const stats = { rivalNascent: 0, tier: 0, goals: 0, mOk: 0, mFail: 0, nascent: 0, survived: 0, wiped: 0, members: 0, found: 0, core: 0, wars: 0, warWins: 0, defect: 0, deaths: 0, credited: 0, fulfilled: 0, acts: new Map<string, number>(), uniqueActsPerPerson: 0, persons: 0, stones: 0, years: 0 };
 const t0 = Date.now();
 for (let g = 0; g < N; g++) {
   const w = newWorld({ ...randomStart(1000 + g), endYear: 10 });
@@ -133,6 +165,9 @@ for (let g = 0; g < N; g++) {
   stats.found += ms.filter((p) => p.realm >= 1).length;
   stats.core += ms.filter((p) => p.rank === 'core' || p.rank === 'chief').length;
   stats.stones += w.sect.stones;
+  stats.rivalNascent += w.rivals.filter((rv) => !rv.passive && w.people[rv.master]?.realm >= 3).length;
+  stats.tier += w.tier; stats.mOk += w.stats.missionsDone; stats.mFail += w.stats.missionsFailed; stats.nascent += me(w).realm >= 3 ? 1 : 0;
+  stats.goals += w.annals.filter((a) => a.text.startsWith('今年的大计成了')).length;
   stats.years += year(w.t) - 1;
   for (const s of actsBy.values()) { stats.uniqueActsPerPerson += s.size; stats.persons++; }
   if (g === 0) {
@@ -146,5 +181,6 @@ console.log(`撑满十年 ${(stats.survived / N * 100).toFixed(0)}%，灭门/散
 console.log(`结束时弟子 ${avg(stats.members)} 人，筑基以上 ${avg(stats.found)} 人，真传/首席 ${avg(stats.core)} 人，灵石 ${avg(stats.stones)}`);
 console.log(`宗门战 ${avg(stats.wars)} 场/局，胜率 ${stats.wars ? (stats.warWins / stats.wars * 100).toFixed(0) : 0}%；叛逃 ${avg(stats.defect)} 人/局；坐化 ${avg(stats.deaths)} 人/局`);
 console.log(`心愿得偿 ${avg(stats.fulfilled)} 次/局，其中记在宗主头上 ${avg(stats.credited)} 次`);
+console.log(`品阶 ${avg(stats.tier)}，大计成了 ${avg(stats.goals)} 年/局，任务成 ${avg(stats.mOk)} 败 ${avg(stats.mFail)}，宗主到元婴 ${(stats.nascent / N * 100).toFixed(0)}%，敌宗宗主到元婴 ${avg(stats.rivalNascent)} 个/局`);
 console.log(`每人十年里做过 ${(stats.uniqueActsPerPerson / Math.max(1, stats.persons)).toFixed(1)} 种不同的事`);
 console.log('各种做法的次数：', [...stats.acts].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join('，'));

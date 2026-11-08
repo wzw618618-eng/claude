@@ -3,6 +3,8 @@
 import { genPerson } from './gen';
 import { newCandidates } from './recruit';
 import { setupRivals } from './rivals';
+import { offerGoals, snap } from './goals';
+import { refreshBoard } from './missions';
 import { makeRng } from './rng';
 import { fit } from './sect';
 import type { HallId, Person, World } from './types';
@@ -38,7 +40,8 @@ export function newWorld(c: StartChoice): World {
   const w: World = {
     v: 1, seed: c.seed, rng: 0, t: 0, me: '', people: {}, members: [], candidates: [], rivals: [], war: null, decisions: [], report: [], history: [], acts: [],
     needPolicy: true, needTech: true, over: null, nextId: 1, endYear: c.endYear ?? 10, pairings: {}, misdeeds: [], offers: {},
-    annals: [], alumni: [], stats: { warsWon: 0, warsLost: 0, credited: 0 }, delta: {},
+    annals: [], alumni: [], stats: { warsWon: 0, warsLost: 0, credited: 0, breaks: 0, missionsDone: 0, missionsFailed: 0 }, delta: {},
+    masterPlan: { act: 'seclude' }, missions: [], expeditions: [], tier: 0, goal: null, goalOffers: [], needGoal: true, yearStart: null, lastYear: null,
     sect: {
       name: c.sectName, site: c.site, origin: c.origin, heritage: c.heritage,
       stones: 320 + (c.heritage === 'trade' ? 150 : 0) + (c.site === 'vein' ? 80 : c.site === 'deep' ? -60 : 0),
@@ -96,6 +99,9 @@ export function newWorld(c: StartChoice): World {
   report(w, { text: `${c.sectName}开山了。你带着${founders.map((p) => p.name).join('、')}三个开山弟子，在山上安顿下来。`, tone: 'story', about: founders.map((p) => p.id), big: true });
   report(w, { text: `开山收徒，来了${w.candidates.length}个人，在迎客堂等你见。`, tone: 'info', about: [] });
   report(w, { text: `一州之内，${ch.name}霸道，${xs.name}精明，${ty.name}是正道之首。十年之内，站稳脚跟。`, tone: 'info', about: [] });
+  refreshBoard(w, r);
+  w.yearStart = snap(w);
+  w.goalOffers = offerGoals(w, r);
   w.rng = r.state();
   return w;
 }

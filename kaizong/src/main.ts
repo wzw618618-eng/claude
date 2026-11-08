@@ -9,12 +9,15 @@ import { REALM_NAME } from './game/cult';
 import { breakNow, resolveDecision, type BreakWay } from './game/decisions';
 import { admit, checkOrigin, dismiss, heartTest, testRoot, testSkill } from './game/recruit';
 import { diplomacy } from './game/rivals';
+import { chooseGoal } from './game/goals';
+import { setMasterPlan } from './game/master';
+import { dispatch } from './game/missions';
 import { migrate } from './game/save';
 import { advanceSeason, AI_LIMIT, checkEnd, choosePolicy, giftPill, holdTourney, learnTech, planSeason, upgradeHall, vouch } from './game/season';
 import { assignJob, setHead, setRank, unconvinced } from './game/sect';
 import { expel } from './game/decisions';
 import { newWorld, randomStart, type StartChoice } from './game/setup';
-import type { HallId, JobId, Skill, World } from './game/types';
+import type { HallId, JobId, MasterAct, Skill, World } from './game/types';
 import { noteFreeTalk, talk, type Topic } from './game/talk';
 import { endWar, fightRound, healTeam } from './game/war';
 import { adjust, clamp, P, pronoun, rngOf } from './game/world';
@@ -27,7 +30,7 @@ let cfg: AiConfig = loadConfig();
 const meter = createMeter();
 const ui: Ui = {
   screen: 'title', tab: 'report', modal: null, setup: randomStart(Date.now() % 1e9), busy: null, toast: null, sort: 'rank',
-  chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: false,
+  chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: false, team: {},
 };
 
 function load(): World | null {
@@ -99,7 +102,7 @@ function afterChange() {
 
 async function advance() {
   if (!w || ui.busy || w.over) return;
-  if (w.needPolicy || w.needTech) { ui.modal = { kind: 'year' }; render(); return; }
+  if (w.needPolicy || w.needTech || w.needGoal) { ui.modal = { kind: 'year' }; render(); return; }
   const client = ai();
   const mode = client ? cfg.mode : 'off';
   const plan = planSeason(w, mode);
@@ -116,7 +119,8 @@ async function advance() {
   ui.tab = 'report';
   ui.showHistory = false;
   if (w.war && w.war.phase === 'prep') ui.modal = { kind: 'war' };
-  else if (w.needPolicy || w.needTech) ui.modal = { kind: 'year' };
+  else if (w.needPolicy || w.needTech || w.needGoal) ui.modal = { kind: 'year' };
+  ui.team = {};
   afterChange();
   if (client && (sum.newWishes.length || sum.wishNews.some((x) => x.credit))) {
     const world = w;
@@ -258,8 +262,16 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     case 'unassign': { const p = P(w, id)!; assignJob(w, p, 'none'); return done(); }
     case 'upgrade': return done(upgradeHall(w, id as HallId));
     case 'tourney': return done(holdTourney(w));
-    case 'policy': choosePolicy(w, id); if (!w.needTech) ui.modal = null; return done();
-    case 'tech': { const e = learnTech(w, id); if (!e && !w.needPolicy) ui.modal = null; return done(e); }
+    case 'policy': choosePolicy(w, id); if (!w.needTech && !w.needGoal) ui.modal = null; return done();
+    case 'tech': { const e = learnTech(w, id); if (!e && !w.needPolicy && !w.needGoal) ui.modal = null; return done(e); }
+    case 'goal': { const e = chooseGoal(w, Number(id)); if (!e && !w.needPolicy && !w.needTech) ui.modal = null; return done(e); }
+    case 'open-master': ui.modal = { kind: 'master' }; render(); return;
+    case 'master-act': { const e = setMasterPlan(w, id as MasterAct); if (!e) ui.modal = null; return done(e); }
+    case 'dispatch': {
+      const e = dispatch(w, id, ui.team[id] ?? []);
+      if (!e) { const m = w.expeditions[w.expeditions.length - 1]; delete ui.team[id]; return done(`派出去了，${m.back <= w.t + 1 ? '这一季过完' : '过两季'}回来`); }
+      return done(e);
+    }
     case 'vouch': return done(vouch(w, P(w, id)!));
     case 'gift-pill': return done(giftPill(w, P(w, id)!));
     case 'expel': ui.modal = { kind: 'confirm', text: `真要把${P(w, id)!.name}逐出山门？`, act: `expel-yes:${id}` }; render(); return;
@@ -276,7 +288,7 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     case 'war-round': warRound(v === 'master'); return;
     case 'war-heal': healTeam(w); return done();
     case 'war-retreat': { const res = endWar(w, r, true); if (res.wiped) w.over = { win: false, text: res.text }; return done(); }
-    case 'war-close': w.war = null; checkEnd(w); ui.modal = w.needPolicy || w.needTech ? { kind: 'year' } : null; return done();
+    case 'war-close': w.war = null; checkEnd(w); ui.modal = w.needPolicy || w.needTech || w.needGoal ? { kind: 'year' } : null; return done();
     case 'play-on': w.endYear += 10; w.over = null; ui.modal = null; return done('再玩十年。');
   }
   if (a.startsWith('expel-yes:')) { const p = P(w, a.slice(10))!; expel(w, r, p, '宗主之命'); ui.modal = null; return done(); }
@@ -304,6 +316,15 @@ function change(a: string, id: string, v: string, el: HTMLInputElement | HTMLSel
     case 'p-rank': if (v) setRank(w, P(w, id)!, v as (typeof RANK_ORDER)[number]); return done();
     case 'pill-rule': w.sect.pillRule = v as World['sect']['pillRule']; return done();
     case 'c-pick': ui.testPick[id] = v; return;
+    case 'master-target': { if (!v) return; const e = setMasterPlan(w, id as MasterAct, v); if (!e) ui.modal = null; return e ? (toast(e), render()) : done(); }
+    case 'team': {
+      const [mid, slot] = id.split(':');
+      const t = [...(ui.team[mid] ?? [])];
+      if (v === '-' || !v) t.splice(Number(slot), 1); else t[Number(slot)] = v;
+      ui.team[mid] = t.filter(Boolean);
+      render();
+      return;
+    }
     case 'war-team': {
       const war = w.war!;
       const on = (el as HTMLInputElement).checked;

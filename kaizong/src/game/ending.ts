@@ -1,9 +1,10 @@
 // 一局结束：给宗门下个评语，列出每个入过山门的人的去向，和开山以来的大事。
 
 import { realmText } from './cult';
+import { TIERS } from './goals';
 import { postText } from './sect';
 import type { World } from './types';
-import { members, P } from './world';
+import { me, members, P } from './world';
 
 export interface Fate { id: string; name: string; note: string }
 export interface Epilogue {
@@ -25,6 +26,7 @@ export function epilogue(w: World): Epilogue {
   let title: string;
   let verdict: string;
   if (!won) { title = '宗门覆灭'; verdict = '山门倒了，名字还会被人提起一阵子，然后就被忘了。'; }
+  else if (w.tier >= 4) { title = '一方圣地'; verdict = '四方来朝。百年之后，这座山还会是修士们心里的地方。'; }
   else if (rank === 1) { title = '一州魁首'; verdict = '从一座荒山，到一州之首。往后再有人开宗立派，会拿你的名字来比。'; }
   else if (rank <= 2 && founded >= 3) { title = '名门大派'; verdict = '根基已成，门下人才济济，一州之内没人敢小看。'; }
   else if (ms.length >= 12 && founded >= 1) { title = '一方宗门'; verdict = '站稳了脚跟，在这一州算得上一号。'; }
@@ -37,6 +39,9 @@ export function epilogue(w: World): Epilogue {
     ['宗门战', `${w.stats.warsWon} 胜 ${w.stats.warsLost} 负`],
     ['成全的心愿', `${w.stats.credited} 个记在你头上`],
     ['灵脉', `${w.sect.veins} 条`],
+    ['宗门品阶', TIERS[w.tier]],
+    ['宗门任务', `办成 ${w.stats.missionsDone} 件`],
+    ['宗主', realmText(me(w))],
   ];
   const stay: Fate[] = [], gone: Fate[] = [], fell: Fate[] = [], turned: Fate[] = [];
   for (const id of w.alumni) {
