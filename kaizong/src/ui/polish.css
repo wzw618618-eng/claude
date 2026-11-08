@@ -147,3 +147,12 @@
   .setup-btns { position: static; }
   .chat .chat-lines { max-height: 38dvh; min-height: 60px; }
 }
+
+/* 营造：空地、在建 */
+.hall-name.dim { fill: #cdd6cf; opacity: .8; }
+.hall.plot.building path { animation: none; }
+.hall-card.empty { border-style: dashed; background: transparent; }
+.hall-card.empty h4 small { color: var(--muted); letter-spacing: 0; }
+.up.empty { border-style: dashed; }
+.building { color: var(--gold); }
+.fate-nums small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.6; margin-top: 2px; }

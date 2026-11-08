@@ -23,8 +23,8 @@ export function tierReqs(w: World, tier: number): Req[] {
   const found = ms.filter((p) => p.realm >= 1).length;
   const rep = Math.round(w.sect.rep);
   switch (tier) {
-    case 1: return [{ label: '弟子', have: ms.length, need: 8 }, { label: '名望', have: rep, need: 60 }, { label: '扩建殿堂', have: hallsTotal(w), need: 2 }];
-    case 2: return [{ label: '弟子', have: ms.length, need: 14 }, { label: '筑基弟子', have: found, need: 2 }, { label: '名望', have: rep, need: 150 }, { label: '扩建殿堂', have: hallsTotal(w), need: 6 }];
+    case 1: return [{ label: '弟子', have: ms.length, need: 8 }, { label: '名望', have: rep, need: 60 }, { label: '殿堂规模', have: hallsTotal(w), need: 4 }];
+    case 2: return [{ label: '弟子', have: ms.length, need: 14 }, { label: '筑基弟子', have: found, need: 2 }, { label: '名望', have: rep, need: 150 }, { label: '殿堂规模', have: hallsTotal(w), need: 9 }];
     case 3: return [{ label: '弟子', have: ms.length, need: 20 }, { label: '筑基弟子', have: found, need: 5 }, { label: '名望', have: rep, need: 300 }, { label: '灵脉', have: w.sect.veins, need: 3 }];
     case 4: return [{ label: '名望', have: rep, need: 500 }, { label: '筑基弟子', have: found, need: 8 }, { label: '元婴宗主或结丹弟子', have: (me(w).realm >= 3 ? 1 : 0) + ms.filter((p) => p.realm >= 2).length, need: 1 }];
     default: return [];
@@ -100,8 +100,8 @@ const GOALS: GoalDef[] = [
   },
   {
     kind: 'halls',
-    when: (w) => Object.values(w.sect.halls).filter((v) => v < 3).length >= 2,
-    make: (w) => ({ text: '扩建 2 座殿堂', target: 2, base: hallsTotal(w), reward: { stones: 120, rep: 8 } }),
+    when: (w) => Object.values(w.sect.halls).filter((v) => v < 4).length >= 2,
+    make: (w) => ({ text: '新建或扩建殿堂 2 次', target: 2, base: hallsTotal(w), reward: { stones: 120, rep: 8 } }),
     progress: (w, g) => hallsTotal(w) - g.base,
   },
   {

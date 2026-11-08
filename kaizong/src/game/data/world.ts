@@ -56,10 +56,9 @@ export const RANK_EXPECT: Record<Rank, number> = { probation: 0, outer: 0, inner
 /** 殿堂主事大家觉得至少该有的修为 */
 export const HEAD_EXPECT = 7;
 
-/** 殿堂规模：等级 0–3，人数上限和产出倍数 */
-export const HALL_CAP = [2, 4, 6, 8];
-export const HALL_MULT = [1, 1.2, 1.4, 1.65];
-export const HALL_COST = [80, 200, 450];
+/** 殿堂规模：等级 0 是空地，1–4 的人数上限和产出倍数（建造花费见 build.ts） */
+export const HALL_CAP = [0, 2, 4, 6, 8];
+export const HALL_MULT = [0, 1, 1.2, 1.4, 1.65];
 
 export interface PolicyDef { id: string; name: string; desc: string; mood?: string }
 export const POLICIES: PolicyDef[] = [

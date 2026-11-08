@@ -13,10 +13,11 @@ import { chooseGoal } from './game/goals';
 import { setMasterPlan } from './game/master';
 import { dispatch } from './game/missions';
 import { migrate } from './game/save';
-import { advanceSeason, AI_LIMIT, checkEnd, choosePolicy, giftPill, holdTourney, learnTech, planSeason, upgradeHall, vouch } from './game/season';
+import { advanceSeason, AI_LIMIT, checkEnd, choosePolicy, giftPill, holdTourney, learnTech, planSeason, vouch } from './game/season';
+import { startWork } from './game/build';
 import { assignJob, setHead, setRank, unconvinced } from './game/sect';
 import { expel } from './game/decisions';
-import { newWorld, randomStart, type StartChoice } from './game/setup';
+import { newWorld, randomStart, rollFate, type StartChoice } from './game/setup';
 import type { HallId, JobId, MasterAct, Skill, World } from './game/types';
 import { noteFreeTalk, talk, type Topic } from './game/talk';
 import { endWar, fightRound, healTeam } from './game/war';
@@ -217,10 +218,11 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     case 'new': ui.screen = 'setup'; ui.modal = null; ui.setup = randomStart(Date.now() % 1e9); render(); return;
     case 'back-title': ui.screen = 'title'; render(); return;
     case 'setup-pick': (ui.setup as unknown as Record<string, string>)[id] = v; render(); return;
-    case 'setup-random': ui.setup = randomStart(Date.now() % 1e9); render(); return;
+    case 'setup-random': { const r = randomStart(Date.now() % 1e9); ui.setup = { ...ui.setup, sectName: r.sectName, masterName: r.masterName, gender: r.gender }; render(); return; }
     case 'start': {
       readSetupFields();
-      w = newWorld({ ...ui.setup, seed: Date.now() % 1e9 });
+      const seed = Date.now() % 1e9;
+      w = newWorld({ ...ui.setup, ...rollFate(seed), seed });
       meter.resetGame();
       ui.chats = {};
       ui.screen = 'game'; ui.tab = 'report'; ui.modal = { kind: 'year' };
@@ -260,7 +262,7 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
     case 'topic': void chatTopic(id, v as Topic); return;
     case 'guide-off': w.guideOff = true; return done();
     case 'unassign': { const p = P(w, id)!; assignJob(w, p, 'none'); return done(); }
-    case 'upgrade': return done(upgradeHall(w, id as HallId));
+    case 'build': { const e = startWork(w, id as HallId); return done(e ?? '动工了'); }
     case 'tourney': return done(holdTourney(w));
     case 'policy': choosePolicy(w, id); if (!w.needTech && !w.needGoal) ui.modal = null; return done();
     case 'tech': { const e = learnTech(w, id); if (!e && !w.needPolicy && !w.needGoal) ui.modal = null; return done(e); }

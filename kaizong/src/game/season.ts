@@ -16,6 +16,7 @@ import { startWar } from './war';
 import { checkGoal, checkTier, tierIncome, turnYear } from './goals';
 import { masterSeason } from './master';
 import { refreshBoard, settleExpeditions } from './missions';
+import { finishWorks } from './build';
 import { ruleWish, settleWishes, thwarted, type WishNews } from './wishes';
 import { addLife, clamp, disp, everyone, members, nm, op, P, report, rngOf, year } from './world';
 
@@ -187,8 +188,9 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     if (!p?.alive || p.sect !== 'me' || !rv?.alive) delete w.offers[pid];
   }
 
-  // 外出办差的队伍回山
+  // 外出办差的队伍回山；工程完工
   settleExpeditions(w, r);
+  finishWorks(w);
 
   // 八、试用期、心愿
   probationTick(w);
@@ -354,13 +356,4 @@ export function giftPill(w: World, p: Person): string | null {
   return null;
 }
 
-export function upgradeHall(w: World, h: keyof World['sect']['halls']): string | null {
-  const lv = w.sect.halls[h];
-  if (lv >= 3) return '已经最高了';
-  const cost = [80, 200, 450][lv];
-  if (w.sect.stones < cost) return `灵石不够（要 ${cost}）`;
-  w.sect.stones -= cost;
-  w.sect.halls[h] = lv + 1;
-  return null;
-}
 

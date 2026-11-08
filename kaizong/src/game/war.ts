@@ -2,6 +2,7 @@
 // 弟子在战场上怎么表现看性格：有人死战，有人临阵脱逃，奸细会倒戈。
 
 import { power } from './cult';
+import { HALL } from './data/world';
 import { drift } from './decisions';
 import type { Rng } from './rng';
 import { rivalStrength } from './rivals';
@@ -170,8 +171,9 @@ export function endWar(w: World, r: Rng, retreat = false): { win: boolean; text:
       if (lostVein) { s.veins -= 1; rv.veins += 1; }
       let razed = '';
       if (war.stake === 'mountain' && !retreat) {
-        const built = (Object.keys(s.halls) as (keyof typeof s.halls)[]).filter((h) => s.halls[h] > 0);
-        if (built.length) { const h = r.pick(built); s.halls[h] -= 1; razed = '，一座殿堂被毁'; }
+        // 殿堂被打坏一层，但不会拆成空地
+        const big = (Object.keys(s.halls) as (keyof typeof s.halls)[]).filter((h) => s.halls[h] > 1);
+        if (big.length) { const h = r.pick(big); s.halls[h] -= 1; razed = `，${HALL[h].name}被打坏了一层`; }
       }
       s.rep = Math.max(0, s.rep - (retreat ? 8 : 15));
       s.authority = clamp(s.authority - (retreat ? 5 : 10), 0, 100);

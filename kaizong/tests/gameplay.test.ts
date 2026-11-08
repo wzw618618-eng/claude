@@ -7,10 +7,12 @@ import { canSend, dispatch, missionChance, refreshBoard, settleExpeditions } fro
 import { migrate } from '../src/game/save';
 import { advanceSeason, planSeason } from '../src/game/season';
 import { setHead } from '../src/game/sect';
-import { newWorld, randomStart } from '../src/game/setup';
+import { newWorld, randomStart, rollFate } from '../src/game/setup';
 import type { Mission, Person, World } from '../src/game/types';
 import { me, members, rngOf } from '../src/game/world';
-import { gameView, type Ui } from '../src/ui/views';
+import { gameView, setupView, type Ui } from '../src/ui/views';
+import { buildBlock, startWork } from '../src/game/build';
+import { choicesFor } from '../src/game/choices';
 
 const fresh = (seed = 7): World => newWorld({ ...randomStart(seed), site: 'deep', origin: 'sword', heritage: 'mind' });
 const offline: AiConfig = { kind: 'offline', apiKey: '', mode: 'normal' };
@@ -104,7 +106,7 @@ describe('品阶和大计', () => {
     expect(checkTier(w)).toBe(false);
     for (const c of w.candidates) { const q = w.people[c.id]; q.sect = 'me'; w.members.push(q.id); }
     while (members(w).length < 14) { const c = w.candidates[0] ?? null; if (!c) { const p = { ...members(w)[0], id: `px${w.nextId++}` } as Person; w.people[p.id] = p; w.members.push(p.id); } else w.candidates.shift(); }
-    w.sect.rep = 160; w.sect.halls.herb = 3; w.sect.halls.alchemy = 3;
+    w.sect.rep = 160; w.sect.halls.herb = 4; w.sect.halls.alchemy = 3; w.sect.halls.recruit = 1;
     members(w).slice(0, 2).forEach((p) => { p.realm = 1; p.stage = 0; });
     expect(checkTier(w)).toBe(true);
     expect(checkTier(w)).toBe(true);
@@ -167,5 +169,57 @@ describe('界面', () => {
     expect(m.missions.length).toBeGreaterThan(0);
     expect(m.masterPlan.act).toBe('seclude');
     expect(m.tier).toBe(0);
+  });
+});
+
+describe('殿堂一座座建', () => {
+  it('开局只有灵植园和巡山队，开山弟子都有活干', () => {
+    const w = newWorld({ ...randomStart(90), origin: 'sword' });
+    const built = (Object.keys(w.sect.halls) as (keyof typeof w.sect.halls)[]).filter((h) => w.sect.halls[h] > 0);
+    expect(built.sort()).toEqual(['guard', 'herb']);
+    expect(members(w).every((p) => p.job === 'herb' || p.job === 'guard')).toBe(true);
+    expect(newWorld({ ...randomStart(90), origin: 'alchemist' }).sect.halls.alchemy).toBe(1);
+  });
+  it('要花灵石、满足条件，过一季才落成；同时只能建一处', () => {
+    const w = fresh(91);
+    expect(buildBlock(w, 'law')).toContain('弟子要有 8 人');
+    const stones = w.sect.stones;
+    expect(startWork(w, 'recruit')).toBeNull();
+    expect(w.sect.stones).toBe(stones - 80);
+    expect(w.sect.halls.recruit).toBe(0);
+    expect(buildBlock(w, 'alchemy')).toContain('工匠都在忙');
+    chooseGoal(w, 0); w.needPolicy = false;
+    advanceSeason(w, planSeason(w, 'off'), {}, {});
+    expect(w.sect.halls.recruit).toBe(1);
+    expect(w.sect.works.length).toBe(0);
+  });
+  it('没建的殿堂派不了人，弟子也不会求着调过去', () => {
+    const w = fresh(92);
+    const p = members(w)[0];
+    p.likes = ['law']; p.dislikes = [p.job];
+    p.wish = { kind: 'post', param: 'law', text: '想当执法堂主事', since: 0, by: 'rule' };
+    expect(choicesFor(w, p, { unc: [] }).some((c) => c.kind === 'request_post')).toBe(false);
+    const html = gameView(w, ui({ tab: 'staff' }), offline, createMeter());
+    expect(html).toContain('还没建的殿堂');
+    expect(html).toContain('data-act="build" data-id="recruit"');
+  });
+  it('出身和传承由天定；开局只让选山门', () => {
+    expect(rollFate(123)).toEqual(rollFate(123));
+    const html = setupView(ui({ screen: 'setup' }));
+    expect(html).toContain('data-id="site"');
+    expect(html).not.toContain('data-id="origin"');
+    expect(html).not.toContain('data-id="heritage"');
+    const w = fresh(93);
+    expect(w.needTech).toBe(false);
+    expect(gameView(w, ui({ modal: { kind: 'year' } }), offline, createMeter())).toContain('天定的来历');
+  });
+  it('旧存档的殿堂等级挪一格（以前 0 级也算建好了）', () => {
+    const w = fresh(94) as Partial<World> as World;
+    w.sect.halls.law = 0; w.sect.halls.herb = 2;
+    delete (w.sect as Partial<World['sect']>).works;
+    const m = migrate(JSON.parse(JSON.stringify(w)));
+    expect(m.sect.halls.law).toBe(1);
+    expect(m.sect.halls.herb).toBe(3);
+    expect(m.sect.works).toEqual([]);
   });
 });

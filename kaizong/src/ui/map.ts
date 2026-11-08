@@ -15,10 +15,23 @@ const SKY = [
   ['#24304d', '#7d93b8', '#dfe7f2'], // 冬
 ];
 
-function hallSvg(x: number, y: number, name: string, lv: number, hot: boolean) {
-  const s = 0.85 + lv * 0.12;
+/** 空地：一圈虚线和木桩；在建：再搭上脚手架 */
+function plotSvg(x: number, y: number, name: string, building: boolean) {
   const X = x * 1000, Y = y * 620;
-  const lanterns = Array.from({ length: lv }, (_, i) => `<circle cx="${-18 + i * 18}" cy="2" r="3" fill="#ffb347" class="lantern"/>`).join('');
+  const scaffold = building ? `<path d="M-24 22 V-6 M24 22 V-6 M-24 -6 H24 M-24 8 H24 M-24 22 L0 -6 L24 22" stroke="#c9a36b" stroke-width="2.4" fill="none"/><rect x="-20" y="10" width="40" height="12" fill="#efe2c8" opacity=".55"/>` : '';
+  return `<g transform="translate(${X},${Y}) scale(0.85)" class="hall plot${building ? ' building' : ''}">
+    <ellipse cx="0" cy="22" rx="40" ry="9" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="2" stroke-dasharray="6 5"/>
+    <path d="M-30 22 v-8 M30 22 v-8 M0 31 v-8" stroke="rgba(239,226,200,.55)" stroke-width="3" stroke-linecap="round"/>
+    ${scaffold}
+    <rect x="-42" y="31" width="84" height="22" rx="11" fill="rgba(15,18,32,.62)" stroke="rgba(232,195,114,.3)"/>
+    <text x="0" y="47.5" text-anchor="middle" class="hall-name dim">${esc(name)}${building ? '·在建' : '·空地'}</text>
+  </g>`;
+}
+
+function hallSvg(x: number, y: number, name: string, lv: number, hot: boolean) {
+  const s = 0.85 + (lv - 1) * 0.12;
+  const X = x * 1000, Y = y * 620;
+  const lanterns = Array.from({ length: lv - 1 }, (_, i) => `<circle cx="${-18 + i * 18}" cy="2" r="3" fill="#ffb347" class="lantern"/>`).join('');
   return `<g transform="translate(${X},${Y}) scale(${s})" class="hall${hot ? ' hot' : ''}">
     <ellipse cx="0" cy="26" rx="46" ry="8" fill="#000" opacity=".18"/>
     <rect x="-28" y="-2" width="56" height="26" rx="2" fill="#efe2c8"/>
@@ -33,7 +46,11 @@ function hallSvg(x: number, y: number, name: string, lv: number, hot: boolean) {
 export function mapView(w: World): string {
   const [top, mid, low] = SKY[w.t % 4];
   const snow = w.t % 4 === 3;
-  const halls = HALLS.map((h) => hallSvg(h.x, h.y, h.name, w.sect.halls[h.id], false)).join('');
+  const halls = HALLS.map((h) => {
+    const lv = w.sect.halls[h.id];
+    const building = w.sect.works.some((x) => x.hall === h.id);
+    return lv > 0 ? hallSvg(h.x, h.y, h.name, lv, building) : plotSvg(h.x, h.y, h.name, building);
+  }).join('');
   const svg = `<svg class="map-svg" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
     <defs>
       <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset=".55" stop-color="${mid}"/><stop offset="1" stop-color="${low}"/></linearGradient>

@@ -35,19 +35,30 @@ export function randomStart(seed: number): StartChoice {
   };
 }
 
+/** 出身和传承由天定：开宗那一刻按种子投出来，不能重投 */
+export function rollFate(seed: number): Pick<StartChoice, 'origin' | 'heritage'> {
+  const r = makeRng(seed ^ 0x2c1b3c6d);
+  return {
+    origin: r.weighted<StartChoice['origin']>([['sword', 26], ['alchemist', 24], ['array', 22], ['renegade', 16], ['demon', 12]])!,
+    heritage: r.pick(['sword', 'herb', 'mind', 'trade'] as const),
+  };
+}
+
 export function newWorld(c: StartChoice): World {
   const r = makeRng(c.seed);
   const w: World = {
     v: 1, seed: c.seed, rng: 0, t: 0, me: '', people: {}, members: [], candidates: [], rivals: [], war: null, decisions: [], report: [], history: [], acts: [],
-    needPolicy: true, needTech: true, over: null, nextId: 1, endYear: c.endYear ?? 10, pairings: {}, misdeeds: [], offers: {},
+    needPolicy: true, needTech: false, over: null, nextId: 1, endYear: c.endYear ?? 10, pairings: {}, misdeeds: [], offers: {},
     annals: [], alumni: [], stats: { warsWon: 0, warsLost: 0, credited: 0, breaks: 0, missionsDone: 0, missionsFailed: 0 }, delta: {},
     masterPlan: { act: 'seclude' }, missions: [], expeditions: [], tier: 0, goal: null, goalOffers: [], needGoal: true, yearStart: null, lastYear: null,
     sect: {
       name: c.sectName, site: c.site, origin: c.origin, heritage: c.heritage,
-      stones: 320 + (c.heritage === 'trade' ? 150 : 0) + (c.site === 'vein' ? 80 : c.site === 'deep' ? -60 : 0),
+      // 殿堂要自己建，开局多给些灵石
+      stones: 420 + (c.heritage === 'trade' ? 150 : 0) + (c.site === 'vein' ? 80 : c.site === 'deep' ? -60 : 0),
       herbs: 30, pills: c.origin === 'alchemist' ? 30 : 8, fpills: c.origin === 'alchemist' ? 1 : 0, armory: c.origin === 'array' ? 40 : 0,
       rep: c.origin === 'renegade' ? 30 : 20, authority: 50, align: c.origin === 'demon' ? -35 : 20, veins: 2,
-      halls: { herb: 0, alchemy: 0, forge: 0, teach: 0, law: 0, diplomacy: 0, recruit: 0, guard: 0 },
+      // 开局只有灵植园和巡山队；丹师自己带着一座丹房
+      halls: { herb: 1, alchemy: c.origin === 'alchemist' ? 1 : 0, forge: 0, teach: 0, law: 0, diplomacy: 0, recruit: 0, guard: 1 }, works: [],
       tech: [{ sword: 'sword_array', alchemist: 'pill_hall', array: 'guard_array', renegade: 'technique_2', demon: 'blood_art' }[c.origin]],
       policy: null, pillRule: 'merit', ledger: {},
     },
@@ -76,12 +87,15 @@ export function newWorld(c: StartChoice): World {
     addLife(w, p, `跟着${m.name}开山，成了${c.sectName}的开山弟子`, 'good', true);
   }
   const founders = w.members.map((id) => w.people[id]).filter((p) => p.id !== m.id);
-  // 开山弟子先按最合适的活安排好，玩家再调
-  const open: HallId[] = ['herb', 'alchemy', 'guard'];
+  // 开山弟子先按最合适的活安排到已有的殿堂，玩家再调
+  const room: Partial<Record<HallId, number>> = {};
+  for (const h of Object.keys(w.sect.halls) as HallId[]) if (w.sect.halls[h] > 0) room[h] = 2;
   for (const p of founders) {
+    const open = (Object.keys(room) as HallId[]).filter((h) => room[h]! > 0);
     const best = open.sort((a, b) => fit(p, b) - fit(p, a))[0];
+    if (!best) break;
     p.job = best;
-    open.splice(open.indexOf(best), 1);
+    room[best]! -= 1;
   }
   for (const a of founders) for (const b of founders) if (a !== b) adjust(a, b.id, r.int(5, 30));
   for (const p of founders) p.wish = ruleWish(w, r, p);

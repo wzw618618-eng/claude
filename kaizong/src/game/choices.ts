@@ -73,7 +73,7 @@ export function choicesFor(w: World, p: Person, ctx: Ctx): Choice[] {
   const sinner = w.misdeeds.find((m) => m.who !== p.id && w.t - m.t <= 1 && P(w, m.who)?.job === p.job);
   if (sinner) add({ kind: 'report', target: sinner.who, label: `向宗主告发${nm(w, sinner.who)}${sinner.what}`, score: D('order') * 0.8 + p.values.justice * 1.5 - D('kindness') * 0.3 + (op(p, sinner.who).aff < 0 ? 1 : 0) });
   const want = (wish?.kind === 'post' ? wish.param as HallId : null) ?? (p.dislikes.includes(p.job) ? (p.likes.find((j) => j in HALL) as HallId | undefined) : undefined);
-  if (want && want !== p.job) add({ kind: 'request_post', hall: want, label: `求宗主把自己调去${HALL[want].name}`, score: (p.dislikes.includes(p.job) ? 2 : 0) + (wish?.kind === 'post' ? 1.5 : 0) + D('courage') * 0.2 });
+  if (want && want !== p.job && w.sect.halls[want] > 0) add({ kind: 'request_post', hall: want, label: `求宗主把自己调去${HALL[want].name}`, score: (p.dislikes.includes(p.job) ? 2 : 0) + (wish?.kind === 'post' ? 1.5 : 0) + D('courage') * 0.2 });
   const nr = nextRank(p.rank);
   if (nr && p.rank !== 'probation' && lvl(p) >= RANK_EXPECT[nr]) add({ kind: 'request_rank', label: `觉得自己该当${RANK_NAME[nr]}了，去找宗主说`, score: D('ambition') * 0.8 + p.grudge / 30 + (wish?.kind === 'rank' ? 1.5 : 0) + D('pride') * 0.2 });
 

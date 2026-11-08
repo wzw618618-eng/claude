@@ -10,6 +10,11 @@ export function migrate(w: World): World {
   w.stats ??= { warsWon: 0, warsLost: 0, credited: 0, breaks: 0, missionsDone: 0, missionsFailed: 0 };
   w.stats.breaks ??= 0; w.stats.missionsDone ??= 0; w.stats.missionsFailed ??= 0;
   w.delta ??= {};
+  // 旧版本的殿堂开局就全有（等级 0–3），换成现在的 1–4
+  if (!w.sect.works) {
+    for (const h of Object.keys(w.sect.halls) as (keyof typeof w.sect.halls)[]) w.sect.halls[h] += 1;
+    w.sect.works = [];
+  }
   w.masterPlan ??= { act: 'seclude' };
   w.missions ??= [];
   w.expeditions ??= [];

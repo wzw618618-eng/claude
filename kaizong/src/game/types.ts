@@ -281,7 +281,10 @@ export interface Sect {
   /** 正邪：-100 魔道 … 100 正道 */
   align: number;
   veins: number;
+  /** 殿堂等级：0 空地，1 刚建成 … 4 最高 */
   halls: Record<HallId, number>;
+  /** 在建的工程：done 是完工那一季 */
+  works: { hall: HallId; to: number; done: number }[];
   tech: string[];
   policy: string | null;
   /** 丹药怎么分 */

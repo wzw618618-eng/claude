@@ -12,6 +12,7 @@ import { newWorld, randomStart } from '../src/game/setup';
 import type { HallId, World } from '../src/game/types';
 import { endWar, fightRound, healTeam } from '../src/game/war';
 import { lacks, me, members, rngOf, year } from '../src/game/world';
+import { buildBlock, isBuilt, nextStep, startWork } from '../src/game/build';
 import { atBottleneck } from '../src/game/cult';
 import { chooseGoal } from '../src/game/goals';
 import { MASTER_ACTS, setMasterPlan } from '../src/game/master';
@@ -61,7 +62,7 @@ function smartManage(w: World) {
   // 安排岗位：每个殿堂挑最合适的人
   const order: HallId[] = ['herb', 'alchemy', 'guard', 'teach', 'diplomacy', 'law', 'recruit', 'forge'];
   const free = () => members(w).filter((p) => p.job === 'none');
-  for (const h of order) {
+  for (const h of order.filter((x) => isBuilt(w, x))) {
     while (hallMembers(w, h).length < Math.min(hallCap(w, h), 2) && free().length) {
       const best = free().sort((a, b) => fit(b, h) - fit(a, h))[0];
       assignJob(w, best, h);
@@ -89,7 +90,14 @@ function smartManage(w: World) {
   }
   holdTourney(w);
   // 升级殿堂
-  for (const h of ['herb', 'alchemy', 'guard', 'teach', 'law'] as HallId[]) if (w.sect.stones > (NEW ? 280 : 500) && w.sect.halls[h] < 2) { w.sect.stones -= [80, 200, 450][w.sect.halls[h]]; w.sect.halls[h]++; }
+  // 营造：先把缺的殿堂建起来，再扩建要紧的；手里留点灵石发月例
+  const plan: [HallId, number][] = [['alchemy', 1], ['recruit', 1], ['forge', 1], ['diplomacy', 1], ['guard', 2], ['herb', 2], ['law', 1], ['teach', 1], ['alchemy', 2], ['forge', 2], ['teach', 2], ['herb', 3], ['guard', 3], ['alchemy', 3], ['diplomacy', 2], ['law', 2]];
+  for (const [h, lv] of plan) {
+    if (w.sect.halls[h] >= lv) continue;
+    const step = nextStep(w, h);
+    if (step && w.sect.stones >= step.cost + 120 && !buildBlock(w, h)) startWork(w, h);
+    break;
+  }
   // 和气的宗门送礼
   for (const rv of w.rivals) if (rv.alive && !rv.passive && rv.status !== 'war' && rv.attitude < -25 && w.sect.stones >= 120) diplomacy(w, rv, 'gift');
   // 裁决
@@ -105,8 +113,10 @@ function randomManage(w: World) {
   if (NEW) randomNew(w);
   const r = rngOf(w);
   for (const c of [...w.candidates]) if (r.chance(0.5)) admit(w, r, c, 'outer'); else dismiss(w, c);
-  for (const p of members(w)) if (p.job === 'none' || r.chance(0.2)) assignJob(w, p, r.pick(HALLS).id);
-  for (const h of HALLS) if (!hallHead(w, h.id) && r.chance(0.5)) { const c = r.pick(members(w)); if (c) setHead(w, h.id, c); }
+  const open = HALLS.filter((h) => isBuilt(w, h.id));
+  for (const p of members(w)) if (p.job !== 'travel' && (p.job === 'none' || r.chance(0.2))) assignJob(w, p, r.pick(open).id);
+  for (const h of open) if (!hallHead(w, h.id) && r.chance(0.5)) { const c = r.pick(members(w).filter((p) => p.job !== 'travel')); if (c) setHead(w, h.id, c); }
+  if (r.chance(0.3)) { const h = r.pick(HALLS).id; if (!buildBlock(w, h)) startWork(w, h); }
   if (w.needPolicy) choosePolicy(w, r.pick(POLICIES).id);
   if (w.needTech) { const t = TECHS.filter((x) => canLearn(w, x.id)); if (t.length) learnTech(w, r.pick(t).id); }
   for (const d of [...w.decisions]) resolveDecision(w, r, d.id, r.pick(d.options).id);
@@ -133,6 +143,7 @@ function playWar(w: World) {
 
 const stats = { rivalNascent: 0, tier: 0, goals: 0, mOk: 0, mFail: 0, nascent: 0, survived: 0, wiped: 0, members: 0, found: 0, core: 0, wars: 0, warWins: 0, defect: 0, deaths: 0, credited: 0, fulfilled: 0, acts: new Map<string, number>(), uniqueActsPerPerson: 0, persons: 0, stones: 0, years: 0 };
 const t0 = Date.now();
+const byOrigin = new Map<string, [number, number]>();
 for (let g = 0; g < N; g++) {
   const w = newWorld({ ...randomStart(1000 + g), endYear: 10 });
   let guard = 0;
@@ -160,6 +171,8 @@ for (let g = 0; g < N; g++) {
     for (const id of before) if (!w.members.includes(id) && w.people[id].alive && w.people[id].sect && w.people[id].sect !== 'me') stats.defect++;
   }
   if (w.over?.win) stats.survived++; else stats.wiped++;
+  const o = byOrigin.get(w.sect.origin) ?? [0, 0];
+  byOrigin.set(w.sect.origin, [o[0] + (w.over?.win ? 1 : 0), o[1] + 1]);
   const ms = members(w);
   stats.members += ms.length;
   stats.found += ms.filter((p) => p.realm >= 1).length;
@@ -183,4 +196,5 @@ console.log(`宗门战 ${avg(stats.wars)} 场/局，胜率 ${stats.wars ? (stats
 console.log(`心愿得偿 ${avg(stats.fulfilled)} 次/局，其中记在宗主头上 ${avg(stats.credited)} 次`);
 console.log(`品阶 ${avg(stats.tier)}，大计成了 ${avg(stats.goals)} 年/局，任务成 ${avg(stats.mOk)} 败 ${avg(stats.mFail)}，宗主到元婴 ${(stats.nascent / N * 100).toFixed(0)}%，敌宗宗主到元婴 ${avg(stats.rivalNascent)} 个/局`);
 console.log(`每人十年里做过 ${(stats.uniqueActsPerPerson / Math.max(1, stats.persons)).toFixed(1)} 种不同的事`);
+console.log('按出身撑满十年：', [...byOrigin].map(([k, [a, n]]) => `${k} ${(a / n * 100).toFixed(0)}%（${n}局）`).join('，'));
 console.log('各种做法的次数：', [...stats.acts].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join('，'));

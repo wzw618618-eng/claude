@@ -97,7 +97,7 @@ const KINDS: Record<string, Kind> = {
     about: (x) => [String(x.who)],
     apply(w, _r, x, o) {
       const p = who(w, x);
-      if (o === 'yes') { assignJob(w, p, x.hall as HallId); p.mood = clamp(p.mood + 10, 0, 100); adjust(p, w.me, 5); }
+      if (o === 'yes' && w.sect.halls[x.hall as HallId] > 0) { assignJob(w, p, x.hall as HallId); p.mood = clamp(p.mood + 10, 0, 100); adjust(p, w.me, 5); }
       else { p.grudge = clamp(p.grudge + 8, 0, 100); adjust(p, w.me, -4); }
     },
   },

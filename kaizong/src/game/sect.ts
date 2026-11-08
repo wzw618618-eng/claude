@@ -90,6 +90,8 @@ export function doWork(w: World, r: Rng, unc: Unconvinced[]): Work {
   const work: Work = { cultBonus: 1, lawPower: 0, recruitPower: 0, guardPower: 0, byHall: {} as Record<HallId, number> };
   const notConvinced = new Set(unc.filter((u) => u.why === 'head').map((u) => u.who));
   for (const h of HALLS) {
+    // 还没建的殿堂没人干活
+    if (!s.halls[h.id]) { work.byHall[h.id] = 0; continue; }
     const head = hallHead(w, h.id);
     const crew = hallMembers(w, h.id).slice(0, hallCap(w, h.id));
     if (head && head.id !== w.me && !crew.includes(head)) crew.push(head);

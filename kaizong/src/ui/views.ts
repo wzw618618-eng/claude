@@ -4,7 +4,8 @@ import type { AiConfig, Meter } from '../ai/config';
 import { money } from '../ai/config';
 import { atBottleneck, breakChance, lifespan, lvl, need, power, REALM_NAME, realmText, ROOT_NAME, yearsLeft } from '../game/cult';
 import { TRAIT } from '../game/data/traits';
-import { HALL, HALL_CAP, HALL_COST, HALLS, HERITAGES, JOB_NAME, ORIGINS, POLICIES, POLICY, RANK_NAME, rankLv, SITES, SKILL_NAME, SKILLS, TECHS, UPKEEP, VALUE_NAME, VALUES } from '../game/data/world';
+import { BUILD, buildBlock, doneText, isBuilt, MAX_LV, nextStep, workOn } from '../game/build';
+import { HALL, HALL_CAP, HALLS, HERITAGES, JOB_NAME, ORIGINS, POLICIES, POLICY, RANK_NAME, rankLv, SITES, SKILL_NAME, SKILLS, TECHS, UPKEEP, VALUE_NAME, VALUES } from '../game/data/world';
 import { acceptChance, ROOT_COST, visibleFacts, WANT_TEXT } from '../game/recruit';
 import { MOVE_NAME, rivalStrength } from '../game/rivals';
 import { breakOptions } from '../game/decisions';
@@ -84,18 +85,16 @@ export function setupView(ui: Ui) {
     `<div class="choice-row">${opts.map((o) => `<button class="choice${o.id === v ? ' on' : ''}" data-act="setup-pick" data-id="${name}" data-v="${o.id}"><b>${esc(o.name)}</b><span>${esc(o.desc)}</span></button>`).join('')}</div>`;
   return `<main class="setup">
     <h2 class="sec-title">开宗立派</h2>
-    <p class="muted">每一项都有利有弊。拿不定主意就让天意来定。</p>
+    <p class="muted">只有一件大事要你来定：山门立在哪。你的出身、宗门的传承由天定，开宗之后揭晓。</p>
     <div class="form-row">
       <label>宗门名<input data-field="sectName" value="${esc(c.sectName)}" maxlength="6"></label>
       <label>宗主道号<input data-field="masterName" value="${esc(c.masterName)}" maxlength="6"></label>
       <label>宗主<select data-field="gender"><option value="m"${c.gender === 'm' ? ' selected' : ''}>男</option><option value="f"${c.gender === 'f' ? ' selected' : ''}>女</option></select></label>
     </div>
-    <h3>山门选址</h3>${pick('site', SITES, c.site)}
-    <h3>你的出身</h3>${pick('origin', ORIGINS, c.origin)}
-    <h3>宗门传承</h3>${pick('heritage', HERITAGES, c.heritage)}
+    <h3>山门立在哪</h3>${pick('site', SITES, c.site)}
     <div class="setup-btns">
       <button class="btn ghost" data-act="back-title">返回</button>
-      <button class="btn" data-act="setup-random">天意（随机）</button>
+      <button class="btn" data-act="setup-random">换个名字</button>
       <button class="btn primary big" data-act="start">开宗</button>
     </div>
   </main>`;
@@ -240,12 +239,12 @@ function guideView(w: World) {
   if (w.guideOff || w.t >= 4) return '';
   const ms = members(w);
   const steps: { done: boolean; text: string; act: string; id?: string }[] = [
-    { done: !w.needPolicy && !w.needTech && !w.needGoal, text: '开春：定今年的大计和方略，点一格传承', act: 'open-year' },
+    { done: !w.needPolicy && !w.needTech && !w.needGoal, text: `开春：定今年的大计和方略${w.t === 0 ? '' : '，点一格传承'}`, act: 'open-year' },
     { done: w.alumni.length > 4, text: '在「招募」里收一两个弟子：测测灵根、考考才干，看准了再收', act: 'tab', id: 'recruit' },
     { done: ms.length > 0 && ms.every((p) => p.job !== 'none') && HALLS.some((h) => hallHead(w, h.id)), text: '在「人事」里给每个人派差事，再挑个修为高的当主事', act: 'tab', id: 'staff' },
     { done: ms.some((p) => p.talked), text: '点开一个弟子，「召见」他问问近况（每季能见三个人）', act: 'tab', id: 'people' },
     { done: w.expeditions.length > 0 || w.stats.missionsDone + w.stats.missionsFailed > 0, text: '在「任务」里挑一两个人出去办件差事', act: 'tab', id: 'mission' },
-    { done: w.masterPlan.act !== 'seclude' || w.t >= 1, text: '想想宗主自己这一季做什么：闭关、亲传、坐镇……', act: 'open-master' },
+    { done: w.sect.works.length > 0 || HALLS.filter((h) => isBuilt(w, h.id)).length > 3, text: '在「宗门」里动工建一座新殿堂（迎客堂、丹房……）', act: 'tab', id: 'sect' },
     { done: w.t >= 1, text: '处理完待裁决的事，点「过季」，看弟子们自己拿主意', act: 'advance' },
   ];
   if (steps.every((x) => x.done)) return '';
@@ -295,13 +294,36 @@ function staffTab(w: World) {
   return `<p class="fine">把人放到合适、他也愿意干的岗位上。修为高的人屈居人下会不服；修为低的人坐高位，下面的人也不服。</p>
     ${unc.length ? `<div class="warn"><b>谁不服谁：</b>${unc.slice(0, 6).map((u) => `${esc(nm(w, u.who))}不服${esc(nm(w, u.over))}`).join('；')}</div>` : ''}
     ${free.length ? `<div class="idle"><b>闲着的人：</b>${free.map((p) => `<button class="chip" data-act="person" data-id="${p.id}">${esc(p.name)}</button>`).join('')}</div>` : ''}
-    <div class="halls">${HALLS.map((h) => hallCard(w, h.id, ps)).join('')}
+    <div class="halls">${HALLS.filter((h) => isBuilt(w, h.id)).map((h) => hallCard(w, h.id, ps)).join('')}
       ${specialCard(w, 'seclude', '闭关', '全力修炼，不干活')}
     </div>
+    ${HALLS.some((h) => !isBuilt(w, h.id)) ? `<h3 class="h">还没建的殿堂</h3><div class="halls">${HALLS.filter((h) => !isBuilt(w, h.id)).map((h) => emptyCard(w, h.id)).join('')}</div>` : ''}
     <div class="pill-rule"><b>丹药怎么分</b>
       <select data-act="pill-rule">${([['merit', '按功劳'], ['talent', '按资质'], ['equal', '雨露均沾'], ['core', '只给真传以上']] as const).map(([k, n]) => `<option value="${k}"${w.sect.pillRule === k ? ' selected' : ''}>${n}</option>`).join('')}</select>
       <small>每季每人一颗，修炼快两成半。没分到的人如果善妒会眼红。</small></div>`;
 }
+
+/** 营造按钮：新建或扩建 */
+function buildBtn(w: World, h: HallId, cls = 'xs') {
+  const job = workOn(w, h);
+  if (job) return `<span class="fine building">在建 · ${esc(doneText(w, job.done))}</span>`;
+  const step = nextStep(w, h);
+  if (!step) return '<span class="fine">已最高</span>';
+  const no = buildBlock(w, h);
+  return `<button class="btn ${cls}" data-act="build" data-id="${h}"${no ? ' disabled' : ''}>${step.to === 1 ? '建造' : '扩建'}（${step.cost}灵石，${step.seasons === 1 ? '一季' : '两季'}）${no && !no.startsWith('灵石不够') ? `<small>${esc(no)}</small>` : ''}</button>`;
+}
+
+function emptyCard(w: World, h: HallId) {
+  const d = HALL[h];
+  const need = BUILD[h].need?.(w);
+  return `<article class="hall-card empty" id="hall-${h}">
+    <header><h4>${d.name}<small>空地</small></h4><span class="fine">${esc(d.desc)} · 看${SKILL_NAME[d.skill]}${d.skill2 ? `、${SKILL_NAME[d.skill2]}` : ''}</span></header>
+    ${need ? `<p class="fine bad-t">条件：${esc(need)}</p>` : ''}
+    <div>${buildBtn(w, h, 'sm')}</div>
+  </article>`;
+}
+
+const stars = (lv: number) => `${'★'.repeat(Math.max(0, lv - 1))}${'☆'.repeat(MAX_LV - Math.max(1, lv))}`;
 
 function hallCard(w: World, h: HallId, ps: Person[]) {
   const d = HALL[h];
@@ -311,11 +333,11 @@ function hallCard(w: World, h: HallId, ps: Person[]) {
   const out = w.sect.ledger;
   const candidates = ps.filter((p) => p.job !== h && p.job !== 'travel').sort((a, b) => fit(b, h) - fit(a, h));
   return `<article class="hall-card" id="hall-${h}">
-    <header><h4>${d.name}<small>${'★'.repeat(w.sect.halls[h])}${'☆'.repeat(3 - w.sect.halls[h])}</small></h4><span class="fine">${esc(d.desc)} · 看${SKILL_NAME[d.skill]}${d.skill2 ? `、${SKILL_NAME[d.skill2]}` : ''}</span></header>
+    <header><h4>${d.name}<small>${stars(w.sect.halls[h])}</small></h4><span class="fine">${esc(d.desc)} · 看${SKILL_NAME[d.skill]}${d.skill2 ? `、${SKILL_NAME[d.skill2]}` : ''}</span></header>
     <div class="head-row"><span>主事：</span>${head ? `<button class="chip ${underqualified(head) ? 'bad' : ''}" data-act="person" data-id="${head.id}">${esc(head.name)}<small>${esc(realmText(head))}</small></button>` : '<span class="muted">空缺</span>'}
       <select data-act="set-head" data-id="${h}"><option value="">${head ? '换人…' : '任命…'}</option>${crew.concat(ps.filter((p) => !crew.includes(p) && p !== head && p.job !== 'travel')).slice(0, 30).map((p) => `<option value="${p.id}">${esc(p.name)}（${esc(realmText(p))}，${fitWord(p, h).text}）</option>`).join('')}${head ? '<option value="-">撤掉主事</option>' : ''}</select></div>
     <ul class="crew">${crew.filter((p) => p !== head).map((p) => { const f = fitWord(p, h); return `<li><button class="chip ${f.tone}" data-act="person" data-id="${p.id}">${esc(p.name)}<small>${esc(f.text)}</small></button><button class="x" data-act="unassign" data-id="${p.id}" title="撤下">×</button></li>`; }).join('')}</ul>
-    ${crew.length < cap ? `<select data-act="assign" data-id="${h}"><option value="">＋ 安排人（${crew.length}/${cap}）</option>${candidates.slice(0, 30).map((p) => `<option value="${p.id}">${esc(p.name)}：${fitWord(p, h).text}${p.job !== 'none' ? `（现在${JOB_NAME[p.job]}）` : ''}</option>`).join('')}</select>` : `<p class="fine">满员（${cap}人）。升级殿堂能多放人。</p>`}
+    ${crew.length < cap ? `<select data-act="assign" data-id="${h}"><option value="">＋ 安排人（${crew.length}/${cap}）</option>${candidates.slice(0, 30).map((p) => `<option value="${p.id}">${esc(p.name)}：${fitWord(p, h).text}${p.job !== 'none' ? `（现在${JOB_NAME[p.job]}）` : ''}</option>`).join('')}</select>` : `<p class="fine">满员（${cap}人）。${buildBtn(w, h)}</p>`}
     ${h === 'herb' && out.herbs ? `<p class="fine">上季产灵草 ${n0(out.herbs)}</p>` : ''}${h === 'alchemy' && out.pills ? `<p class="fine">上季出丹 ${n0(out.pills)}${out.fpills ? `，筑基丹 ${out.fpills}` : ''}</p>` : ''}${h === 'diplomacy' && out.trade ? `<p class="fine">上季赚灵石 ${n0(out.trade)}</p>` : ''}
   </article>`;
 }
@@ -462,7 +484,8 @@ function sectTab(w: World) {
     <h3 class="h">传承</h3>
     <div class="tree">${branches.map((b) => `<div class="branch"><b>${b}</b>${TECHS.filter((t) => t.branch === b).map((t) => `<span class="node ${s.tech.includes(t.id) ? 'have' : canLearn(w, t.id) ? 'can' : 'lock'}" title="${esc(t.desc)}">${esc(t.name)}<small>${esc(t.desc)}</small></span>`).join('')}</div>`).join('')}</div>
     <h3 class="h">殿堂</h3>
-    <div class="up-list">${HALLS.map((h) => { const lv = s.halls[h.id]; return `<div class="up"><span>${h.name} ${'★'.repeat(lv)}${'☆'.repeat(3 - lv)}<small>可放 ${HALL_CAP[lv]} 人</small></span>${lv < 3 ? `<button class="btn xs" data-act="upgrade" data-id="${h.id}">扩建（${HALL_COST[lv]}灵石）</button>` : '<span class="fine">已最高</span>'}</div>`; }).join('')}</div>
+    <p class="fine">殿堂要一座座建：花灵石，过一两季落成。工匠有限，同时只能建 ${s.works.length ? `${s.works.length}/` : ''}${w.tier >= 2 ? 2 : 1} 处${w.tier >= 2 ? '' : '（中品宗门以后两处）'}。</p>
+    <div class="up-list">${HALLS.map((h) => { const lv = s.halls[h.id]; return `<div class="up${lv ? '' : ' empty'}"><span>${h.name} ${lv ? stars(lv) : ''}<small>${lv ? `可放 ${HALL_CAP[lv]} 人` : '空地'}</small></span>${buildBtn(w, h.id)}</div>`; }).join('')}</div>
     <h3 class="h">宗门大比</h3>
     <p class="fine">按实力排座次，一年内大家都认这个排名，最能服众。要演武场，花 60 灵石，每年一次。</p>
     <button class="btn" data-act="tourney" ${s.tech.includes('arena') && s.tourneyYear !== year(w.t) ? '' : 'disabled'}>办宗门大比</button>
@@ -558,7 +581,7 @@ function personModal(w: World, p: Person, cfg: AiConfig) {
       ${ties.length ? `<h4>人情</h4><ul class="ties">${ties.map(([id, o]) => `<li><button class="link" data-act="person" data-id="${id}">${esc(nm(w, id))}</button>${o.tag ? `<span class="tag">${TAG_NAME[o.tag]}</span>` : ''}<span class="${o.aff >= 0 ? 'good-t' : 'bad-t'}">${o.aff >= 50 ? '很亲近' : o.aff >= 25 ? '有好感' : o.aff <= -50 ? '很厌恶' : '不喜欢'}</span></li>`).join('')}</ul>` : ''}
       ${mine && !isMe ? `<h4>宗主的安排</h4><div class="acts">
         <button class="btn sm" data-act="star" data-id="${p.id}">${p.starred ? '取消标记' : '★ 标记'}</button>
-        ${p.job === 'travel' ? '' : `<select data-act="p-job" data-id="${p.id}"><option value="">调岗…</option>${[...HALLS.map((h) => h.id), 'seclude', 'none'].map((j) => `<option value="${j}">${JOB_NAME[j as HallId]}${j in HALL ? `（${fitWord(p, j as HallId).text}）` : ''}</option>`).join('')}</select>`}
+        ${p.job === 'travel' ? '' : `<select data-act="p-job" data-id="${p.id}"><option value="">调岗…</option>${[...HALLS.filter((h) => isBuilt(w, h.id)).map((h) => h.id), 'seclude', 'none'].map((j) => `<option value="${j}">${JOB_NAME[j as HallId]}${j in HALL ? `（${fitWord(p, j as HallId).text}）` : ''}</option>`).join('')}</select>`}
         <select data-act="p-rank" data-id="${p.id}"><option value="">身份…</option>${(['probation', 'outer', 'inner', 'core', 'chief', 'elder'] as const).filter((r) => r !== p.rank).map((r) => `<option value="${r}">${RANK_NAME[r]}</option>`).join('')}</select>
         <button class="btn sm" data-act="vouch" data-id="${p.id}" title="花 5 点宗主威望">当众撑腰</button>
         <button class="btn sm" data-act="gift-pill" data-id="${p.id}" title="3 颗丹药">赏丹</button>
@@ -574,6 +597,7 @@ function yearModal(w: World) {
   const s = w.sect;
   const ly = w.lastYear;
   return `<h3 class="sec-title">第${year(w.t)}年 · 开春</h3>
+    ${w.t === 0 ? openingBlock(w) : ''}
     ${ly ? `<section class="review"><h4>第${ly.year}年回顾</h4>
       ${ly.goal ? `<p class="${ly.goal.ok ? 'good-t' : 'bad-t'}">大计「${esc(ly.goal.text)}」${ly.goal.ok ? `成了，得${esc(ly.goal.reward)}` : '没成'}</p>` : ''}
       <div class="end-nums">${ly.lines.map(([k, v]) => `<div><em>${esc(k)}</em><b>${esc(v)}</b></div>`).join('')}</div></section>` : ''}
@@ -583,6 +607,20 @@ function yearModal(w: World) {
     ${w.needPolicy ? `<p class="muted">今年宗门主攻哪个方向？选中的方向全年有加成，也会影响弟子们的心态。</p>
     <div class="choice-row">${POLICIES.map((p) => `<button class="choice" data-act="policy" data-id="${p.id}"><b>${p.name}</b><span>${esc(p.desc)}</span></button>`).join('')}</div>` : `<p>今年方略：<b>${POLICY[s.policy!].name}</b></p>`}
     ${w.needTech ? `<h3>点一格传承</h3><div class="choice-row">${TECHS.filter((t) => canLearn(w, t.id)).map((t) => `<button class="choice${t.align ? ' evil' : ''}" data-act="tech" data-id="${t.id}"><b>${t.branch} · ${t.name}</b><span>${esc(t.desc)}</span></button>`).join('')}</div>` : ''}`;
+}
+
+/** 开宗头一个春天：天定的出身、传承，和亲手选的山门 */
+function openingBlock(w: World) {
+  const s = w.sect;
+  const o = ORIGINS.find((x) => x.id === s.origin), h = HERITAGES.find((x) => x.id === s.heritage), site = SITES.find((x) => x.id === s.site);
+  const built = HALLS.filter((x) => isBuilt(w, x.id)).map((x) => x.name).join('、');
+  return `<section class="review"><h4>天定的来历</h4>
+    <div class="end-nums fate-nums">
+      <div><em>你的出身</em><b>${esc(o?.name)}</b><small>${esc(o?.desc)}</small></div>
+      <div><em>宗门传承</em><b>${esc(h?.name)}</b><small>${esc(h?.desc)}</small></div>
+      <div><em>山门</em><b>${esc(site?.name)}</b><small>${esc(site?.desc)}</small></div>
+    </div>
+    <p class="fine">山上眼下只有${esc(built)}。其余殿堂要在「宗门」里花灵石一座座建起来。</p></section>`;
 }
 
 function warModal(w: World) {
