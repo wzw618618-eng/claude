@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMeter, type AiConfig } from '../src/ai/config';
 import { choicesFor } from '../src/game/choices';
 import { atBottleneck, need } from '../src/game/cult';
-import { addDecision, breakNow, resolveDecision } from '../src/game/decisions';
+import { addDecision, BREAK_DAYS, breakNow, finishBreaks, resolveDecision } from '../src/game/decisions';
 import { epilogue } from '../src/game/ending';
 import { admit } from '../src/game/recruit';
 import { migrate } from '../src/game/save';
@@ -17,7 +17,7 @@ import { gameView, type Ui } from '../src/ui/views';
 
 const fresh = (seed = 7): World => newWorld({ ...randomStart(seed), site: 'deep', origin: 'sword', heritage: 'mind' });
 const offline: AiConfig = { kind: 'offline', apiKey: '', mode: 'normal' };
-const ui = (over: Partial<Ui> = {}): Ui => ({ screen: 'game', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: true, team: {}, ...over });
+const ui = (over: Partial<Ui> = {}): Ui => ({ screen: 'game', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: true, team: {}, drawer: null, speed: 1, letter: null, hold: false, pauseOn: 'big', ...over });
 
 /** 收一个奸细进门 */
 function plantSpy(w: World): Person {
@@ -95,6 +95,12 @@ describe('冲关', () => {
     expect(breakNow(w, rngOf(w), p, 'pill')).toContain('筑基丹不够');
     expect(breakNow(w, rngOf(w), p, 'go')).toBeNull();
     expect(w.decisions.some((d) => d.kind === 'breakthrough')).toBe(false);
+    // 进洞闭关，过些日子才出结果
+    expect(p.breaking).toBeDefined();
+    expect(p.realm).toBe(0);
+    w.day += BREAK_DAYS;
+    finishBreaks(w, rngOf(w));
+    expect(p.breaking).toBeUndefined();
     expect(p.realm === 1 || p.fails === 1).toBe(true);
   });
 });

@@ -11,9 +11,13 @@ if (process.argv.includes('--sim')) {
 } else {
   const out = await build({
     entryPoints: ['src/main.ts'], bundle: true, format: 'iife', target: 'es2019', minify: true, write: false, charset: 'utf8', logLevel: 'warning',
+    banner: { js: '/*! 开宗立派。内含 MainLoop.js（MIT，Copyright (C) 2016 Isaac Sukin）和 ZzFX（MIT，Copyright (c) 2019 Frank Force），许可证全文见 kaizong/THIRD_PARTY.md */' },
   });
   const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-  const css = (await Promise.all(['src/ui/style.css', 'src/ui/refinement.css', 'src/ui/polish.css'].map(p => readFile(p, 'utf8')))).join('\n');
+  // 游戏一律横着摆，竖拿手机时整体转 90 度；这时视口的宽高和游戏的宽高对调了，
+  // 所以按宽高、横竖写的 @media 一律改成按游戏根节点量的 @container
+  const css = (await Promise.all(['src/ui/style.css', 'src/ui/refinement.css', 'src/ui/polish.css', 'src/ui/stage.css'].map(p => readFile(p, 'utf8')))).join('\n')
+    .replace(/@media\s*(\((?:max|min)-(?:width|height)|\(orientation)/g, '@container app $1');
   const head = (await readFile('src/ui/head.html', 'utf8')).replace('/*__CSS__*/', () => css);
   const html = `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n${head}</head>\n<body>\n<div id="app"></div>\n<script>${js}</script>\n</body>\n</html>\n`;
   await writeFile('index.html', html);

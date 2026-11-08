@@ -5,6 +5,8 @@ import { newCandidates } from './recruit';
 import { setupRivals } from './rivals';
 import { offerGoals, snap } from './goals';
 import { refreshBoard } from './missions';
+import { MASTER_DAYS } from './master';
+import { scheduleSeason } from './season';
 import { makeRng } from './rng';
 import { fit } from './sect';
 import type { HallId, Person, World } from './types';
@@ -47,7 +49,7 @@ export function rollFate(seed: number): Pick<StartChoice, 'origin' | 'heritage'>
 export function newWorld(c: StartChoice): World {
   const r = makeRng(c.seed);
   const w: World = {
-    v: 1, seed: c.seed, rng: 0, t: 0, me: '', people: {}, members: [], candidates: [], rivals: [], war: null, decisions: [], report: [], history: [], acts: [],
+    v: 1, seed: c.seed, rng: 0, t: 0, day: 0, clock: 1, me: '', people: {}, members: [], candidates: [], rivals: [], war: null, decisions: [], report: [], history: [], acts: [],
     needPolicy: true, needTech: false, over: null, nextId: 1, endYear: c.endYear ?? 10, pairings: {}, misdeeds: [], offers: {},
     annals: [], alumni: [], stats: { warsWon: 0, warsLost: 0, credited: 0, breaks: 0, missionsDone: 0, missionsFailed: 0 }, delta: {},
     masterPlan: { act: 'seclude' }, missions: [], expeditions: [], tier: 0, goal: null, goalOffers: [], needGoal: true, yearStart: null, lastYear: null,
@@ -116,6 +118,8 @@ export function newWorld(c: StartChoice): World {
   refreshBoard(w, r);
   w.yearStart = snap(w);
   w.goalOffers = offerGoals(w, r);
+  scheduleSeason(w, r);
+  w.masterPlan = { act: 'seclude', from: 0, until: MASTER_DAYS.seclude };
   w.rng = r.state();
   return w;
 }

@@ -1,6 +1,7 @@
 // 世界的基本操作：取人、改看法、记经历和季报、性情合成、威望。
 
 import { realmPrestige } from './cult';
+import { emit } from './fx';
 import { TRAIT } from './data/traits';
 import { rankLv } from './data/world';
 import { makeRng, type Rng } from './rng';
@@ -9,6 +10,32 @@ import type { Cost, Disp, LifeEntry, Opinion, Person, ReportItem, World } from '
 export const year = (t: number) => Math.floor(t / 4) + 1;
 export const seasonName = (t: number) => '春夏秋冬'[t % 4];
 export const timeText = (t: number) => `第${year(t)}年${seasonName(t)}`;
+
+/** 一季九十天，一个月三十天 */
+export const SEASON_DAYS = 90;
+export const MONTH_DAYS = 30;
+/** 开局以来的第几天 */
+export const nowDay = (w: Pick<World, 't' | 'day'>) => w.t * SEASON_DAYS + (w.day ?? 0);
+const MONTH = ['正', '二', '三', '四', '五', '六', '七', '八', '九', '十', '冬', '腊'];
+const NUM = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+/** 初一、十五、廿三…… */
+export function dayName(d: number): string {
+  const n = d + 1;
+  if (n <= 10) return `初${NUM[n]}`;
+  if (n < 20) return `十${NUM[n - 10]}`;
+  if (n === 20) return '二十';
+  if (n < 30) return `廿${NUM[n - 20]}`;
+  return '三十';
+}
+/** 绝对日 → 「第2年 夏 · 五月初七」 */
+export function dateText(abs: number): string {
+  const t = Math.floor(abs / SEASON_DAYS);
+  const d = abs - t * SEASON_DAYS;
+  const m = (t % 4) * 3 + Math.floor(d / MONTH_DAYS);
+  return `${timeText(t)} · ${MONTH[m]}月${dayName(d % MONTH_DAYS)}`;
+}
+/** 还有几天：「还有 12 日」 */
+export const daysLeft = (w: Pick<World, 't' | 'day'>, until: number) => Math.max(0, Math.ceil(until - nowDay(w)));
 
 /** 每次要随机数时从存档里的状态接着往下走，保证读档后结果一样 */
 export function rngOf(w: World): Rng & { save(): void } {
@@ -60,6 +87,7 @@ export function addLife(w: World, p: Person, text: string, tone: LifeEntry['tone
 
 export function report(w: World, item: Omit<ReportItem, 't'>) {
   w.report.push({ t: w.t, ...item });
+  emit({ k: 'report', text: item.text, tone: item.tone, about: item.about, big: item.big, quote: item.quote });
   // 大事记进宗门志，结局时回顾
   if (item.big && item.chronicle !== false) {
     (w.annals ??= []).push({ t: w.t, text: item.text, tone: item.tone });

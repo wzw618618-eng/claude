@@ -1,24 +1,26 @@
-// 过季：一季发生的所有事按顺序结算。
-// planSeason 先列出每个人能做的事和谁该交给 AI；界面拿去问 AI（或不问），再交回 advanceSeason。
+// 时间：一季九十天，按天往前走（dayTick）。季初排日程（谁哪天拿主意），季末结算一季攒下的事。
+// planSeason 在季初列出重要的人能做的事；界面拿去问 AI，答案回来前到日子的人按规则自己拿主意。
 
 import { aiOptions, choicesFor, rulePick, SECRET_ACTS, type Choice } from './choices';
 import { atBottleneck, lifespan, lvl, power as powerOf, realmText } from './cult';
-import { addDecision, drift, refreshDecision, resolveDecision } from './decisions';
+import { addDecision, DECISION_DAYS, drift, finishBreaks, refreshDecision, resolveDecision } from './decisions';
 import { HALL, POLICY, SKILLS, TECH } from './data/world';
 import { rollEvents, travelTick } from './events';
+import { emit } from './fx';
 import { ageCandidates, newCandidates, probationTick } from './recruit';
 import { templateWhy } from './lines';
 import { applyChoice, socialize } from './resolve';
 import { applyRivalMove, ruleRivalPick, rivalChoices, rivalTick, type RivalChoice } from './rivals';
-import { cultivate, doWork, payUpkeep, underqualified, unconvinced, type Unconvinced } from './sect';
-import type { Person, World } from './types';
+import type { Rng } from './rng';
+import { cultivate, distributePills, doWork, payUpkeep, underqualified, unconvinced, upkeepCost, type Unconvinced, type Work } from './sect';
+import type { HallId, Person, World } from './types';
 import { startWar } from './war';
 import { checkGoal, checkTier, tierIncome, turnYear } from './goals';
-import { masterSeason } from './master';
+import { masterDaily, masterTick } from './master';
 import { refreshBoard, settleExpeditions } from './missions';
 import { finishWorks } from './build';
 import { ruleWish, settleWishes, thwarted, type WishNews } from './wishes';
-import { addLife, clamp, disp, everyone, members, nm, op, P, report, rngOf, year } from './world';
+import { addLife, clamp, disp, everyone, members, MONTH_DAYS, nm, nowDay, op, P, report, rngOf, SEASON_DAYS, year } from './world';
 
 export type AiMode = 'save' | 'normal' | 'rich';
 export const AI_LIMIT: Record<AiMode, number> = { save: 3, normal: 8, rich: 16 };
@@ -78,57 +80,75 @@ export interface Summary {
   deaths: Person[];
 }
 
-/** 季报顶上显示的家底 */
+/** 顶栏显示的家底 */
 export const RES_KEYS = ['stones', 'herbs', 'pills', 'fpills', 'armory', 'rep', 'authority', 'veins'] as const;
 
-export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>, rivalPicks: Record<string, Pick>): Summary {
-  const r = rngOf(w);
-  const s = w.sect;
-  const before = Object.fromEntries(RES_KEYS.map((k) => [k, s[k]])) as Record<string, number>;
+/** 宣战以后过几天打上门 */
+export const WAR_DAYS = 20;
+
+/** AI 替人拿的主意：弟子 id → 选项；敌宗 id → 选项 */
+export interface AiPicks { picks?: Record<string, Pick>; rivalPicks?: Record<string, Pick> }
+
+/** 排这一季的日程：每个人哪天拿主意、敌宗哪天出手、哪天出事；顺便分丹药、记下季初家底 */
+export function scheduleSeason(w: World, r: Rng) {
+  const acts: Record<string, number> = {};
+  for (const p of members(w)) acts[p.id] = r.int(3, SEASON_DAYS - 4);
+  const rivals: Record<string, number> = {};
+  for (const rv of w.rivals) rivals[rv.id] = r.int(8, SEASON_DAYS - 8);
+  w.sched = { acts, rivals, events: r.int(12, 70), walkin: r.int(6, 80), social: r.int(30, 60), routineLeft: 3 };
+  w.pillTo = [...distributePills(w, r)];
+  w.before = Object.fromEntries(RES_KEYS.map((k) => [k, w.sect[k]]));
+  flowMark = {};
+}
+
+/** 新的一季开头：上一季的纪事收进往事，排日程 */
+export function startSeason(w: World, r: Rng) {
   // 往事按"哪一季发生的"记：t = -1 是开山那一季
   if (w.report.length) w.history.unshift({ t: w.t - 1, items: w.report });
   w.history = w.history.slice(0, 8);
   w.report = [];
-  s.ledger = {};
+  w.sect.ledger = {};
   w.misdeeds = w.misdeeds.filter((m) => w.t - m.t <= 1);
-  // 没处理的事按默认办
-  for (const d of [...w.decisions]) resolveDecision(w, r, d.id, d.fallback);
+  w.day = 0;
+  scheduleSeason(w, r);
+}
 
-  // 一、各人做自己挑的事
-  const unc = unconvinced(w);
-  const order = r.shuffle(members(w).filter((p) => plan.options[p.id]));
-  const notable: { p: Person; c: Choice; why?: string; routine: boolean }[] = [];
-  for (const p of order) {
-    if (!p.alive || p.sect !== 'me') continue;
-    const cs = choicesFor(w, p, { unc });
-    const pk = picks[p.id];
-    const c = (pk && cs.find((x) => x.id === pk.id)) || rulePick(r, cs);
-    p.lastWhy = pk?.why && pk.id === c.id ? pk.why : undefined;
-    if (!p.lastWhy && c.kind !== 'work' && r.chance(0.6)) p.lastWhy = templateWhy(w, r, p, c);
-    applyChoice(w, r, p, c, emptyWork());
-    // 见不得光的事不进季报、不进经历，心里话也不让宗主看见；叛逃在 leaveSect 里已经报过
-    if (SECRET_ACTS.includes(c.kind)) { p.lastWhy = undefined; continue; }
-    if (c.kind === 'defect') continue;
-    const routine = ['work', 'diligent', 'cultivate', 'slack'].includes(c.kind);
-    if (!routine || p.starred || p.lastWhy) notable.push({ p, c, why: p.lastWhy, routine });
+/** 上次飘字时各项产出累计到多少（每半个月飘一次这半个月的产出） */
+let flowMark: Record<string, number> = {};
+const FLOW: [string, string, string][] = [['herbs', 'herb', '灵草'], ['pills', 'alchemy', '丹药'], ['trade', 'diplomacy', '灵石'], ['income', 'main', '灵石']];
+
+function emptyWork(): Work { return { cultBonus: 1, lawPower: 1, recruitPower: 0, guardPower: 0, byHall: {} as Record<HallId, number> }; }
+
+/** 某个弟子到了拿主意的那天：挑一件事做（AI 先想好了就用 AI 的） */
+function decideOne(w: World, r: Rng, p: Person, unc: Unconvinced[], pk: Pick | undefined) {
+  if (p.job === 'travel') { p.lastAct = 'travel'; return; }
+  if (p.breaking) { p.lastAct = 'seclude'; return; }
+  const cs = choicesFor(w, p, { unc });
+  const c = (pk && cs.find((x) => x.id === pk.id)) || rulePick(r, cs);
+  p.lastWhy = pk?.why && pk.id === c.id ? pk.why : undefined;
+  if (!p.lastWhy && c.kind !== 'work' && r.chance(0.6)) p.lastWhy = templateWhy(w, r, p, c);
+  applyChoice(w, r, p, c, emptyWork());
+  // 见不得光的事不进纪事、不进经历，心里话也不让宗主看见；叛逃在 leaveSect 里已经报过
+  if (SECRET_ACTS.includes(c.kind)) { p.lastWhy = undefined; return; }
+  if (c.kind === 'defect' || !p.alive || p.sect !== 'me') return;
+  if (p.lastWhy) emit({ k: 'say', who: p.id, text: p.lastWhy });
+  const routine = ['work', 'diligent', 'cultivate', 'slack'].includes(c.kind);
+  const byAi = pk?.by === 'ai' && pk.id === c.id;
+  const sched = w.sched!;
+  // 大事都报；日常的事（偷懒、拼命、挤时间修炼）标记的人和 AI 说了话的照报，其余一季最多三条
+  const show = !routine || p.starred || byAi || (!!p.lastWhy && sched.routineLeft-- > 0);
+  if (show && !(c.kind === 'work' && !p.lastWhy)) {
+    report(w, { text: `${p.name}：${c.label}。`, tone: 'story', about: [p.id], quote: p.lastWhy ? { who: p.id, text: p.lastWhy } : undefined });
   }
-  for (const p of members(w)) if (!plan.options[p.id]) p.lastAct = 'travel';
+  // 经历只记有分量的事；日常的事只在 AI 替他说了话时记
+  const fresh = p.lastWhy && !p.life.slice(-6).some((l) => l.text.includes(p.lastWhy!));
+  if (!routine || (fresh && byAi)) addLife(w, p, p.lastWhy ? `${c.label}——"${p.lastWhy}"` : c.label, 'story');
+}
 
-  // 二、干活
-  const work = doWork(w, r, unc);
-  // 三、修炼
-  const cul = cultivate(w, r, work);
-  // 刚修到圆满的人来求冲关；被"压一压"的人，每年开春再来求一次
-  const stuck = w.t % 4 === 3 ? members(w).filter((p) => atBottleneck(p)) : [];
-  for (const p of new Set([...cul.bottleneck, ...stuck])) {
-    if (p.id === w.me || !p.alive || p.sect !== 'me') continue;
-    addDecision(w, 'breakthrough', { who: p.id });
-  }
-  for (const p of cul.leveled) if (p.realm >= 1 || p.starred) addLife(w, p, `修为精进到${realmText(p)}`, 'good');
-  // 宗主这一季亲自做的事（坐镇、游历会改执法和巡山的力道，所以放在算怨气、敌宗出手之前）
-  masterSeason(w, r, work);
-
-  // 四、服不服、心情、忠心
+/** 每天：心情慢慢回到中间，讨厌的活、不服的人一点点积怨。f 是一天占一季的几分之几 */
+function moodTick(w: World, unc: Unconvinced[], work: Work, f: number) {
+  const s = w.sect;
+  const pillTo = new Set(w.pillTo ?? []);
   const lawCalm = 3 + work.lawPower * 1.5 + (s.tech.includes('rules') ? 2 : 0) + (s.heritage === 'mind' ? 1 : 0);
   for (const p of members(w)) {
     let g = -lawCalm;
@@ -136,63 +156,169 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     if (p.likes.includes(p.job)) g -= 2;
     for (const u of unc.filter((x) => x.who === p.id)) {
       g += (4 + u.gap * 0.08) * (1 + Math.max(0, disp(p, 'pride')) * 0.3);
-      op(p, u.over).respect = clamp(op(p, u.over).respect - 3, -100, 100);
+      op(p, u.over).respect = clamp(op(p, u.over).respect - 3 * f, -100, 100);
     }
-    if (!cul.pillTo.has(p.id) && disp(p, 'envy') > 0 && members(w).some((q) => cul.pillTo.has(q.id) && q.rank === p.rank)) g += 2 * disp(p, 'envy');
-    p.grudge = clamp(p.grudge + g, 0, 100);
-    // 心情慢慢回到中间
+    if (!pillTo.has(p.id) && disp(p, 'envy') > 0 && members(w).some((q) => pillTo.has(q.id) && q.rank === p.rank)) g += 2 * disp(p, 'envy');
+    p.grudge = clamp(p.grudge + g * f, 0, 100);
     let m = (55 - p.mood) * 0.15 + (p.likes.includes(p.job) ? 3 : 0) - (p.dislikes.includes(p.job) ? 3 : 0) - (p.hp < 50 ? 4 : 0);
     if (Object.values(p.ops).some((o) => o.tag === 'lover')) m += 2;
     if (s.policy === 'sword' && disp(p, 'temper') > 0) m += 1;
-    p.mood = clamp(p.mood + m, 0, 100);
-    if (p.grudge >= 60) p.loyalty = clamp(p.loyalty - 2, 0, 100);
-    if (p.grudge <= 10 && p.mood >= 60) p.loyalty = clamp(p.loyalty + 1, 0, 100);
-    p.hp = clamp(p.hp + 10, 0, 100);
+    p.mood = clamp(p.mood + m * f, 0, 100);
+    if (p.grudge >= 60) p.loyalty = clamp(p.loyalty - 2 * f, 0, 100);
+    if (p.grudge <= 10 && p.mood >= 60) p.loyalty = clamp(p.loyalty + 1 * f, 0, 100);
+    p.hp = clamp(p.hp + 10 * f, 0, 100);
   }
   // 德不配位的人，下面的人看不起
   for (const p of members(w)) {
-    const why = underqualified(p);
-    if (!why) continue;
-    for (const q of members(w)) if (q.id !== p.id && (q.job === p.head || q.job === p.job)) op(q, p.id).respect = clamp(op(q, p.id).respect - 4, -100, 100);
-    if (r.chance(0.12)) { report(w, { text: `${p.name}${why}，手下的人阳奉阴违。`, tone: 'bad', about: [p.id] }); p.mood = clamp(p.mood - 5, 0, 100); }
+    if (!underqualified(p)) continue;
+    for (const q of members(w)) if (q.id !== p.id && (q.job === p.head || q.job === p.job)) op(q, p.id).respect = clamp(op(q, p.id).respect - 4 * f, -100, 100);
   }
-  socialize(w, r);
+}
 
-  // 五、收支
+/**
+ * 过一天。山上的事按天推进：干活、修炼、收入天天有；月初发月例；
+ * 每个弟子一季里挑一天拿主意；工程、出门的队伍、闭关、宗主的事到日子就出结果；待裁决的事过期按默认办。
+ * 季末那天结算一季（心愿、寿元、品阶、开春），返回这一季的小结；平常返回 null。
+ */
+export function dayTick(w: World, ai: AiPicks = {}): Summary | null {
+  const r = rngOf(w);
+  const s = w.sect;
+  if (!w.sched) scheduleSeason(w, r);
+  const sched = w.sched!;
+  const d = w.day ?? 0;
+  const now = nowDay(w);
+  const f = 1 / SEASON_DAYS;
+
+  // 一、待裁决：新冒出来的记上期限；过期的按默认办
+  for (const x of w.decisions) {
+    if (x.due === undefined) { x.at = now; x.due = now + DECISION_DAYS; emit({ k: 'decision', id: x.id }); }
+  }
+  for (const x of [...w.decisions]) {
+    if (x.due! > now) continue;
+    const label = x.options.find((o) => o.id === x.fallback)?.label ?? '不管';
+    resolveDecision(w, r, x.id, x.fallback);
+    report(w, { text: `「${x.title}」一直没等到你拍板，按"${label}"办了。`, tone: 'info', about: x.about });
+  }
+
+  // 二、月初发月例
+  if (d % MONTH_DAYS === 0) {
+    const cost = upkeepCost(w) / 3;
+    if (payUpkeep(w, 1 / 3)) { if (cost >= 1) emit({ k: 'float', at: 'main', text: `月例 −${Math.round(cost)}灵石`, tone: 'bad' }); }
+    else {
+      report(w, { text: '灵石不够发月例了！弟子们怨声载道。', tone: 'bad', about: [], big: true, chronicle: false });
+      emit({ k: 'banner', text: '灵石不够发月例了！', tone: 'bad' });
+    }
+  }
+
+  // 三、干活、修炼
+  const unc = unconvinced(w);
+  const work = doWork(w, r, unc, f);
+  masterDaily(w, work, f);
+  w.work = work;
+  const cul = cultivate(w, r, work, f, new Set(w.pillTo ?? []));
+  for (const p of cul.leveled) {
+    if (p.realm >= 1 || p.starred) addLife(w, p, `修为精进到${realmText(p)}`, 'good');
+    emit({ k: 'level', who: p.id, text: realmText(p) });
+  }
+  // 刚修到圆满的人来求冲关
+  for (const p of cul.bottleneck) {
+    if (p.id === w.me || !p.alive || p.sect !== 'me' || p.breaking) continue;
+    addDecision(w, 'breakthrough', { who: p.id });
+  }
+  moodTick(w, unc, work, f);
+
+  // 四、山门收入
   const base = { vein: 60, deep: 25, market: 35 }[s.site] + (s.veins - 2) * 30 + (s.tech.includes('market_shop') ? 40 : 0) + (s.site === 'market' ? 25 : 0);
-  const income = Math.round(base * (s.veinDebuff && s.veinDebuff > w.t ? 0.8 : 1)) + tierIncome(w);
+  const income = (Math.round(base * (s.veinDebuff && s.veinDebuff > w.t ? 0.8 : 1)) + tierIncome(w)) * f;
   s.stones += income;
-  s.ledger.income = income;
-  if (!payUpkeep(w)) report(w, { text: '灵石不够发月例了！弟子们怨声载道。', tone: 'bad', about: [], big: true, chronicle: false });
-  if (s.policy === 'hide') s.rep = Math.max(0, s.rep - 1.5);
+  s.ledger.income = (s.ledger.income ?? 0) + income;
+  // 每半个月飘一次这半个月的产出
+  if (d % 15 === 14) {
+    for (const [key, at, name] of FLOW) {
+      const v = (s.ledger[key] ?? 0) - (flowMark[key] ?? 0);
+      if (v >= 1) emit({ k: 'float', at, text: `+${Math.round(v)}${name}`, tone: 'good' });
+      flowMark[key] = s.ledger[key] ?? 0;
+    }
+  }
 
-  // 六、历练、事件、奇遇
-  travelTick(w, r);
-  rollEvents(w, r);
+  // 五、今天轮到拿主意的弟子
+  for (const p of members(w)) {
+    let day = sched.acts[p.id];
+    if (day === undefined) day = sched.acts[p.id] = d < SEASON_DAYS - 2 ? r.int(d + 1, SEASON_DAYS - 1) : -1;
+    if (day === d && p.alive && p.sect === 'me') decideOne(w, r, p, unc, ai.picks?.[p.id]);
+  }
 
-  // 七、敌宗
-  rivalTick(w, r);
+  // 六、敌宗出手
   for (const rv of w.rivals) {
-    const cs = plan.rivalOptions[rv.id];
-    if (!cs || !rv.alive || rv.status === 'war') continue;
-    const fresh = rivalChoices(w, rv);
-    const pk = rivalPicks[rv.id];
-    const c = (pk && fresh.find((x) => x.id === pk.id)) || ruleRivalPick(r, fresh);
+    if (sched.rivals[rv.id] !== d || !rv.alive || rv.passive || rv.status === 'war') continue;
+    const cs = rivalChoices(w, rv);
+    const pk = ai.rivalPicks?.[rv.id];
+    const c = (pk && cs.find((x) => x.id === pk.id)) || ruleRivalPick(r, cs);
     rv.lastWhy = pk?.why && pk.id === c.id ? pk.why : undefined;
     applyRivalMove(w, r, rv, c, work);
+    // 明面上的动作才报；挖人、派奸细是暗地里的
+    if (rv.lastMove && rv.lastWhy && !rv.hidden) report(w, { text: `${rv.name}宗主${nm(w, rv.master)}：${rv.lastMove}。`, tone: 'info', about: [], quote: { who: rv.master, text: rv.lastWhy } });
   }
-  if (w.pendingWar && !w.war) startWar(w, w.pendingWar.enemy, w.pendingWar.byPlayer);
+
+  // 七、事件奇遇、上门投奔、人和人之间
+  if (d === sched.events) rollEvents(w, r);
+  if (d === sched.walkin) newCandidates(w, r, work.recruitPower, 'walkin');
+  if (d === sched.social) socialize(w, r);
+
+  // 八、到日子的：工程落成、队伍回山、出关、宗主做完一轮、打上门
+  finishWorks(w);
+  settleExpeditions(w, r, now);
+  finishBreaks(w, r);
+  masterTick(w, r);
+  ageCandidates(w);
+  if (w.pendingWar && !w.war) {
+    const pw = w.pendingWar;
+    const rv = w.rivals.find((x) => x.id === pw.enemy);
+    if (pw.at === undefined) {
+      pw.at = now + WAR_DAYS;
+      emit({ k: 'banner', text: pw.byPlayer ? `大军开拔，${WAR_DAYS} 日后与${rv?.name ?? '敌宗'}开战` : `${rv?.name ?? '敌宗'}大军压境，${WAR_DAYS} 日后攻山！`, tone: 'bad' });
+    } else if (now >= pw.at) {
+      startWar(w, pw.enemy, pw.byPlayer);
+      emit({ k: 'banner', text: pw.byPlayer ? `与${rv?.name ?? '敌宗'}开战了` : `${rv?.name ?? '敌宗'}打上山门了！`, tone: 'bad' });
+    }
+  }
   for (const [pid, rid] of Object.entries(w.offers)) {
     const p = P(w, pid);
     const rv = w.rivals.find((x) => x.id === rid);
     if (!p?.alive || p.sect !== 'me' || !rv?.alive) delete w.offers[pid];
   }
+  w.members = w.members.filter((id) => P(w, id)?.alive && P(w, id)?.sect === 'me');
+  if (members(w).length === 0) w.over = { win: false, text: '弟子走的走、死的死，山上只剩你一个人。宗门散了。' };
 
-  // 外出办差的队伍回山；工程完工
-  settleExpeditions(w, r);
-  finishWorks(w);
+  // 九、往前走一天；到季末结算
+  w.day = d + 1;
+  let sum: Summary | null = null;
+  if (w.day >= SEASON_DAYS) {
+    sum = endSeason(w, r);
+    startSeason(w, r);
+  }
+  r.save();
+  return sum;
+}
 
-  // 八、试用期、心愿
+/** 季末：一季里慢慢攒下的事一起结算 */
+function endSeason(w: World, r: Rng): Summary {
+  const s = w.sect;
+  const work = w.work ?? emptyWork();
+  // 被"压一压"的人，每年开春再来求一次
+  if (w.t % 4 === 3) for (const p of members(w)) if (atBottleneck(p) && !p.breaking) addDecision(w, 'breakthrough', { who: p.id });
+  // 德不配位的人，偶尔闹出事
+  for (const p of members(w)) {
+    const why = underqualified(p);
+    if (why && r.chance(0.12)) { report(w, { text: `${p.name}${why}，手下的人阳奉阴违。`, tone: 'bad', about: [p.id] }); p.mood = clamp(p.mood - 5, 0, 100); }
+  }
+  if (s.policy === 'hide') s.rep = Math.max(0, s.rep - 1.5);
+
+  // 历练、敌宗一季的变化
+  travelTick(w, r);
+  rivalTick(w, r);
+
+  // 试用期、心愿
   probationTick(w);
   const wishNews = settleWishes(w, r);
   w.stats.credited += wishNews.filter((x) => x.credit).length;
@@ -204,7 +330,7 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     if (r.chance(0.5)) { p.wish = ruleWish(w, r, p); if (p.wish) { p.wishPending = true; newWishes.push(p.id); } }
   }
 
-  // 九、才干退步、性情随岗位变、资历
+  // 才干退步、性情随岗位变、资历
   for (const p of members(w)) {
     const used = p.job in HALL ? [HALL[p.job as keyof typeof HALL].skill, HALL[p.job as keyof typeof HALL].skill2] : [];
     for (const sk of SKILLS) if (!used.includes(sk) && p.skills[sk] > p.caps[sk] * 0.4) p.skills[sk] = Math.max(0, p.skills[sk] - 0.3);
@@ -215,7 +341,7 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
     if (p.grudge >= 70 && r.chance(0.05)) drift(w, r, p, 'oppressed', 1);
   }
 
-  // 十、寿元
+  // 寿元
   const deaths: Person[] = [];
   if (w.t % 4 === 3) for (const p of everyone(w)) p.age += 1;
   for (const p of everyone(w)) {
@@ -229,47 +355,39 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   for (const p of Object.values(w.people)) if (p.alive && p.sect !== 'me' && p.age >= lifespan(p) && w.t % 4 === 3 && r.chance(0.3)) { p.alive = false; p.death = '坐化'; }
   w.members = w.members.filter((id) => P(w, id)?.alive && P(w, id)?.sect === 'me');
 
-  // 十一、季报：谁做了什么
-  // 季报：大事都报；日常的事（偷懒、拼命、挤时间修炼）标记的人和 AI 说了话的优先，其余最多三条
-  let routineLeft = 3;
-  const shown = notable.filter((n) => n.p.alive)
-    .sort((a, b) => Number(!!b.p.starred) - Number(!!a.p.starred) || Number(picks[b.p.id]?.by === 'ai') - Number(picks[a.p.id]?.by === 'ai') || Number(a.routine) - Number(b.routine))
-    .filter((n) => !n.routine || n.p.starred || picks[n.p.id]?.by === 'ai' || routineLeft-- > 0)
-    .slice(0, 12);
-  for (const n of shown) {
-    if (n.c.kind === 'work' && !n.why) continue;
-    report(w, { text: `${n.p.name}：${n.c.label}。`, tone: 'story', about: [n.p.id], quote: n.why ? { who: n.p.id, text: n.why } : undefined });
-    // 经历只记有分量的事；日常的事只在 AI 替他说了话时记
-    const fresh = n.why && !n.p.life.slice(-6).some((l) => l.text.includes(n.why!));
-    if (!n.routine || (fresh && picks[n.p.id]?.by === 'ai')) addLife(w, n.p, n.why ? `${n.c.label}——"${n.why}"` : n.c.label, 'story');
-  }
-  // 敌宗明面上的动作才报；挖人、派奸细是暗地里的
-  for (const rv of w.rivals) if (rv.lastMove && rv.lastWhy && rv.alive && !rv.passive && !rv.hidden) report(w, { text: `${rv.name}宗主${nm(w, rv.master)}：${rv.lastMove}。`, tone: 'info', about: [], quote: { who: rv.master, text: rv.lastWhy } });
-
-  // 十二、品阶、大计；来人走人，时间往前
+  // 品阶、大计；来人走人，时间往前
   checkTier(w);
   checkGoal(w);
   if (w.t % 4 === 3) turnYear(w, r);
-  ageCandidates(w);
   w.acts = [];
   w.t += 1;
+  w.day = 0;
   if (w.t % 4 === 0) {
     w.needPolicy = true;
     w.needTech = true;
     s.policy = null;
   }
-  newCandidates(w, r, work.recruitPower);
+  newCandidates(w, r, work.recruitPower, 'open');
   refreshBoard(w, r);
   for (const d of w.decisions) refreshDecision(w, d);
   if (year(w.t) > w.endYear && !w.war) w.over = endText(w);
   if (members(w).length === 0) w.over = { win: false, text: '弟子走的走、死的死，山上只剩你一个人。宗门散了。' };
   if (!w.people[w.me].alive) w.over = { win: false, text: '你寿元耗尽，坐化了。' };
-  w.delta = Object.fromEntries(RES_KEYS.map((k) => [k, Math.round((s[k] - before[k]) * 10) / 10]));
-  r.save();
+  const before = w.before ?? {};
+  w.delta = Object.fromEntries(RES_KEYS.map((k) => [k, Math.round((s[k] - (before[k] ?? s[k])) * 10) / 10]));
   return { t: w.t, wishNews, newWishes, deaths };
 }
 
-function emptyWork() { return { cultBonus: 1, lawPower: 1, recruitPower: 0, guardPower: 0, byHall: {} as Record<string, number> } as Parameters<typeof applyChoice>[4]; }
+/** 一口气过完这一季剩下的日子（测试、平衡模拟用）。中途打起仗来就停下，等打完再接着过 */
+export function advanceSeason(w: World, _plan: Plan | null, picks: Record<string, Pick> = {}, rivalPicks: Record<string, Pick> = {}): Summary {
+  const t0 = w.t;
+  let sum: Summary | null = null;
+  for (let i = 0; i < SEASON_DAYS + 1 && w.t === t0 && !w.over; i++) {
+    sum = dayTick(w, { picks, rivalPicks }) ?? sum;
+    if (w.war && w.war.phase === 'prep' && w.t === t0) break;
+  }
+  return sum ?? { t: w.t, wishNews: [], newWishes: [], deaths: [] };
+}
 
 /** 一局到年头了（打完仗、收兵时也要查一下） */
 export function checkEnd(w: World) {

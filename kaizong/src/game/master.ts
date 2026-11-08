@@ -1,5 +1,5 @@
-// 宗主亲为：宗主每季自己做一件事。闭关能一路修到元婴；亲传、坐镇、游历、开炉、拜山各管一摊。
-// 不改就一直做上一季定的事。
+// 宗主亲为：宗主自己做一件事，每件要花些日子（闭关、亲传一季，游历、拜山两个月，开炉一个半月）。
+// 做完一轮出结果，接着再做同一件；中途换别的事，这一轮就白做了。坐镇、游历在做的时候天天起作用。
 
 import { atBottleneck, breakChance, breakthrough, need, REALM_NAME, realmText, stepUp } from './cult';
 import { SKILL_NAME } from './data/world';
@@ -7,7 +7,8 @@ import { insight, makeCandidate } from './recruit';
 import type { Rng } from './rng';
 import type { Work } from './sect';
 import type { MasterAct, Person, Skill, World } from './types';
-import { addLife, adjust, clamp, disp, me, members, nm, P, pronoun, report } from './world';
+import { emit } from './fx';
+import { addLife, adjust, clamp, daysLeft, disp, me, members, nm, nowDay, P, pronoun, report } from './world';
 
 export const MASTER_ACT: Record<MasterAct, { name: string; desc: string; target?: 'disciple' | 'rival' }> = {
   seclude: { name: '闭关', desc: '自己修炼，修为圆满后冲击元婴。到了元婴，宗门的底气就不一样了' },
@@ -18,6 +19,9 @@ export const MASTER_ACT: Record<MasterAct, { name: string; desc: string; target?
   visit: { name: '拜山', desc: '登门拜访一个宗门：对方态度大涨，名望也涨一点', target: 'rival' },
 };
 export const MASTER_ACTS = Object.keys(MASTER_ACT) as MasterAct[];
+
+/** 每件事做一轮要几天 */
+export const MASTER_DAYS: Record<MasterAct, number> = { seclude: 90, teach: 90, preside: 90, roam: 60, craft: 45, visit: 60 };
 
 /** 宗主最拿手的本事（亲传时教这个） */
 export function masterSkill(m: Person): Skill {
@@ -52,8 +56,46 @@ export function masterBlock(w: World, act: MasterAct, target?: string): string |
 export function setMasterPlan(w: World, act: MasterAct, target?: string): string | null {
   const no = masterBlock(w, act, target);
   if (no) return no;
-  w.masterPlan = { act, target: MASTER_ACT[act].target ? target : undefined };
+  const tg = MASTER_ACT[act].target ? target : undefined;
+  const cur = w.masterPlan;
+  if (cur.act === act && cur.target === tg && cur.until !== undefined) return null;
+  const now = nowDay(w);
+  w.masterPlan = { act, target: tg, from: now, until: now + MASTER_DAYS[act] };
   return null;
+}
+
+/** 这一轮做到几成（0–1） */
+export function masterProgress(w: World): number {
+  const { from, until } = w.masterPlan;
+  if (from === undefined || until === undefined) return 0;
+  return Math.max(0, Math.min(1, (nowDay(w) - from) / Math.max(1, until - from)));
+}
+export const masterLeft = (w: World) => daysLeft(w, w.masterPlan.until ?? nowDay(w));
+
+/** 坐镇、游历在做的时候天天起作用；f 是这一天占一季的几分之几 */
+export function masterDaily(w: World, work: Work, f: number) {
+  const act = w.masterPlan.act;
+  if (act === 'preside') {
+    work.lawPower += 2;
+    work.guardPower += 3;
+    for (const p of members(w)) p.grudge = clamp(p.grudge - 2 * f, 0, 100);
+  } else if (act === 'roam') {
+    work.lawPower = Math.max(0, work.lawPower - 1);
+    for (const p of members(w)) p.grudge = clamp(p.grudge + 1 * f, 0, 100);
+  }
+}
+
+/** 每天：这一轮做完了就出结果，再接着做同一件 */
+export function masterTick(w: World, r: Rng) {
+  const now = nowDay(w);
+  const plan = w.masterPlan;
+  if (plan.until === undefined) { plan.from = now; plan.until = now + MASTER_DAYS[plan.act]; return; }
+  // 这一天过完算一天：第 until 天的早上就算做满了
+  if (now + 1 < plan.until) return;
+  masterSeason(w, r);
+  const next = w.masterPlan;
+  next.from = now + 1;
+  next.until = now + 1 + MASTER_DAYS[next.act];
 }
 
 export function planText(w: World): string {
@@ -64,8 +106,8 @@ export function planText(w: World): string {
   return MASTER_ACT[act].name;
 }
 
-/** 过季时宗主做的事。work 是这一季各殿堂干出来的，坐镇、游历会改它 */
-export function masterSeason(w: World, r: Rng, work: Work) {
+/** 宗主做完一轮，出结果（坐镇、游历天天起的作用在 masterDaily 里） */
+export function masterSeason(w: World, r: Rng, _work?: Work) {
   const m = me(w);
   let { act, target } = w.masterPlan;
   if (masterBlock(w, act, target)) { act = 'seclude'; target = undefined; w.masterPlan = { act }; }
@@ -82,10 +124,13 @@ export function masterSeason(w: World, r: Rng, work: Work) {
           for (const p of members(w)) { adjust(p, m.id, 5, 15); p.loyalty = clamp(p.loyalty + 5, 0, 100); }
           addLife(w, m, `闭关冲关，踏入${to}`, 'good', true);
           report(w, { text: `宗主闭关冲关，踏入${to}！天降异象，一州皆知。各宗对你客气了许多。`, tone: 'good', about: [], big: true });
+          emit({ k: 'break', who: m.id, ok: true });
+          emit({ k: 'banner', text: `宗主破关，踏入${to}！`, tone: 'gold' });
         } else {
           m.fails += 1; m.exp = Math.round(m.exp * 0.5); m.hp = clamp(m.hp - 35, 5, 100);
           addLife(w, m, `冲击${to}失败，受了内伤`, 'bad', true);
           report(w, { text: `宗主冲击${to}失败，受了内伤，修为跌了一截。`, tone: 'bad', about: [], big: true });
+          emit({ k: 'break', who: m.id, ok: false });
         }
         return;
       }
@@ -123,15 +168,11 @@ export function masterSeason(w: World, r: Rng, work: Work) {
       return;
     }
     case 'preside': {
-      work.lawPower += 2;
-      work.guardPower += 3;
       s.authority = clamp(s.authority + 2, 0, 100);
-      for (const p of members(w)) p.grudge = clamp(p.grudge - 2, 0, 100);
+      emit({ k: 'float', at: 'main', text: '宗主威望 +2', tone: 'gold' });
       return;
     }
     case 'roam': {
-      work.lawPower = Math.max(0, work.lawPower - 1);
-      for (const p of members(w)) p.grudge = clamp(p.grudge + 1, 0, 100);
       const spy = members(w).find((p) => p.secret?.kind === 'spy' && !p.secret.exposed);
       const pick = r.weighted<'kid' | 'herbs' | 'stones' | 'rep' | 'rumor'>([['kid', 4], ['herbs', 3], ['stones', 2], ['rep', 2], ['rumor', spy ? 3 : 0]])!;
       if (pick === 'kid') {
@@ -157,12 +198,14 @@ export function masterSeason(w: World, r: Rng, work: Work) {
       return;
     }
     case 'craft': {
-      const used = Math.min(s.herbs, 40);
+      // 一炉一个半月，半季的量
+      const used = Math.min(s.herbs, 20);
       s.herbs -= used;
       const pills = Math.round(used * (0.3 + m.skills.alchemy / 200));
       s.pills += pills;
       let fp = '';
-      if (used >= 30 && r.chance(0.15 + m.skills.alchemy / 200 + (s.tech.includes('foundation_recipe') ? 0.2 : 0))) { s.fpills += 1; fp = '，还成了一颗筑基丹'; }
+      if (used >= 15 && r.chance((0.15 + m.skills.alchemy / 200 + (s.tech.includes('foundation_recipe') ? 0.2 : 0)) / 2)) { s.fpills += 1; fp = '，还成了一颗筑基丹'; }
+      emit({ k: 'float', at: 'main', text: `+${pills}丹药${fp ? ' +1筑基丹' : ''}`, tone: 'good' });
       report(w, { text: `你亲自开炉，用 ${used} 株灵草炼出 ${pills} 颗丹药${fp}。`, tone: 'good', about: [] });
       return;
     }

@@ -1,7 +1,7 @@
 // 弟子挑好的事，按规则算结果。AI 只决定"做什么"，成不成、后果多大都在这里。
 
 import type { Choice } from './choices';
-import { attemptBreak, addDecision, drift, duel, leaveSect } from './decisions';
+import { addDecision, drift, duel, leaveSect, startBreak } from './decisions';
 import type { Rng } from './rng';
 import type { Work } from './sect';
 import type { Person, Skill, World } from './types';
@@ -18,7 +18,8 @@ export function applyChoice(w: World, r: Rng, p: Person, c: Choice, work: Work) 
       return;
     case 'seclude':
       addLife(w, p, '没等宗主发话，自己闭关冲关', 'story');
-      attemptBreak(w, r, p, false);
+      w.decisions = w.decisions.filter((d) => !(d.kind === 'breakthrough' && d.params.who === p.id));
+      startBreak(w, p, false);
       return;
     case 'spar': {
       if (!t) return;

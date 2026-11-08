@@ -83,7 +83,8 @@ export interface Work {
 
 const EFFORT: Record<string, number> = { diligent: 1.4, slack: 0.4, cultivate: 0.6 };
 
-export function doWork(w: World, r: Rng, unc: Unconvinced[]): Work {
+/** 干活。f 是这一段占一季的几分之几（按天走时是 1/90）：产出、长本事都乘它；执法、迎客这些力道是当下的，不乘 */
+export function doWork(w: World, r: Rng, unc: Unconvinced[], f = 1): Work {
   const s = w.sect;
   const has = (t: string) => s.tech.includes(t);
   const pol = s.policy;
@@ -93,23 +94,23 @@ export function doWork(w: World, r: Rng, unc: Unconvinced[]): Work {
     // 还没建的殿堂没人干活
     if (!s.halls[h.id]) { work.byHall[h.id] = 0; continue; }
     const head = hallHead(w, h.id);
-    const crew = hallMembers(w, h.id).slice(0, hallCap(w, h.id));
-    if (head && head.id !== w.me && !crew.includes(head)) crew.push(head);
+    const crew = hallMembers(w, h.id).filter((p) => !p.breaking).slice(0, hallCap(w, h.id));
+    if (head && head.id !== w.me && !head.breaking && !crew.includes(head)) crew.push(head);
     let sum = 0;
     for (const p of crew) {
       let c = fit(p, h.id) * (EFFORT[p.lastAct ?? ''] ?? 1) * (p.hp < 40 ? 0.5 : 1);
       if (notConvinced.has(p.id)) c *= 0.7;
       sum += c;
-      p.merit += c * 1.5;
+      p.merit += c * 1.5 * f;
       // 干久了才干长进；天分是上限
       const grow = (sk: keyof Person['skills'], k: number) => {
-        p.skills[sk] = Math.min(p.caps[sk], p.skills[sk] + Math.max(0, p.caps[sk] - p.skills[sk]) * k * will(p, h.id));
+        p.skills[sk] = Math.min(p.caps[sk], p.skills[sk] + Math.max(0, p.caps[sk] - p.skills[sk]) * k * f * will(p, h.id));
       };
       grow(h.skill, 0.05);
       if (h.skill2) grow(h.skill2, 0.02);
     }
     let F = HALL_MULT[s.halls[h.id]];
-    if (head) {
+    if (head && !head.breaking) {
       F *= 1 + head.skills.manage / 220 + head.skills[h.skill] / 260;
       if (head.id !== w.me && underqualified(head)) F *= 0.85;
     } else F *= 0.85;
@@ -117,22 +118,22 @@ export function doWork(w: World, r: Rng, unc: Unconvinced[]): Work {
     work.byHall[h.id] = Math.round(out * 100) / 100;
     switch (h.id) {
       case 'herb': {
-        const n = 9 * out * (pol === 'pill' ? 1.5 : 1) * (s.heritage === 'herb' ? 1.1 : 1) * (s.site === 'vein' ? 1.1 : 1);
+        const n = 9 * out * f * (pol === 'pill' ? 1.5 : 1) * (s.heritage === 'herb' ? 1.1 : 1) * (s.site === 'vein' ? 1.1 : 1);
         s.herbs += n; s.ledger.herbs = (s.ledger.herbs ?? 0) + n;
         break;
       }
       case 'alchemy': {
-        const used = Math.min(s.herbs, 8 * out);
+        const used = Math.min(s.herbs, 8 * out * f);
         s.herbs -= used;
         const pills = used * 0.4 * (has('pill_hall') ? 1.3 : 1) * (pol === 'pill' ? 1.3 : 1);
         s.pills += pills; s.ledger.pills = (s.ledger.pills ?? 0) + pills;
-        if (has('foundation_recipe') && head && head.skills.alchemy >= 40 && s.herbs >= 30 && r.chance(0.2 + head.skills.alchemy / 300)) {
+        if (has('foundation_recipe') && head && head.skills.alchemy >= 40 && s.herbs >= 30 && r.chance((0.2 + head.skills.alchemy / 300) * f)) {
           s.herbs -= 30; s.fpills += 1; s.ledger.fpills = (s.ledger.fpills ?? 0) + 1;
         }
         break;
       }
       case 'forge': {
-        const used = Math.min(s.stones, 8 * out);
+        const used = Math.min(s.stones, 8 * out * f);
         s.stones -= used;
         s.armory += used * 0.6 * (pol === 'craft' ? 2 : 1);
         s.ledger.forge = (s.ledger.forge ?? 0) - used;
@@ -141,9 +142,9 @@ export function doWork(w: World, r: Rng, unc: Unconvinced[]): Work {
       case 'teach': work.cultBonus = 1 + Math.min(0.35, 0.06 * out); break;
       case 'law': work.lawPower = out * (has('rules') ? 1.3 : 1); break;
       case 'diplomacy': {
-        const st = 14 * out * (pol === 'trade' ? 2 : 1) * (has('caravan') ? 1.5 : 1);
+        const st = 14 * out * f * (pol === 'trade' ? 2 : 1) * (has('caravan') ? 1.5 : 1);
         s.stones += st; s.ledger.trade = (s.ledger.trade ?? 0) + st;
-        s.rep += 1.2 * out * (has('caravan') ? 1.3 : 1) * (pol === 'ally' ? 1.5 : 1);
+        s.rep += 1.2 * out * f * (has('caravan') ? 1.3 : 1) * (pol === 'ally' ? 1.5 : 1);
         break;
       }
       case 'recruit': work.recruitPower = out; break;
@@ -153,16 +154,10 @@ export function doWork(w: World, r: Rng, unc: Unconvinced[]): Work {
   return work;
 }
 
-/** 每季修炼：资质 × 悟性 × 功法 × 灵脉 × 时间 × 心情 × 丹药 × 传功殿 */
-export function cultivate(w: World, r: Rng, work: Work): { pillTo: Set<string>; leveled: Person[]; bottleneck: Person[] } {
+/** 季初分丹药：每人一颗，管一季 */
+export function distributePills(w: World, r: Rng): Set<string> {
   const s = w.sect;
-  const has = (t: string) => s.tech.includes(t);
-  const tech = (has('technique_2') ? 1.2 : 1) * (has('technique_3') ? 1.25 : 1) * (has('blood_art') ? 1.3 : 1) * (s.heritage === 'mind' ? 1.1 : 1);
-  const site = s.site === 'vein' ? 1.15 : 1;
-  const veins = 1 + Math.max(-0.15, Math.min(0.3, (s.veins - 2) * 0.08));
-  // 丹药怎么分
-  const ps = everyone(w);
-  const order = [...ps].filter((p) => p.id !== w.me).sort((a, b) => {
+  const order = everyone(w).filter((p) => p.id !== w.me).sort((a, b) => {
     switch (s.pillRule) {
       case 'merit': return b.merit - a.merit;
       case 'talent': return b.root.apt - a.root.apt || b.wit - a.wit;
@@ -179,13 +174,24 @@ export function cultivate(w: World, r: Rng, work: Work): { pillTo: Set<string>; 
   }
   s.pills -= pillTo.size;
   s.ledger.pillsUsed = pillTo.size;
+  return pillTo;
+}
+
+/** 修炼：资质 × 悟性 × 功法 × 灵脉 × 时间 × 心情 × 丹药 × 传功殿；f 同上 */
+export function cultivate(w: World, r: Rng, work: Work, f = 1, pillTo: Set<string> = distributePills(w, r)): { pillTo: Set<string>; leveled: Person[]; bottleneck: Person[] } {
+  const s = w.sect;
+  const has = (t: string) => s.tech.includes(t);
+  const tech = (has('technique_2') ? 1.2 : 1) * (has('technique_3') ? 1.25 : 1) * (has('blood_art') ? 1.3 : 1) * (s.heritage === 'mind' ? 1.1 : 1);
+  const site = s.site === 'vein' ? 1.15 : 1;
+  const veins = 1 + Math.max(-0.15, Math.min(0.3, (s.veins - 2) * 0.08));
   const leveled: Person[] = [];
   const bottleneck: Person[] = [];
-  for (const p of ps) {
+  for (const p of everyone(w)) {
+    if (p.breaking) continue;
     const effort = p.lastAct === 'cultivate' ? 1.4 : p.lastAct === 'diligent' ? 0.7 : 1;
     const time = p.id === w.me ? 0.35 : JOB_TIME[p.job] * (p.head ? 0.8 : 1);
     const gain = 12 * p.root.apt * (0.7 + (p.wit / 100) * 0.6) * tech * site * veins * time * effort *
-      (0.7 + p.mood / 250) * (pillTo.has(p.id) ? 1.25 : 1) * work.cultBonus * (0.5 + p.hp / 200) * r.range(0.85, 1.15);
+      (0.7 + p.mood / 250) * (pillTo.has(p.id) ? 1.25 : 1) * work.cultBonus * (0.5 + p.hp / 200) * r.range(0.85, 1.15) * f;
     const before = p.stage;
     const wasStuck = atBottleneck(p);
     p.exp += gain;
@@ -197,18 +203,22 @@ export function cultivate(w: World, r: Rng, work: Work): { pillTo: Set<string>; 
   return { pillTo, leveled, bottleneck };
 }
 
-/** 月例 */
-export function payUpkeep(w: World): boolean {
+/** 每月该发多少月例 */
+export function upkeepCost(w: World): number {
+  return members(w).reduce((t, p) => t + UPKEEP[p.rank], 0) * (w.sect.policy === 'hide' ? 0.8 : 1);
+}
+
+/** 月例：UPKEEP 是一季的数，share 是这次发几成（按月发是 1/3） */
+export function payUpkeep(w: World, share = 1): boolean {
   const s = w.sect;
-  let cost = members(w).reduce((t, p) => t + UPKEEP[p.rank], 0);
-  if (s.policy === 'hide') cost *= 0.8;
-  s.ledger.upkeep = -cost;
+  const cost = upkeepCost(w) * share;
+  s.ledger.upkeep = (s.ledger.upkeep ?? 0) - cost;
   if (s.stones >= cost) { s.stones -= cost; return true; }
   s.stones = 0;
   for (const p of members(w)) {
-    p.mood = clamp(p.mood - 8, 0, 100);
-    p.grudge = clamp(p.grudge + 5, 0, 100);
-    p.loyalty = clamp(p.loyalty - 3, 0, 100);
+    p.mood = clamp(p.mood - 8 * share, 0, 100);
+    p.grudge = clamp(p.grudge + 5 * share, 0, 100);
+    p.loyalty = clamp(p.loyalty - 3 * share, 0, 100);
   }
   return false;
 }

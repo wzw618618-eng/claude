@@ -7,7 +7,8 @@ import { HALL, RANK_NAME } from './data/world';
 import type { Rng } from './rng';
 import { assignJob, setHead, setRank } from './sect';
 import type { Decision, DecisionOption, HallId, Person, Rank, World } from './types';
-import { addLife, adjust, clamp, disp, hasTrait, lacks, members, newId, nm, op, P, pay, pronoun, report } from './world';
+import { emit } from './fx';
+import { addLife, adjust, clamp, disp, hasTrait, lacks, members, newId, nm, nowDay, op, P, pay, pronoun, report } from './world';
 
 type Params = Record<string, string | number>;
 
@@ -38,9 +39,36 @@ export function duel(r: Rng, a: Person, b: Person): Person {
   return r.chance(pa / (pa + pb)) ? a : b;
 }
 
+/** 闭关冲关要几天 */
+export const BREAK_DAYS = 15;
+/** 待裁决的事最多等几天，过了按默认办 */
+export const DECISION_DAYS = 45;
+
+/** 进洞闭关：过 BREAK_DAYS 天出结果 */
+export function startBreak(w: World, p: Person, pill: boolean) {
+  const now = nowDay(w);
+  p.breaking = { from: now, until: now + BREAK_DAYS, pill };
+  emit({ k: 'banner', text: `${p.name}进洞闭关，冲击${REALM_NAME[p.realm + 1]}`, tone: 'gold' });
+}
+
+/** 每天：闭关到日子的人出关 */
+export function finishBreaks(w: World, r: Rng) {
+  const now = nowDay(w);
+  for (const id of w.members) {
+    const p = w.people[id];
+    if (!p?.breaking || now < p.breaking.until) continue;
+    const pill = p.breaking.pill;
+    p.breaking = undefined;
+    if (!p.alive || p.sect !== 'me' || !atBottleneck(p)) continue;
+    attemptBreak(w, r, p, pill);
+  }
+}
+
 export function attemptBreak(w: World, r: Rng, p: Person, pill: boolean): boolean {
   const ok = r.chance(breakChance(p, pill));
   const target = REALM_NAME[p.realm + 1];
+  emit({ k: 'break', who: p.id, ok });
+  emit({ k: 'banner', text: ok ? `${p.name}破关而出，踏入${target}！` : `${p.name}冲击${target}失败，受了内伤`, tone: ok ? 'gold' : 'bad' });
   if (ok) {
     breakthrough(p);
     if (p.sect === 'me') w.stats.breaks += 1;
@@ -359,6 +387,7 @@ export function breakOptions(w: World, p: Person): DecisionOption[] {
 /** 宗主准某人冲关（季报里的待裁决，或人物卡上直接下令） */
 export function breakNow(w: World, r: Rng, p: Person, way: BreakWay): string | null {
   if (!p.alive || !atBottleneck(p)) return `${p.name}还没到冲关的时候`;
+  if (p.breaking) return `${p.name}已经在闭关了`;
   const opt = breakOptions(w, p).find((o) => o.id === way);
   if (!opt) return '不能这样冲关';
   const no = lacks(w, opt.cost);
@@ -369,7 +398,8 @@ export function breakNow(w: World, r: Rng, p: Person, way: BreakWay): string | n
   w.decisions = w.decisions.filter((d) => !(d.kind === 'breakthrough' && d.params.who === p.id));
   w.acts.push({ kind: pill ? 'break_pill' : 'break_ok', who: p.id, text: pill ? `赐丹助${p.name}冲关` : `准${p.name}闭关冲关` });
   adjust(p, w.me, pill ? 10 : 4, 5);
-  attemptBreak(w, r, p, pill);
+  void r;
+  startBreak(w, p, pill);
   return null;
 }
 function jobName(p: Person) { return p.job in HALL ? HALL[p.job as HallId].name : '山上'; }
@@ -403,12 +433,14 @@ export function addDecision(w: World, kind: string, params: Params): Decision | 
   // 同一件事不重复报
   if (w.decisions.some((d) => d.kind === kind && JSON.stringify(d.params) === JSON.stringify(params))) return null;
   if (kind === 'breakthrough' && w.decisions.some((d) => d.kind === kind && d.params.who === params.who)) return null;
+  const now = nowDay(w);
   const d: Decision = {
     id: newId(w, 'd'), kind, params,
     title: k.title(w, params), text: k.text(w, params), options: k.options(w, params),
-    about: k.about(params), fallback: k.fallback,
+    about: k.about(params), fallback: k.fallback, at: now, due: now + DECISION_DAYS,
   };
   w.decisions.push(d);
+  emit({ k: 'decision', id: d.id });
   return d;
 }
 

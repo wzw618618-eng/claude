@@ -47,3 +47,28 @@ export function templateWhy(w: World, r: Rng, p: Person, c: Choice): string | un
   if (!pool) return undefined;
   return r.pick(pool).replace(/\{t\}/g, c.target ? nm(w, c.target) : '');
 }
+
+/** 平常山上的闲话：看他在干什么、心情、心愿，随口一句。只是画面上的气泡，不进纪事、不改数值 */
+const WORK_TALK: Partial<Record<string, string[]>> = {
+  herb: ['这片灵草长得不错。', '又该松土了。', '今年雨水足，药苗壮。'],
+  alchemy: ['火候差一点就废一炉。', '这炉丹快成了。', '咳咳，烟太大了。'],
+  forge: ['再淬一遍火。', '这把剑还差点意思。', '叮叮当当一整天。'],
+  teach: ['今天讲到第三卷。', '这几个孩子悟性不错。'],
+  law: ['门规第一条，背熟了没有？', '最近山上不太平。'],
+  diplomacy: ['山下的行情又涨了。', '这笔买卖做得。'],
+  recruit: ['今天山门外又有人来了。', '看人，先看眼神。'],
+  guard: ['后山有动静，去看看。', '今晚我守夜。'],
+  seclude: ['……', '灵气又顺了一分。'],
+  none: ['宗主还没给我派活。', '闲着也是闲着。', '干点什么好呢？'],
+};
+
+export function idleLine(w: World, p: Person, roll: number): string | null {
+  if (p.wish && roll < 0.22) return p.wish.kind === 'spy' ? null : p.wish.text;
+  if (p.grudge >= 55 && roll < 0.45) return ['哼，凭什么。', '这日子没法过了。', '早晚有一天……'][Math.floor(roll * 100) % 3];
+  if (p.mood >= 75 && roll < 0.4) return ['今天心情真好。', '山上的日子不错。', '修为又长了一点！'][Math.floor(roll * 100) % 3];
+  if (p.hp < 45) return '伤口还疼着……';
+  const pool = WORK_TALK[p.job];
+  if (!pool) return null;
+  void w;
+  return pool[Math.floor(roll * 997) % pool.length];
+}

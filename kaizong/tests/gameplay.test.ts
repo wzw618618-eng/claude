@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createMeter, type AiConfig } from '../src/ai/config';
 import { atBottleneck, lvl, need } from '../src/game/cult';
 import { checkGoal, checkTier, chooseGoal, offerGoals, talkLimit, TIERS, turnYear } from '../src/game/goals';
-import { masterSeason, setMasterPlan } from '../src/game/master';
+import { masterSeason, setMasterPlan, masterDaily } from '../src/game/master';
+import type { Work } from '../src/game/sect';
 import { canSend, dispatch, missionChance, refreshBoard, settleExpeditions } from '../src/game/missions';
 import { migrate } from '../src/game/save';
 import { advanceSeason, planSeason } from '../src/game/season';
@@ -16,8 +17,8 @@ import { choicesFor } from '../src/game/choices';
 
 const fresh = (seed = 7): World => newWorld({ ...randomStart(seed), site: 'deep', origin: 'sword', heritage: 'mind' });
 const offline: AiConfig = { kind: 'offline', apiKey: '', mode: 'normal' };
-const ui = (over: Partial<Ui> = {}): Ui => ({ screen: 'game', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: true, team: {}, ...over });
-const work = () => ({ cultBonus: 1, lawPower: 1, recruitPower: 0, guardPower: 0, byHall: {} as Record<string, number> }) as Parameters<typeof masterSeason>[2];
+const ui = (over: Partial<Ui> = {}): Ui => ({ screen: 'game', tab: 'report', modal: null, setup: randomStart(7), busy: null, toast: null, sort: 'rank', chats: {}, streaming: null, testPick: {}, showHistory: false, hasSave: true, team: {}, drawer: null, speed: 1, letter: null, hold: false, pauseOn: 'big', ...over });
+const work = () => ({ cultBonus: 1, lawPower: 1, recruitPower: 0, guardPower: 0, byHall: {} as Record<string, number> }) as Work;
 
 /** 一件凶险 1 的剿妖差事 */
 function easyMission(w: World): Mission {
@@ -95,7 +96,7 @@ describe('宗主亲为', () => {
     expect(w.masterPlan.act).toBe('seclude');
     setMasterPlan(w, 'preside');
     const wk = work();
-    masterSeason(w, rngOf(w), wk);
+    masterDaily(w, wk, 1 / 90);
     expect(wk.lawPower).toBe(3);
   });
 });
@@ -154,7 +155,7 @@ describe('界面', () => {
     const w = fresh(81);
     let html = gameView(w, ui({ tab: 'mission' }), offline, createMeter());
     expect(html).toContain('data-act="team"');
-    expect(html).toContain('宗主这一季');
+    expect(html).toContain('宗主 · ');
     html = gameView(w, ui({ modal: { kind: 'master' } }), offline, createMeter());
     expect(html).toContain('data-act="master-act"');
     turnYear(w, rngOf(w));

@@ -15,5 +15,9 @@
     "esbuild": "^0.24.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "mainloop.js": "^1.0.4",
+    "zzfx": "^1.4.0"
   }
 }

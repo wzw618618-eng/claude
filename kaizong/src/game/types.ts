@@ -120,6 +120,8 @@ export interface Person {
   talked?: { t: number; topics: string[] };
   /** 出门执行宗门任务：回来后回到原来的差事 */
   mission?: { id: string; job: JobId; head?: HallId };
+  /** 正在闭关冲关：从哪天到哪天（绝对日），用没用丹 */
+  breaking?: { from: number; until: number; pill: boolean };
 }
 
 /** 任务、大计的奖励 */
@@ -137,15 +139,24 @@ export interface Mission {
   skill2?: Skill;
   /** 要不要打：1 全看修为战力，0 全看本事 */
   fight: number;
-  /** 要去几季 */
+  /** 要去几季（旧字段，界面不再用） */
   seasons: number;
+  /** 要去几天 */
+  days?: number;
   reward: Reward;
   /** 过了这一季就没了 */
   expires: number;
 }
 
 /** 派出去的队伍 */
-export interface Expedition { mission: Mission; team: string[]; back: number; chance: number }
+/** 派出去的队伍：from、back 都是绝对日 */
+export interface Expedition { mission: Mission; team: string[]; back: number; chance: number; from?: number }
+
+/** 一季里的日程（都是季内第几天） */
+export interface Sched { acts: Record<string, number>; rivals: Record<string, number>; events: number; walkin: number; social: number; routineLeft: number }
+
+/** 各殿堂的力道 */
+export interface WorkRates { cultBonus: number; lawPower: number; recruitPower: number; guardPower: number; byHall: Record<string, number> }
 
 /** 宗主这一季亲自做的事 */
 export type MasterAct = 'seclude' | 'teach' | 'preside' | 'roam' | 'craft' | 'visit';
@@ -175,8 +186,10 @@ export interface Candidate {
   stay: number;
   /** 敌宗也在请他 */
   courtedBy?: string;
-  /** 打听来历什么时候出结果 */
+  /** 打听来历什么时候出结果（绝对日） */
   checkAt?: number;
+  /** 等到哪一天就走（绝对日） */
+  leaveDay?: number;
   /** 考核太多，不耐烦了 */
   annoyed?: boolean;
 }
@@ -246,8 +259,12 @@ export interface Decision {
   about: string[];
   options: DecisionOption[];
   params: Record<string, string | number>;
-  /** 不处理会怎么样（过季时自动选） */
+  /** 不处理会怎么样（到期自动选） */
   fallback: string;
+  /** 哪天之前要拍板（绝对日） */
+  due?: number;
+  /** 什么时候冒出来的（绝对日） */
+  at?: number;
 }
 
 export interface ReportItem {
@@ -283,8 +300,8 @@ export interface Sect {
   veins: number;
   /** 殿堂等级：0 空地，1 刚建成 … 4 最高 */
   halls: Record<HallId, number>;
-  /** 在建的工程：done 是完工那一季 */
-  works: { hall: HallId; to: number; done: number }[];
+  /** 在建的工程：from 动工、done 完工，都是绝对日 */
+  works: { hall: HallId; to: number; done: number; from?: number }[];
   tech: string[];
   policy: string | null;
   /** 丹药怎么分 */
@@ -307,6 +324,18 @@ export interface World {
   rng: number;
   /** 第几季（0 = 第一年春） */
   t: number;
+  /** 这一季的第几天（0–89） */
+  day: number;
+  /** 时间改成按天走以后的存档 */
+  clock?: 1;
+  /** 这一季的日程：谁哪天拿主意、敌宗哪天出手、哪天出事 */
+  sched?: Sched;
+  /** 这一季分到丹药的人 */
+  pillTo?: string[];
+  /** 当天各殿堂的力道（执法、迎客、巡山……） */
+  work?: WorkRates;
+  /** 季初的家底（季末算增减） */
+  before?: Record<string, number>;
   me: string;
   sect: Sect;
   people: Record<string, Person>;
@@ -328,8 +357,8 @@ export interface World {
   endYear: number;
   /** 两个人被宗主安排到一处的时间（求道侣联动用） */
   pairings: Record<string, number>;
-  /** 下一季要开打的仗 */
-  pendingWar?: { enemy: string; byPlayer: boolean };
+  /** 要开打的仗：at 是哪天打上门（绝对日） */
+  pendingWar?: { enemy: string; byPlayer: boolean; at?: number };
   /** 敌宗正在挖谁：弟子 id → 敌宗 id */
   offers: Record<string, string>;
   /** 本季谁干了坏事（告发用） */
@@ -344,8 +373,8 @@ export interface World {
   delta: Record<string, number>;
   /** 新手指引已经关掉 */
   guideOff?: boolean;
-  /** 宗主这一季做什么（不改就一直这样） */
-  masterPlan: { act: MasterAct; target?: string };
+  /** 宗主在做什么：from 开始、until 做完（绝对日）；做完了接着做同一件 */
+  masterPlan: { act: MasterAct; target?: string; from?: number; until?: number };
   /** 任务栏 */
   missions: Mission[];
   /** 在外面的队伍 */

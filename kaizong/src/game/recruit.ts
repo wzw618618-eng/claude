@@ -8,7 +8,8 @@ import { genPerson, setPatron } from './gen';
 import type { Rng } from './rng';
 import { setRank } from './sect';
 import type { Candidate, Person, Rank, Skill, World } from './types';
-import { addLife, adjust, clamp, disp, hasTrait, P, report } from './world';
+import { emit } from './fx';
+import { addLife, adjust, clamp, daysLeft, disp, hasTrait, MONTH_DAYS, nowDay, P, report, SEASON_DAYS } from './world';
 
 export const WANT_TEXT: Record<Candidate['wants'], string> = {
   technique: '想学上乘功法', status: '想要个像样的名分', safety: '想找个靠得住的地方安身', food: '只求有口饭吃、有处落脚',
@@ -105,14 +106,25 @@ export function heartTest(w: World, c: Candidate): string | null {
   return null;
 }
 
-/** 派人去查来历：下一季出结果，他得多等一季 */
+/** 打听来历要几天 */
+export const CHECK_DAYS = 40;
+
+/** 派人去查来历：一个多月出结果，他得多等些日子 */
 export function checkOrigin(w: World, c: Candidate): string | null {
   if (c.known.origin !== 'unknown') return null;
+  const now = nowDay(w);
   c.known.origin = 'checking';
-  c.checkAt = w.t + 1;
+  c.checkAt = now + CHECK_DAYS;
+  c.leaveDay = Math.max(leaveDayOf(w, c), now + CHECK_DAYS + MONTH_DAYS);
   c.stay = Math.max(c.stay, 2);
   return null;
 }
+
+/** 他等到哪天就走：来的那天起，stay 季 */
+export function leaveDayOf(w: World, c: Candidate): number {
+  return c.leaveDay ?? (c.leaveDay = nowDay(w) + c.stay * SEASON_DAYS - 15);
+}
+export const candidateDaysLeft = (w: World, c: Candidate) => daysLeft(w, leaveDayOf(w, c));
 
 /** 他肯不肯来 */
 export function acceptChance(w: World, c: Candidate, rank: Rank): number {
@@ -170,11 +182,11 @@ export function dismiss(w: World, c: Candidate) {
   w.candidates = w.candidates.filter((x) => x.id !== c.id);
 }
 
-/** 每季来人；春天开山收徒 */
-export function newCandidates(w: World, r: Rng, recruitPower: number) {
+/** 来人：春天开山收徒（open），平时有人上门投奔（walkin） */
+export function newCandidates(w: World, r: Rng, recruitPower: number, part: 'open' | 'walkin' | 'both' = 'both') {
   const acc = insight(w, recruitPower);
   const s = w.sect;
-  if (w.t % 4 === 0) {
+  if (w.t % 4 === 0 && part !== 'walkin') {
     let n = 3 + Math.floor(s.rep / 40) + (w.tier >= 2 ? 1 : 0) + (s.tech.includes('scouting') ? 2 : 0) + (s.site === 'market' ? 1 : s.site === 'deep' ? -1 : 0) + Math.floor(recruitPower * 0.6);
     if (s.policy === 'recruit') n = Math.round(n * 1.5);
     if (s.origin === 'demon') n -= 1;
@@ -184,23 +196,32 @@ export function newCandidates(w: World, r: Rng, recruitPower: number) {
       w.candidates.push(makeCandidate(w, r, genius ? 'genius' : 'open', acc));
     }
     report(w, { text: `开山收徒，来了${n}个人。`, tone: 'info', about: [] });
+    emit({ k: 'banner', text: `开山收徒，山门外来了 ${n} 个人`, tone: 'gold' });
   }
-  if (r.chance(0.45 + (s.site === 'market' ? 0.2 : 0))) {
-    w.candidates.push(makeCandidate(w, r, 'walkin', acc));
+  if (part !== 'open' && r.chance(0.45 + (s.site === 'market' ? 0.2 : 0))) {
+    const c = makeCandidate(w, r, 'walkin', acc);
+    w.candidates.push(c);
+    if (part === 'walkin') {
+      report(w, { text: `${w.people[c.id].name}上山来投奔，在迎客堂等你见。`, tone: 'info', about: [] });
+      emit({ k: 'float', at: 'gate', text: '有人上山投奔', tone: 'gold' });
+    }
   }
 }
 
-/** 季末：查来历出结果、没被收的人离开 */
+/** 每天：查来历出结果、等不及的人离开 */
 export function ageCandidates(w: World) {
+  const now = nowDay(w);
   for (const c of w.candidates) {
-    if (c.known.origin === 'checking' && c.checkAt !== undefined && w.t >= c.checkAt) {
+    if (c.known.origin === 'checking' && c.checkAt !== undefined && now >= c.checkAt) {
       const p = candidatePerson(w, c);
       c.known.origin = p.honestOrigin ? 'true' : 'false';
+      report(w, { text: `派去打听${p.name}来历的人回来了：${p.honestOrigin ? '来历属实' : '他说的来历是假的'}。`, tone: p.honestOrigin ? 'info' : 'bad', about: [] });
     }
   }
   w.candidates = w.candidates.filter((c) => {
-    c.stay -= 1;
-    return c.stay > 0;
+    if (now < leaveDayOf(w, c)) return true;
+    emit({ k: 'float', at: 'gate', text: `${candidatePerson(w, c).name}等不及，下山了`, tone: 'info' });
+    return false;
   });
 }
 

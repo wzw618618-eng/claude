@@ -1,4 +1,4 @@
-// 宗门任务：任务栏上每季挂着几件差事，宗主挑一到三个弟子组队出去。
+// 宗门任务：任务栏上每季挂着几件差事，宗主挑一到三个弟子组队出去，按天数走一趟回来。
 // 成不成看队伍的战力和本事（打打杀杀的看战力，炼丹调解的看本事）；越凶险赏得越多，也越可能有人回不来。
 
 import { power, stepUp } from './cult';
@@ -8,7 +8,8 @@ import { insight, makeCandidate } from './recruit';
 import type { Rng } from './rng';
 import { hallHead } from './sect';
 import type { Mission, Person, Reward, Skill, World } from './types';
-import { addLife, clamp, newId, P, report, timeText, year } from './world';
+import { emit } from './fx';
+import { addLife, clamp, daysLeft, newId, nowDay, P, report, year } from './world';
 
 interface MissionDef {
   kind: string;
@@ -36,6 +37,12 @@ const DEFS: MissionDef[] = [
   { kind: 'forge', titles: ['代人炼器', '给镖局打一批兵刃'], descs: ['镖局要一批好兵刃，出价不低。', '城里的富户想要一件护身法器。'], skill: 'forge', fight: 0, seasons: 1, reward: (d) => ({ stones: 35 * d, armory: 6 * d }) },
   { kind: 'arena', titles: ['坊市擂台', '赴论剑会'], descs: ['坊市开了擂台，各宗年轻弟子都去露脸。', '有人办论剑会，请各宗派人切磋。'], skill: 'combat', fight: 1, seasons: 1, maxDanger: 4, reward: (d) => ({ rep: 4 * d, stones: 20 * d }) },
 ];
+
+/** 一趟要走几天：近的一个来月，远的两个多月 */
+function missionDays(seasons: number, danger: number, jitter: number) {
+  return (seasons >= 2 ? 66 : 30) + danger * 2 + jitter;
+}
+export const tripDays = (m: Mission) => m.days ?? missionDays(m.seasons, m.danger, 0);
 
 /** 各凶险程度要的总战力、本事 */
 export const POWER_NEED = [0, 40, 90, 200, 420, 900];
@@ -66,7 +73,7 @@ export function missionNeeds(m: Mission): string {
 }
 
 /** 能派出去的人：在山上、没别的差事在身 */
-export const canSend = (w: World, p: Person) => p.alive && p.sect === 'me' && p.id !== w.me && p.job !== 'travel' && !p.mission;
+export const canSend = (w: World, p: Person) => p.alive && p.sect === 'me' && p.id !== w.me && p.job !== 'travel' && !p.mission && !p.breaking;
 
 function newMission(w: World, r: Rng, taken: Set<string>): Mission | null {
   const y = year(w.t);
@@ -77,7 +84,7 @@ function newMission(w: World, r: Rng, taken: Set<string>): Mission | null {
   const danger = clamp(base + r.int(-1, 1), def.minDanger ?? 1, Math.min(5, def.maxDanger ?? 5));
   return {
     id: newId(w, 'm'), kind: def.kind, title: r.pick(def.titles), desc: r.pick(def.descs), danger, skill: def.skill, skill2: def.skill2,
-    fight: def.fight, seasons: def.seasons, reward: def.reward(danger), expires: w.t + 1,
+    fight: def.fight, seasons: def.seasons, days: missionDays(def.seasons, danger, r.int(-4, 4)), reward: def.reward(danger), expires: w.t + 1,
   };
 }
 
@@ -111,7 +118,9 @@ export function dispatch(w: World, missionId: string, ids: string[]): string | n
     if (p.dislikes.includes('travel')) p.grudge = clamp(p.grudge + 4, 0, 100);
   }
   w.missions = w.missions.filter((x) => x.id !== m.id);
-  w.expeditions.push({ mission: m, team: team.map((p) => p.id), back: w.t + m.seasons, chance });
+  const now = nowDay(w);
+  w.expeditions.push({ mission: m, team: team.map((p) => p.id), from: now, back: now + tripDays(m), chance });
+  emit({ k: 'banner', text: `${team.map((p) => p.name).join('、')}下山去${m.title}了`, tone: 'info' });
   w.acts.push({ kind: 'mission', who: team[0].id, text: `派${team.map((p) => p.name).join('、')}去${m.title}` });
   return null;
 }
@@ -127,11 +136,11 @@ function comeHome(w: World, p: Person) {
 
 const names = (ps: Person[]) => ps.map((p) => p.name).join('、');
 
-/** 季末：到时候的队伍回来，算成败 */
-export function settleExpeditions(w: World, r: Rng) {
+/** 每天：到日子的队伍回来，算成败。now 不给就是"立刻都回来"（测试用） */
+export function settleExpeditions(w: World, r: Rng, now = Infinity) {
   const keep = [];
   for (const e of w.expeditions) {
-    if (w.t + 1 < e.back) { keep.push(e); continue; }
+    if (now < e.back) { keep.push(e); continue; }
     const m = e.mission;
     const team = e.team.map((id) => P(w, id)).filter((p): p is Person => !!p?.alive && p.sect === 'me');
     if (!team.length) { for (const id of e.team) { const p = P(w, id); if (p) p.mission = undefined; } continue; }
@@ -164,6 +173,8 @@ export function settleExpeditions(w: World, r: Rng) {
       w.stats.missionsDone += 1;
       const shown = rewardText({ ...rw, gear: 0, exp: 0, candidate: 0 });
       report(w, { text: `${names(team)}${m.title}回来了：办成了${shown ? `，得${shown}` : ''}${extra}。`, tone: 'good', about: team.map((p) => p.id), big: d >= 4 });
+      emit({ k: 'banner', text: `${m.title}，办成了！${shown ? `得${shown}` : ''}`, tone: 'good' });
+      emit({ k: 'float', at: 'gate', text: shown ? `+${shown}` : '凯旋', tone: 'gold' });
     } else {
       // 没办成：带回来一点，人受伤，凶险的差事可能折人
       const part: Reward = { stones: Math.floor((m.reward.stones ?? 0) * 0.3), herbs: Math.floor((m.reward.herbs ?? 0) * 0.3) };
@@ -184,6 +195,7 @@ export function settleExpeditions(w: World, r: Rng) {
       }
       w.stats.missionsFailed += 1;
       report(w, { text: `${names(team)}${m.title}没办成${hurt.length ? `，${hurt.join('、')}受了伤` : ''}${lost}。`, tone: 'bad', about: team.map((p) => p.id), big: !!lost });
+      emit({ k: 'banner', text: `${m.title}没办成${lost}`, tone: 'bad' });
     }
     for (const p of team) comeHome(w, p);
   }
@@ -195,5 +207,11 @@ export function settleExpeditions(w: World, r: Rng) {
 export function awayText(w: World, p: Person): string | null {
   if (!p.mission) return null;
   const e = w.expeditions.find((x) => x.team.includes(p.id));
-  return e ? `外出${e.mission.title}，${timeText(e.back)}回山` : '外出办事';
+  return e ? `外出${e.mission.title}，还有 ${daysLeft(w, e.back)} 日回山` : '外出办事';
+}
+
+/** 走到几成了（0–1） */
+export function tripProgress(w: World, e: { from?: number; back: number; mission: Mission }) {
+  const from = e.from ?? e.back - tripDays(e.mission);
+  return Math.max(0, Math.min(1, (nowDay(w) - from) / Math.max(1, e.back - from)));
 }
