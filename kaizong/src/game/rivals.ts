@@ -75,6 +75,7 @@ export function ruleRivalPick(r: Rng, cs: RivalChoice[]): RivalChoice {
 /** 敌宗出手 */
 export function applyRivalMove(w: World, r: Rng, rv: Rival, c: RivalChoice, work: Work) {
   rv.lastMove = MOVE_NAME[c.id];
+  rv.hidden = c.id === 'poach' || c.id === 'spy';
   const intel = work.byHall.diplomacy + work.lawPower;
   switch (c.id) {
     case 'grow':

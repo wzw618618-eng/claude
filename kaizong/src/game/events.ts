@@ -263,6 +263,29 @@ const SECT_EVENTS: SectEvent[] = [
     },
   },
   {
+    id: 'vein_dispute', weight: (w) => w.sect.veins >= 2 && rivalAlive(w).length ? 0.5 : 0,
+    start: (w, r) => { const rv = r.pick(rivalAlive(w)); return { title: '灵脉之争', text: `${rv.name}派人来说，你山下那条灵脉本该归他们。`, options: [{ id: 'refuse', label: '寸土不让', hint: '对方会记恨' }, { id: 'pay', label: '赔 100 灵石了事' }, { id: 'give', label: '让给他们', hint: '少一条灵脉，换对方好感' }], params: { rival: rv.id }, fallback: 'refuse' }; },
+    resolve(w, _r, x, o) {
+      const rv = w.rivals.find((v) => v.id === x.rival)!;
+      if (o === 'refuse') { rv.attitude -= 12; w.sect.authority = clamp(w.sect.authority + 3, 0, 100); }
+      if (o === 'pay' && w.sect.stones >= 100) { w.sect.stones -= 100; rv.attitude += 6; }
+      if (o === 'give') { w.sect.veins -= 1; rv.veins += 1; rv.attitude += 20; w.sect.rep -= 5; for (const p of members(w)) if (disp(p, 'pride') > 0) p.grudge = clamp(p.grudge + 6, 0, 100); report(w, { text: `把一条灵脉让给了${rv.name}。几个心气高的弟子很不服气。`, tone: 'bad', about: [] }); }
+    },
+  },
+  {
+    id: 'guest_elder', weight: () => 0.35,
+    start: () => ({ title: '散修来投', text: '一位年迈的筑基散修路过，想在山上做个客卿，安度晚年。', options: [{ id: 'yes', label: '请他去迎客堂谈谈' }, { id: 'no', label: '婉拒' }], fallback: 'no' }),
+    resolve(w, r, _x, o) {
+      if (o !== 'yes') return;
+      const c = makeCandidate(w, r, 'refer', insight(w, 1));
+      const p = w.people[c.id];
+      p.realm = 1; p.stage = r.int(1, 3); p.age = r.int(150, 185);
+      c.claim = '云游多年的散修，想找个地方落脚';
+      c.wants = 'safety';
+      w.candidates.push(c);
+    },
+  },
+  {
     id: 'plague', weight: () => 0.3,
     start: (w, r) => { const hit = r.shuffle([...members(w)]).slice(0, 3); for (const p of hit) { p.hp = clamp(p.hp - 30, 5, 100); addLife(w, p, '染了山中瘴气，大病一场', 'bad'); } report(w, { text: `山中起了瘴气，${names(hit)}病倒了。`, tone: 'bad', about: hit.map((p) => p.id) }); return null; },
   },
@@ -303,6 +326,14 @@ const PERSON_EVENTS: PersonEvent[] = [
     } else { adjust(q, p.id, 20, 5); addLife(w, p, `替${q.name}守住了秘密`, 'good'); }
   } },
   { id: 'heart_demon', weight: (_w, p) => p.grudge >= 60 ? 1 : 0, run(w, r, p) { drift(w, r, p, 'oppressed', 0.8); p.grudge = clamp(p.grudge - 10, 0, 100); } },
+  { id: 'old_clue', weight: (w, p) => p.secret?.kind === 'vendetta' && !p.wish ? 1.5 : 0, run(w, r, p) {
+    const pool = rivalAlive(w).flatMap((x) => x.named.concat(x.master)).filter((id) => P(w, id)?.alive);
+    if (!pool.length) return;
+    const foe = r.pick(pool);
+    p.wish = { kind: 'revenge', target: foe, text: `终于查到了，害我全家的是${P(w, foe)!.name}`, since: w.t, by: 'rule' };
+    addLife(w, p, `打听到了血仇的线索：${P(w, foe)!.name}`, 'story', true);
+  } },
+  { id: 'insight_tea', weight: (_w, p) => p.job === 'seclude' || p.job === 'teach' ? 0.6 : 0.15, run(w, _r, p) { p.wit = Math.min(100, p.wit + 5); addLife(w, p, '听雨品茶时心有所感，悟性长了几分', 'good'); } },
   { id: 'friend_outside', weight: (_w, p) => p.job === 'travel' && disp(p, 'romance') > 0 ? 0.6 : 0, run(w, _r, p) { p.mood = clamp(p.mood + 15, 0, 100); addLife(w, p, '在外结识了一位知己，书信往来不断', 'good'); } },
 ];
 

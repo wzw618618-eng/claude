@@ -183,6 +183,8 @@ export interface Rival {
   lastMove?: string;
   lastWhy?: string;
   style: 'aggressive' | 'cunning' | 'proper' | 'aloof';
+  /** 上一季的动作是暗地里的（玩家看不到） */
+  hidden?: boolean;
   /** 上次派奸细是哪一季 */
   lastSpy?: number;
   /** 奸细送回去的消息 */

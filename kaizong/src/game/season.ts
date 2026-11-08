@@ -7,13 +7,14 @@ import { addDecision, drift, refreshDecision, resolveDecision } from './decision
 import { HALL, POLICY, SKILLS, TECH } from './data/world';
 import { rollEvents, travelTick } from './events';
 import { ageCandidates, newCandidates, probationTick } from './recruit';
+import { templateWhy } from './lines';
 import { applyChoice, socialize } from './resolve';
 import { applyRivalMove, ruleRivalPick, rivalChoices, rivalTick, type RivalChoice } from './rivals';
 import { cultivate, doWork, payUpkeep, underqualified, unconvinced, type Unconvinced } from './sect';
 import type { Person, World } from './types';
 import { startWar } from './war';
 import { ruleWish, settleWishes, thwarted, type WishNews } from './wishes';
-import { addLife, clamp, disp, everyone, members, op, P, report, rngOf, year } from './world';
+import { addLife, clamp, disp, everyone, members, nm, op, P, report, rngOf, year } from './world';
 
 export type AiMode = 'save' | 'normal' | 'rich';
 export const AI_LIMIT: Record<AiMode, number> = { save: 3, normal: 8, rich: 16 };
@@ -87,15 +88,17 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   // 一、各人做自己挑的事
   const unc = unconvinced(w);
   const order = r.shuffle(members(w).filter((p) => plan.options[p.id]));
-  const notable: { p: Person; c: Choice; why?: string }[] = [];
+  const notable: { p: Person; c: Choice; why?: string; routine: boolean }[] = [];
   for (const p of order) {
     if (!p.alive || p.sect !== 'me') continue;
     const cs = choicesFor(w, p, { unc });
     const pk = picks[p.id];
     const c = (pk && cs.find((x) => x.id === pk.id)) || rulePick(r, cs);
     p.lastWhy = pk?.why && pk.id === c.id ? pk.why : undefined;
+    if (!p.lastWhy && c.kind !== 'work' && r.chance(0.6)) p.lastWhy = templateWhy(w, r, p, c);
     applyChoice(w, r, p, c, emptyWork());
-    if (c.kind !== 'work' || p.lastWhy || p.starred) notable.push({ p, c, why: p.lastWhy });
+    const routine = ['work', 'diligent', 'cultivate', 'slack'].includes(c.kind);
+    if (!routine || p.starred || p.lastWhy) notable.push({ p, c, why: p.lastWhy, routine });
   }
   for (const p of members(w)) if (!plan.options[p.id]) p.lastAct = 'travel';
 
@@ -206,13 +209,21 @@ export function advanceSeason(w: World, plan: Plan, picks: Record<string, Pick>,
   w.members = w.members.filter((id) => P(w, id)?.alive && P(w, id)?.sect === 'me');
 
   // 十一、季报：谁做了什么
-  const shown = notable.filter((n) => n.p.alive).sort((a, b) => (b.p.starred ? 1 : 0) - (a.p.starred ? 1 : 0)).slice(0, 10);
+  // 季报：大事都报；日常的事（偷懒、拼命、挤时间修炼）标记的人和 AI 说了话的优先，其余最多三条
+  let routineLeft = 3;
+  const shown = notable.filter((n) => n.p.alive)
+    .sort((a, b) => Number(!!b.p.starred) - Number(!!a.p.starred) || Number(picks[b.p.id]?.by === 'ai') - Number(picks[a.p.id]?.by === 'ai') || Number(a.routine) - Number(b.routine))
+    .filter((n) => !n.routine || n.p.starred || picks[n.p.id]?.by === 'ai' || routineLeft-- > 0)
+    .slice(0, 12);
   for (const n of shown) {
-    if (['work'].includes(n.c.kind) && !n.why && !n.p.starred) continue;
+    if (n.c.kind === 'work' && !n.why) continue;
     report(w, { text: `${n.p.name}：${n.c.label}。`, tone: 'story', about: [n.p.id], quote: n.why ? { who: n.p.id, text: n.why } : undefined });
-    if (n.why) addLife(w, n.p, `${n.c.label}——"${n.why}"`, 'story');
+    // 经历只记有分量的事；日常的事只在 AI 替他说了话时记
+    const fresh = n.why && !n.p.life.slice(-6).some((l) => l.text.includes(n.why!));
+    if (!n.routine || (fresh && picks[n.p.id]?.by === 'ai')) addLife(w, n.p, n.why ? `${n.c.label}——"${n.why}"` : n.c.label, 'story');
   }
-  for (const rv of w.rivals) if (rv.lastMove && rv.alive && !rv.passive) report(w, { text: `${rv.name}：${rv.lastMove}。`, tone: 'info', about: [], quote: rv.lastWhy ? { who: rv.master, text: rv.lastWhy } : undefined });
+  // 敌宗明面上的动作才报；挖人、派奸细是暗地里的
+  for (const rv of w.rivals) if (rv.lastMove && rv.lastWhy && rv.alive && !rv.passive && !rv.hidden) report(w, { text: `${rv.name}宗主${nm(w, rv.master)}：${rv.lastMove}。`, tone: 'info', about: [], quote: { who: rv.master, text: rv.lastWhy } });
 
   // 十二、来人走人，时间往前
   ageCandidates(w);
