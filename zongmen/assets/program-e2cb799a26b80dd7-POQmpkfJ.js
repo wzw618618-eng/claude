@@ -1,0 +1,1 @@
+import{t as e}from"./style-D_vZMnTr.js";export{e as CSS};

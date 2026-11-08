@@ -1,0 +1,1 @@
+import{t as e}from"./preload-helper-nyIPytJM.js";try{await e(()=>import(`./main-C1KqfSzT.js`),[])}catch(e){globalThis.__forgeaxStartup?.fail?.(e)}

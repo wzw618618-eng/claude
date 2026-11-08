@@ -1,0 +1,380 @@
+struct RayMaterialInputX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX {
+    positionOS: vec4<f32>,
+    positionWS: vec4<f32>,
+    normal: vec4<f32>,
+    tangent: vec4<f32>,
+    outgoing: vec4<f32>,
+    uvA: vec4<f32>,
+    uvB: vec4<f32>,
+    uvC: vec4<f32>,
+    uvD: vec4<f32>,
+    color: vec4<f32>,
+    footprintA: vec4<f32>,
+    footprintB: vec4<f32>,
+    vertexNormal: vec4<f32>,
+    identity: vec4<u32>,
+}
+
+struct RayMaterialSurfaceX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX {
+    albedoOpacity: vec4<f32>,
+    normalRoughness: vec4<f32>,
+    emissionMetallic: vec4<f32>,
+    f0Occlusion: vec4<f32>,
+    status: vec4<u32>,
+    geometricNormal: vec4<f32>,
+}
+
+struct MaterialParameters {
+    baseColor: vec4<f32>,
+    metallic: f32,
+    roughness: f32,
+    subsurfaceRadius: vec3<f32>,
+    subsurfaceWeight: f32,
+    emissive: vec3<f32>,
+    emissiveIntensity: f32,
+    alphaCutoff: f32,
+    specular: f32,
+    alphaHash: f32,
+    specularColor: vec3<f32>,
+    ior: f32,
+}
+
+struct SurfaceInput {
+    positionOS: vec3<f32>,
+    positionWS: vec3<f32>,
+    geometricNormalWS: vec3<f32>,
+    vertexNormalWS: vec3<f32>,
+    tangentWS: vec4<f32>,
+    viewDirectionWS: vec3<f32>,
+    uv0_: vec2<f32>,
+    uv1_: vec2<f32>,
+    uv2_: vec2<f32>,
+    uv3_: vec2<f32>,
+    uv4_: vec2<f32>,
+    uv5_: vec2<f32>,
+    uv6_: vec2<f32>,
+    uv7_: vec2<f32>,
+    vertexColor: vec4<f32>,
+    frontFacing: bool,
+    uvFootprint0_: vec4<f32>,
+    uvFootprint1_: vec4<f32>,
+    objectToWorld: mat3x3<f32>,
+    frameTime: f32,
+}
+
+struct SurfaceData {
+    baseColor: vec3<f32>,
+    normalWS: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+    emissive: vec3<f32>,
+    occlusion: f32,
+    opacity: f32,
+    alphaClipThreshold: f32,
+}
+
+struct MaterialSelection {
+    id: u32,
+    p0_: u32,
+    p1_: u32,
+    p2_: u32,
+}
+
+@group(1) @binding(0) 
+var<uniform> material: MaterialParameters;
+@group(0) @binding(0) 
+var<storage> rayInputs: array<RayMaterialInputX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX>;
+@group(0) @binding(1) 
+var<storage, read_write> raySurfaces: array<RayMaterialSurfaceX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX>;
+@group(0) @binding(2) 
+var<uniform> materialSelection: MaterialSelection;
+
+fn standardDielectricF0X_naga_oil_mod_XMZXXEZ3FMF4F64DCOI5DUYTSMRTAX(ior: f32) -> f32 {
+    let ratio = ((ior - 1f) / (ior + 1f));
+    return (ratio * ratio);
+}
+
+fn standardOpaqueF0FromDielectricX_naga_oil_mod_XMZXXEZ3FMF4F64DCOI5DUYTSMRTAX(albedo: vec3<f32>, metallic: f32, specularColor: vec3<f32>, specular: f32, dielectric: f32) -> vec3<f32> {
+    return mix(((vec3(dielectric) * specularColor) * specular), albedo, metallic);
+}
+
+fn standardOpaqueF0X_naga_oil_mod_XMZXXEZ3FMF4F64DCOI5DUYTSMRTAX(albedo_1: vec3<f32>, metallic_1: f32, specularColor_1: vec3<f32>, specular_1: f32, ior_1: f32) -> vec3<f32> {
+    let _e1 = standardDielectricF0X_naga_oil_mod_XMZXXEZ3FMF4F64DCOI5DUYTSMRTAX(ior_1);
+    let _e6 = standardOpaqueF0FromDielectricX_naga_oil_mod_XMZXXEZ3FMF4F64DCOI5DUYTSMRTAX(albedo_1, metallic_1, specularColor_1, specular_1, _e1);
+    return _e6;
+}
+
+fn surfaceGeometryNormal(dx: vec3<f32>, dy: vec3<f32>, fallback: vec3<f32>) -> vec3<f32> {
+    var local_1: bool;
+
+    let scaleX = max(max(abs(dx.x), abs(dx.y)), abs(dx.z));
+    let scaleY = max(max(abs(dy.x), abs(dy.y)), abs(dy.z));
+    if (scaleX > 0f) {
+        local_1 = (scaleY > 0f);
+    } else {
+        local_1 = false;
+    }
+    let _e25 = local_1;
+    if !(_e25) {
+        return fallback;
+    }
+    let geometric = cross((dy / vec3(scaleY)), (dx / vec3(scaleX)));
+    let lengthSquared = dot(geometric, geometric);
+    if !((lengthSquared > 0f)) {
+        return fallback;
+    }
+    return (geometric * inverseSqrt(lengthSquared));
+}
+
+fn rayObjectToWorld(value: RayMaterialInputX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX) -> mat3x3<f32> {
+    return mat3x3<f32>(vec3<f32>(1f, 0f, 0f), vec3<f32>(0f, 1f, 0f), vec3<f32>(0f, 0f, 1f));
+}
+
+fn raySurfaceInput(value_1: RayMaterialInputX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX) -> SurfaceInput {
+    let _e35 = rayObjectToWorld(value_1);
+    return SurfaceInput(value_1.positionOS.xyz, value_1.positionWS.xyz, value_1.normal.xyz, value_1.vertexNormal.xyz, value_1.tangent, value_1.outgoing.xyz, value_1.uvA.xy, value_1.uvA.zw, value_1.uvB.xy, value_1.uvB.zw, value_1.uvC.xy, value_1.uvC.zw, value_1.uvD.xy, value_1.uvD.zw, value_1.color, (value_1.normal.w > 0f), value_1.footprintA, value_1.footprintB, _e35, 0f);
+}
+
+fn evaluate_standard_surface(input: SurfaceInput, materialValue: MaterialParameters) -> SurfaceData {
+    var baseSample: vec4<f32> = vec4(1f);
+    var metallicRoughnessSample: vec4<f32> = vec4(1f);
+    var metallicSample: vec4<f32>;
+    var roughnessSample: vec4<f32>;
+    var alpha: f32 = 1f;
+    var normal: vec3<f32>;
+    var usesNormal: bool = false;
+    var emissiveSample: vec4<f32> = vec4(1f);
+    var occlusionSample: vec4<f32> = vec4(1f);
+
+    let _e4 = metallicRoughnessSample;
+    metallicSample = _e4;
+    let _e6 = metallicRoughnessSample;
+    roughnessSample = _e6;
+    let faceDirection = select(-1f, 1f, input.frontFacing);
+    normal = (normalize(input.vertexNormalWS) * faceDirection);
+    let vertexColor = input.vertexColor;
+    let _e22 = baseSample;
+    let baseColor = ((materialValue.baseColor.xyz * _e22.xyz) * vertexColor.xyz);
+    let metallic_2 = clamp(materialValue.metallic, 0f, 1f);
+    let roughness = clamp(materialValue.roughness, 0.04f, 1f);
+    let _e39 = emissiveSample;
+    let emissive = ((materialValue.emissive * materialValue.emissiveIntensity) * _e39.xyz);
+    let _e43 = normal;
+    let _e47 = baseSample.w;
+    let _e51 = alpha;
+    return SurfaceData(baseColor, _e43, metallic_2, roughness, emissive, 1f, clamp((((materialValue.baseColor.w * _e47) * vertexColor.w) * _e51), 0f, 1f), clamp(materialValue.alphaCutoff, 0f, 1f));
+}
+
+fn evaluate_surface(input_1: SurfaceInput) -> SurfaceData {
+    let _e1 = material;
+    let _e3 = evaluate_standard_surface(input_1, _e1);
+    return _e3;
+}
+
+fn evaluateRayMaterial(record: RayMaterialInputX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX) -> RayMaterialSurfaceX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX {
+    var local_2: bool;
+    var local_3: bool;
+    var local_4: bool;
+    var local_5: bool;
+    var local_6: bool;
+    var local_7: bool;
+    var local_8: bool;
+    var local_9: bool;
+    var local_10: bool;
+    var local_11: bool;
+    var local_12: bool;
+    var local_13: bool;
+    var local_14: bool;
+    var local_15: bool;
+    var local_16: bool;
+    var local_17: bool;
+    var local_18: bool;
+    var directDfgMode: u32 = 0u;
+
+    let _e2 = raySurfaceInput(record);
+    let _e3 = evaluate_surface(_e2);
+    let _e8 = material.specularColor;
+    let _e11 = material.specular;
+    let _e17 = material.ior;
+    let _e20 = standardOpaqueF0X_naga_oil_mod_XMZXXEZ3FMF4F64DCOI5DUYTSMRTAX(_e3.baseColor, _e3.metallic, _e8, clamp(_e11, 0f, 1f), max(_e17, 1f));
+    let geometricNormal = (record.normal.xyz * select(-1f, 1f, _e2.frontFacing));
+    if (_e3.opacity >= 0f) {
+        local_2 = (_e3.opacity <= 1f);
+    } else {
+        local_2 = false;
+    }
+    let _e37 = local_2;
+    if _e37 {
+        local_3 = (_e3.alphaClipThreshold >= 0f);
+    } else {
+        local_3 = false;
+    }
+    let _e44 = local_3;
+    if _e44 {
+        local_4 = (_e3.alphaClipThreshold <= 1f);
+    } else {
+        local_4 = false;
+    }
+    let _e51 = local_4;
+    if _e51 {
+        local_5 = all((_e3.baseColor >= vec3(0f)));
+    } else {
+        local_5 = false;
+    }
+    let _e60 = local_5;
+    if _e60 {
+        local_6 = all((_e3.baseColor <= vec3(1f)));
+    } else {
+        local_6 = false;
+    }
+    let _e69 = local_6;
+    if _e69 {
+        local_7 = (abs((dot(_e3.normalWS, _e3.normalWS) - 1f)) < 0.0001f);
+    } else {
+        local_7 = false;
+    }
+    let _e81 = local_7;
+    if _e81 {
+        local_8 = all((_e20 >= vec3(0f)));
+    } else {
+        local_8 = false;
+    }
+    let _e89 = local_8;
+    if _e89 {
+        local_9 = all((_e20 <= vec3(1f)));
+    } else {
+        local_9 = false;
+    }
+    let _e97 = local_9;
+    if _e97 {
+        local_10 = (_e3.occlusion >= 0f);
+    } else {
+        local_10 = false;
+    }
+    let _e104 = local_10;
+    if _e104 {
+        local_11 = (_e3.occlusion <= 1f);
+    } else {
+        local_11 = false;
+    }
+    let _e111 = local_11;
+    if _e111 {
+        local_12 = (_e3.metallic >= 0f);
+    } else {
+        local_12 = false;
+    }
+    let _e118 = local_12;
+    if _e118 {
+        local_13 = (_e3.metallic <= 1f);
+    } else {
+        local_13 = false;
+    }
+    let _e125 = local_13;
+    if _e125 {
+        local_14 = (_e3.roughness >= 0.04f);
+    } else {
+        local_14 = false;
+    }
+    let _e132 = local_14;
+    if _e132 {
+        local_15 = (_e3.roughness <= 1f);
+    } else {
+        local_15 = false;
+    }
+    let _e139 = local_15;
+    if _e139 {
+        local_16 = all((_e3.emissive >= vec3(0f)));
+    } else {
+        local_16 = false;
+    }
+    let _e148 = local_16;
+    if _e148 {
+        local_17 = all((_e3.emissive < vec3(1e20f)));
+    } else {
+        local_17 = false;
+    }
+    let admitted = local_17;
+    if (_e3.alphaClipThreshold > 0f) {
+        local_18 = (_e3.opacity <= _e3.alphaClipThreshold);
+    } else {
+        local_18 = false;
+    }
+    let clipped = local_18;
+    let status = select(2u, select(1u, 3u, clipped), admitted);
+    let _e185 = directDfgMode;
+    return RayMaterialSurfaceX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DU4TBPFPWCYTJX(vec4<f32>(_e3.baseColor, _e3.opacity), vec4<f32>(_e3.normalWS, _e3.roughness), vec4<f32>(_e3.emissive, _e3.metallic), vec4<f32>(_e20, _e3.occlusion), vec4<u32>(status, 0u, _e185, 0u), vec4<f32>(geometricNormal, 0f));
+}
+
+fn surfaceObjectNormalToWorld(input_2: SurfaceInput, normalOS: vec3<f32>) -> vec3<f32> {
+    let m = input_2.objectToWorld;
+    let cofactor = mat3x3<f32>(cross(m[1], m[2]), cross(m[2], m[0]), cross(m[0], m[1]));
+    return (normalize((cofactor * normalOS)) * sign(dot(m[0], cofactor[0])));
+}
+
+fn surfaceChannel(value_2: vec4<f32>, channel: u32) -> f32 {
+    switch channel {
+        case 0u: {
+            return value_2.x;
+        }
+        case 1u: {
+            return value_2.y;
+        }
+        case 2u: {
+            return value_2.z;
+        }
+        default: {
+            return value_2.w;
+        }
+    }
+}
+
+fn fxSurfaceHelper_f2fa0e67c8860195_surfaceTextureFootprint(input_3: SurfaceInput, transform: vec4<f32>, metadata: vec4<f32>) -> f32 {
+    var footprint: f32;
+
+    let index = u32(clamp(metadata.x, 0f, 7f));
+    footprint = input_3.uvFootprint0_[(index % 4u)];
+    if (index >= 4u) {
+        footprint = input_3.uvFootprint1_[(index % 4u)];
+    }
+    let _e19 = footprint;
+    return ((_e19 * max(abs(transform.z), abs(transform.w))) * max(abs(metadata.z), abs(metadata.w)));
+}
+
+fn fxSurfaceHelper_f2fa0e67c8860195_sampleSurfaceTexture(tex: texture_2d<f32>, smp: sampler, uv: vec2<f32>, footprint_1: f32) -> vec4<f32> {
+    let size = textureDimensions(tex, 0i);
+    let _e12 = textureNumLevels(tex);
+    let lod = clamp(log2(max((footprint_1 * f32(max(size.x, size.y))), 1f)), 0f, f32((_e12 - 1u)));
+    let _e20 = textureSampleLevel(tex, smp, uv, lod);
+    return _e20;
+}
+
+fn standardUsesTriplanarProjection() -> bool {
+    return false;
+}
+
+fn standardUsesObjectSpaceNormal() -> bool {
+    return false;
+}
+
+@compute @workgroup_size(64, 1, 1) 
+fn cs_surface(@builtin(global_invocation_id) id: vec3<u32>) {
+    var local: bool;
+
+    if (id.x >= arrayLength((&rayInputs))) {
+        return;
+    }
+    let input_4 = rayInputs[id.x];
+    if !((input_4.identity.y == 0u)) {
+        let _e18 = materialSelection.id;
+        local = (input_4.identity.x != _e18);
+    } else {
+        local = true;
+    }
+    let _e23 = local;
+    if _e23 {
+        return;
+    }
+    let _e27 = evaluateRayMaterial(input_4);
+    raySurfaces[id.x] = _e27;
+    return;
+}

@@ -1,0 +1,1 @@
+function e(e){return!!e&&typeof e==`object`&&e.channel===`zongmen/stage`}function t(e){return!!e&&typeof e==`object`&&e.channel===`zongmen/camera`}export{e as n,t};

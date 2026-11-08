@@ -1,0 +1,1 @@
+import{n as e,t}from"./quick-CXCR75GO.js";export{t as askAboutQuestion,e as quickQuestions};

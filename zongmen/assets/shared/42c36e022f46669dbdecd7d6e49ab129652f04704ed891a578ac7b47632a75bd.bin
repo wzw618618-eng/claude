@@ -1,0 +1,575 @@
+struct AtmosphereMediumX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    originRadius: vec4<f32>,
+    rayleigh: vec4<f32>,
+    mie: vec4<f32>,
+    absorption: vec4<f32>,
+    ground: vec4<f32>,
+    geometry: vec4<f32>,
+}
+
+struct ViewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    worldViewProj: mat4x4<f32>,
+    lightDir: vec3<f32>,
+    lightingChannels: u32,
+    lightColor: vec3<f32>,
+    viewportWidth: f32,
+    cameraPos: vec3<f32>,
+    viewportHeight: f32,
+    lightViewProj_A: mat4x4<f32>,
+    inverseViewProj: mat4x4<f32>,
+    lightViewProj_B: mat4x4<f32>,
+    lightViewProj_C: mat4x4<f32>,
+    lightViewProj_D: mat4x4<f32>,
+    splitPlanes: array<vec4<f32>, 4>,
+    cascadeCount: f32,
+    cascadeBlend: f32,
+    depthBias: f32,
+    normalBias: f32,
+    directionalShadowFilter: vec4<f32>,
+    spotLightViewProj: array<mat4x4<f32>, 4>,
+    temporalCurrentViewProj: mat4x4<f32>,
+    temporalPreviousViewProj: mat4x4<f32>,
+    temporalProjection: vec4<f32>,
+    temporalPreviousCameraPos: vec4<f32>,
+    ssrParams: vec4<f32>,
+    cloudShadowOrigin: vec4<f32>,
+    cloudShadowRight: vec4<f32>,
+    cloudShadowUp: vec4<f32>,
+    cloudShadowProjection: vec4<f32>,
+    clippingPlanes: array<vec4<f32>, 6>,
+    clippingControl: vec4<f32>,
+    fogColorDensity: vec4<f32>,
+    fogHeightOpacity: vec4<f32>,
+    atmosphere: AtmosphereMediumX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX,
+    atmosphereControl: vec4<f32>,
+}
+
+struct ShadowCasterCascadeX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    index: u32,
+    isSpot: u32,
+    shadowCasterPadB: u32,
+    shadowCasterPadC: u32,
+    spotLightViewProj: mat4x4<f32>,
+}
+
+struct SceneIndexDrawX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    world: mat4x4<f32>,
+    previousWorld: mat4x4<f32>,
+    temporal: vec2<f32>,
+    probe: vec2<u32>,
+    receivesShadows: bool,
+    lightingChannels: u32,
+}
+
+struct GpuSceneInstanceX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    primitiveIndex: u32,
+    transformIndex: u32,
+    customDataStart: u32,
+    flags: u32,
+}
+
+struct GpuScenePrimitiveX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    generation: u32,
+    flags: u32,
+    transformIndex: u32,
+    materialIndex: u32,
+    drawTemplateIndex: u32,
+    instanceStart: u32,
+    instanceCount: u32,
+    assetHandle: u32,
+    localBoundsMin: vec3<f32>,
+    lightingChannels: u32,
+    localBoundsMax: vec4<f32>,
+}
+
+struct GpuSceneTransformX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    currentWorld: mat4x4<f32>,
+    previousWorld: mat4x4<f32>,
+}
+
+struct MaterialParameters {
+    baseColor: vec4<f32>,
+    metallic: f32,
+    roughness: f32,
+    subsurfaceRadius: vec3<f32>,
+    subsurfaceWeight: f32,
+    emissive: vec3<f32>,
+    emissiveIntensity: f32,
+    alphaCutoff: f32,
+    specular: f32,
+    alphaHash: f32,
+    specularColor: vec3<f32>,
+    ior: f32,
+}
+
+struct SurfaceInput {
+    positionOS: vec3<f32>,
+    positionWS: vec3<f32>,
+    geometricNormalWS: vec3<f32>,
+    vertexNormalWS: vec3<f32>,
+    tangentWS: vec4<f32>,
+    viewDirectionWS: vec3<f32>,
+    uv0_: vec2<f32>,
+    uv1_: vec2<f32>,
+    uv2_: vec2<f32>,
+    uv3_: vec2<f32>,
+    uv4_: vec2<f32>,
+    uv5_: vec2<f32>,
+    uv6_: vec2<f32>,
+    uv7_: vec2<f32>,
+    vertexColor: vec4<f32>,
+    frontFacing: bool,
+    uvFootprint0_: vec4<f32>,
+    uvFootprint1_: vec4<f32>,
+    objectToWorld: mat3x3<f32>,
+    frameTime: f32,
+}
+
+struct SurfaceData {
+    baseColor: vec3<f32>,
+    normalWS: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+    emissive: vec3<f32>,
+    occlusion: f32,
+    opacity: f32,
+    alphaClipThreshold: f32,
+}
+
+struct VsInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(13) color: vec4<f32>,
+}
+
+struct VsOut {
+    @builtin(position) @invariant clip: vec4<f32>,
+    @location(1) positionWS: vec3<f32>,
+    @location(0) positionOS: vec3<f32>,
+    @location(2) normalWS: vec3<f32>,
+    @location(12) color: vec4<f32>,
+    @location(11) @interpolate(flat) materialAddress: vec2<u32>,
+}
+
+const SCENE_INDEX_LOCAL_IDENTITYX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: mat4x4<f32> = mat4x4<f32>(vec4<f32>(1f, 0f, 0f, 0f), vec4<f32>(0f, 1f, 0f, 0f), vec4<f32>(0f, 0f, 1f, 0f), vec4<f32>(0f, 0f, 0f, 1f));
+const GPU_SCENE_PRIMITIVE_REACTIVEX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: u32 = 8u;
+const GPU_SCENE_PRIMITIVE_MOTION_INVALIDX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: u32 = 16u;
+const GPU_SCENE_PRIMITIVE_NO_SHADOW_RECEIVEX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: u32 = 32u;
+const MATERIAL_SCENE_ROW_VEC4_COUNT: u32 = 6u;
+
+@group(0) @binding(0) 
+var<uniform> viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: ViewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX;
+@group(0) @binding(7) 
+var<uniform> shadowCasterCascadeX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: ShadowCasterCascadeX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX;
+@group(3) @binding(0) 
+var<storage> sceneInstancesX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: array<GpuSceneInstanceX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX>;
+@group(3) @binding(6) 
+var<storage> scenePrimitivesX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: array<GpuScenePrimitiveX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX>;
+@group(2) @binding(0) 
+var<storage> sceneTransformsX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX: array<GpuSceneTransformX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX>;
+@group(1) @binding(0) 
+var<uniform> _uniformMaterial: MaterialParameters;
+var<private> material: MaterialParameters;
+@group(1) @binding(46) 
+var<storage> sceneMaterials: array<MaterialParameters>;
+@group(3) @binding(2) 
+var<storage> visibleItems: array<vec4<u32>>;
+
+fn sceneIndexDrawX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX(instanceRow: u32) -> SceneIndexDrawX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX {
+    var draw: SceneIndexDrawX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX;
+
+    let instance = sceneInstancesX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX[instanceRow];
+    let primitive = scenePrimitivesX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX[instance.primitiveIndex];
+    let root = sceneTransformsX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX[primitive.transformIndex];
+    draw.world = root.currentWorld;
+    draw.previousWorld = root.previousWorld;
+    if (instance.transformIndex != 0u) {
+        let local_8 = sceneTransformsX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX[instance.transformIndex];
+        draw.world = (root.currentWorld * local_8.currentWorld);
+        draw.previousWorld = (root.previousWorld * local_8.previousWorld);
+    }
+    draw.temporal = vec2<f32>(select(0f, 1f, ((primitive.flags & GPU_SCENE_PRIMITIVE_REACTIVEX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX) != 0u)), select(1f, 0f, ((primitive.flags & GPU_SCENE_PRIMITIVE_MOTION_INVALIDX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX) != 0u)));
+    draw.probe = vec2<u32>((instance.primitiveIndex + 1u), primitive.generation);
+    draw.lightingChannels = primitive.lightingChannels;
+    draw.receivesShadows = ((primitive.flags & GPU_SCENE_PRIMITIVE_NO_SHADOW_RECEIVEX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX) == 0u);
+    let _e64 = draw;
+    return _e64;
+}
+
+fn applyLodCoverageX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX(position: vec2<f32>, fade: f32) {
+    var local: bool;
+    var local_1: bool;
+
+    let noise = fract((52.982918f * fract(dot(floor(position), vec2<f32>(0.06711056f, 0.00583715f)))));
+    if (fade > 0f) {
+        local = (noise < fade);
+    } else {
+        local = false;
+    }
+    let _e17 = local;
+    if _e17 {
+        discard;
+    }
+    if (fade < 0f) {
+        local_1 = (noise >= -(fade));
+    } else {
+        local_1 = false;
+    }
+    let _e25 = local_1;
+    if _e25 {
+        discard;
+    } else {
+        return;
+    }
+}
+
+fn clippedByPlanesX_naga_oil_mod_XMZXXEZ3FMF4F6Y3MNFYHA2LOM45DU4DMMFXGK4YX(positionWS: vec3<f32>, planes: array<vec4<f32>, 6>, control: vec4<f32>) -> bool {
+    var allOutside: bool;
+    var anyOutside: bool = false;
+    var index: u32 = 0u;
+    var local_2: bool;
+    var local_3: bool;
+
+    let count = min(u32(max(control.x, 0f)), 6u);
+    allOutside = (count > 0u);
+    loop {
+        let _e13 = index;
+        if (_e13 < count) {
+        } else {
+            break;
+        }
+        {
+            let _e17 = index;
+            let _e21 = index;
+            let outside = ((dot(planes[_e17].xyz, positionWS) + planes[_e21].w) < 0f);
+            let _e28 = anyOutside;
+            if !(_e28) {
+                local_2 = outside;
+            } else {
+                local_2 = true;
+            }
+            let _e33 = local_2;
+            anyOutside = _e33;
+            let _e34 = allOutside;
+            if _e34 {
+                local_3 = outside;
+            } else {
+                local_3 = false;
+            }
+            let _e38 = local_3;
+            allOutside = _e38;
+        }
+        continuing {
+            let _e40 = index;
+            index = (_e40 + 1u);
+        }
+    }
+    let _e42 = anyOutside;
+    let _e43 = allOutside;
+    return select(_e42, _e43, (control.y > 0.5f));
+}
+
+fn applyLocalClippingX_naga_oil_mod_XMZXXEZ3FMF4F6Y3MNFYHA2LOM45DU4DMMFXGK4YX(positionWS_1: vec3<f32>, shadow: bool, planes_1: array<vec4<f32>, 6>, control_1: vec4<f32>) {
+    var local_4: bool;
+    var local_5: bool;
+
+    if !(!(shadow)) {
+        local_4 = (control_1.z > 0.5f);
+    } else {
+        local_4 = true;
+    }
+    let _e10 = local_4;
+    if _e10 {
+        let _e13 = clippedByPlanesX_naga_oil_mod_XMZXXEZ3FMF4F6Y3MNFYHA2LOM45DU4DMMFXGK4YX(positionWS_1, planes_1, control_1);
+        local_5 = _e13;
+    } else {
+        local_5 = false;
+    }
+    let _e17 = local_5;
+    if _e17 {
+        discard;
+    } else {
+        return;
+    }
+}
+
+fn applyViewClippingX_naga_oil_mod_XMZXXEZ3FMF4F6Y3MNFYHA2LOM45DU4DMMFXGK4YX(positionWS_2: vec3<f32>, shadow_1: bool) {
+    let _e2 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.clippingPlanes;
+    let _e5 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.clippingControl;
+    applyLocalClippingX_naga_oil_mod_XMZXXEZ3FMF4F6Y3MNFYHA2LOM45DU4DMMFXGK4YX(positionWS_2, shadow_1, _e2, _e5);
+    return;
+}
+
+fn alphaHash2DX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(value: vec2<f32>) -> f32 {
+    return fract(((10000f * sin(((17f * value.x) + (0.1f * value.y)))) * (0.1f + abs(sin(((13f * value.y) + value.x))))));
+}
+
+fn alphaHash3DX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(value_1: vec3<f32>) -> f32 {
+    let _e2 = alphaHash2DX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(value_1.xy);
+    let _e5 = alphaHash2DX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(vec2<f32>(_e2, value_1.z));
+    return _e5;
+}
+
+fn alphaHashThresholdX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(position_1: vec3<f32>, derivative: f32) -> f32 {
+    var threshold: f32;
+
+    let scale = (1f / max((0.05f * derivative), 0.000001f));
+    let level = log2(scale);
+    let _e13 = alphaHash3DX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(floor((exp2(floor(level)) * position_1)));
+    let _e18 = alphaHash3DX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(floor((exp2(ceil(level)) * position_1)));
+    let noise_1 = vec2<f32>(_e13, _e18);
+    let t = fract(level);
+    let x = mix(noise_1.x, noise_1.y, t);
+    let a = min(t, (1f - t));
+    threshold = x;
+    if (a > 0f) {
+        if (x < a) {
+            threshold = ((x * x) / ((2f * a) * (1f - a)));
+        } else {
+            if (x < (1f - a)) {
+                threshold = ((x - (0.5f * a)) / (1f - a));
+            } else {
+                threshold = (1f - (((1f - x) * (1f - x)) / ((2f * a) * (1f - a))));
+            }
+        }
+    }
+    let _e60 = threshold;
+    return clamp(_e60, 0.000001f, 1f);
+}
+
+fn applyAlphaHashX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(alpha: f32, position_2: vec3<f32>, enabled: f32) {
+    let _e1 = dpdx(position_2);
+    let _e3 = dpdy(position_2);
+    let derivative_1 = max(length(_e1), length(_e3));
+    if (enabled > 0.5f) {
+        let _e9 = alphaHashThresholdX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX(position_2, derivative_1);
+        if (alpha < _e9) {
+            discard;
+        } else {
+            return;
+        }
+    } else {
+        return;
+    }
+}
+
+fn surfaceGeometryNormal(dx: vec3<f32>, dy: vec3<f32>, fallback: vec3<f32>) -> vec3<f32> {
+    var local_6: bool;
+
+    let scaleX = max(max(abs(dx.x), abs(dx.y)), abs(dx.z));
+    let scaleY = max(max(abs(dy.x), abs(dy.y)), abs(dy.z));
+    if (scaleX > 0f) {
+        local_6 = (scaleY > 0f);
+    } else {
+        local_6 = false;
+    }
+    let _e25 = local_6;
+    if !(_e25) {
+        return fallback;
+    }
+    let geometric = cross((dy / vec3(scaleY)), (dx / vec3(scaleX)));
+    let lengthSquared = dot(geometric, geometric);
+    if !((lengthSquared > 0f)) {
+        return fallback;
+    }
+    return (geometric * inverseSqrt(lengthSquared));
+}
+
+fn _cascadeLightViewProj(layer: u32) -> mat4x4<f32> {
+    switch layer {
+        case 0u: {
+            let _e3 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.lightViewProj_A;
+            return _e3;
+        }
+        case 1u: {
+            let _e6 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.lightViewProj_B;
+            return _e6;
+        }
+        case 2u: {
+            let _e9 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.lightViewProj_C;
+            return _e9;
+        }
+        default: {
+            let _e12 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.lightViewProj_D;
+            return _e12;
+        }
+    }
+}
+
+fn standardVertexPosition(in_4: VsInput) -> vec3<f32> {
+    return in_4.position;
+}
+
+fn shadowVertex(in_5: VsInput, idx_2: u32) -> VsOut {
+    var out: VsOut;
+
+    let visible = visibleItems[idx_2];
+    let materialIndex = visible.y;
+    let lodFadeBits = visible.w;
+    let _e7 = sceneIndexDrawX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX(visible.x);
+    let _e12 = sceneMaterials[(materialIndex / 6u)];
+    material = _e12;
+    let _e15 = standardVertexPosition(in_5);
+    let objectToWorld = (_e7.world * SCENE_INDEX_LOCAL_IDENTITYX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX);
+    let worldPos = (objectToWorld * vec4<f32>(_e15, 1f));
+    let worldNormal = normalize((objectToWorld * vec4<f32>(in_5.normal, 0f)).xyz);
+    let _e30 = shadowCasterCascadeX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.isSpot;
+    if (_e30 == 1u) {
+        let _e37 = shadowCasterCascadeX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.spotLightViewProj;
+        out.clip = (_e37 * worldPos);
+    } else {
+        let _e42 = shadowCasterCascadeX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.index;
+        let _e43 = _cascadeLightViewProj(_e42);
+        out.clip = (_e43 * worldPos);
+    }
+    out.positionWS = worldPos.xyz;
+    out.positionOS = _e15;
+    out.normalWS = worldNormal;
+    out.color = in_5.color;
+    out.materialAddress = vec2<u32>(materialIndex, lodFadeBits);
+    let _e53 = out;
+    return _e53;
+}
+
+fn evaluate_standard_surface(input: SurfaceInput, materialValue: MaterialParameters) -> SurfaceData {
+    var baseSample: vec4<f32> = vec4(1f);
+    var metallicRoughnessSample: vec4<f32> = vec4(1f);
+    var metallicSample: vec4<f32>;
+    var roughnessSample: vec4<f32>;
+    var alpha_1: f32 = 1f;
+    var normal: vec3<f32>;
+    var usesNormal: bool = false;
+    var emissiveSample: vec4<f32> = vec4(1f);
+    var occlusionSample: vec4<f32> = vec4(1f);
+
+    let _e4 = metallicRoughnessSample;
+    metallicSample = _e4;
+    let _e6 = metallicRoughnessSample;
+    roughnessSample = _e6;
+    let faceDirection = select(-1f, 1f, input.frontFacing);
+    normal = (normalize(input.vertexNormalWS) * faceDirection);
+    let vertexColor = input.vertexColor;
+    let _e22 = baseSample;
+    let baseColor = ((materialValue.baseColor.xyz * _e22.xyz) * vertexColor.xyz);
+    let metallic = clamp(materialValue.metallic, 0f, 1f);
+    let roughness = clamp(materialValue.roughness, 0.04f, 1f);
+    let _e39 = emissiveSample;
+    let emissive = ((materialValue.emissive * materialValue.emissiveIntensity) * _e39.xyz);
+    let _e46 = baseSample.w;
+    let _e50 = alpha_1;
+    applyAlphaHashX_naga_oil_mod_XMZXXEZ3FMF4F63LBORSXE2LBNQ5DUYLMOBUGCX3IMFZWQX((((materialValue.baseColor.w * _e46) * vertexColor.w) * _e50), input.positionOS, materialValue.alphaHash);
+    let _e54 = normal;
+    let _e58 = baseSample.w;
+    let _e62 = alpha_1;
+    return SurfaceData(baseColor, _e54, metallic, roughness, emissive, 1f, clamp((((materialValue.baseColor.w * _e58) * vertexColor.w) * _e62), 0f, 1f), clamp(materialValue.alphaCutoff, 0f, 1f));
+}
+
+fn evaluate_surface(input_1: SurfaceInput) -> SurfaceData {
+    let _e1 = material;
+    let _e3 = evaluate_standard_surface(input_1, _e1);
+    return _e3;
+}
+
+fn evaluateShadowSurface(in_6: VsOut, frontFacing_2: bool) -> SurfaceData {
+    let _e7 = sceneMaterials[(in_6.materialAddress.x / 6u)];
+    material = _e7;
+    applyLodCoverageX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX(in_6.clip.xy, bitcast<f32>(in_6.materialAddress.y));
+    applyViewClippingX_naga_oil_mod_XMZXXEZ3FMF4F6Y3MNFYHA2LOM45DU4DMMFXGK4YX(in_6.positionWS, true);
+    let viewDirectionWS = vec3(0f);
+    let _e21 = dpdy(in_6.positionWS);
+    let _e23 = dpdx(in_6.positionWS);
+    let _e59 = viewX_naga_oil_mod_XMZXXEZ3FMF4F65TJMV3TUOTDN5WW233OX.fogHeightOpacity.w;
+    let input_4 = SurfaceInput(in_6.positionOS, in_6.positionWS, (normalize(cross(_e21, _e23)) * select(-1f, 1f, frontFacing_2)), in_6.normalWS, vec4(0f), viewDirectionWS, vec2(0f), vec2(0f), vec2(0f), vec2(0f), vec2(0f), vec2(0f), vec2(0f), vec2(0f), in_6.color, frontFacing_2, vec4(0f), vec4(0f), mat3x3<f32>(), _e59);
+    let _e61 = evaluate_surface(input_4);
+    return _e61;
+}
+
+fn alphaTestShadowSurface(surface: SurfaceData) {
+    var local_7: bool;
+
+    if (surface.alphaClipThreshold > 0f) {
+        local_7 = (surface.opacity <= surface.alphaClipThreshold);
+    } else {
+        local_7 = false;
+    }
+    let _e10 = local_7;
+    if _e10 {
+        discard;
+    } else {
+        return;
+    }
+}
+
+fn surfaceObjectNormalToWorld(input_2: SurfaceInput, normalOS: vec3<f32>) -> vec3<f32> {
+    let m = input_2.objectToWorld;
+    let cofactor = mat3x3<f32>(cross(m[1], m[2]), cross(m[2], m[0]), cross(m[0], m[1]));
+    return (normalize((cofactor * normalOS)) * sign(dot(m[0], cofactor[0])));
+}
+
+fn surfaceChannel(value_2: vec4<f32>, channel: u32) -> f32 {
+    switch channel {
+        case 0u: {
+            return value_2.x;
+        }
+        case 1u: {
+            return value_2.y;
+        }
+        case 2u: {
+            return value_2.z;
+        }
+        default: {
+            return value_2.w;
+        }
+    }
+}
+
+fn fxSurfaceHelper_f2fa0e67c8860195_surfaceTextureFootprint(input_3: SurfaceInput, transform: vec4<f32>, metadata: vec4<f32>) -> f32 {
+    var footprint: f32;
+
+    let index_1 = u32(clamp(metadata.x, 0f, 7f));
+    footprint = input_3.uvFootprint0_[(index_1 % 4u)];
+    if (index_1 >= 4u) {
+        footprint = input_3.uvFootprint1_[(index_1 % 4u)];
+    }
+    let _e19 = footprint;
+    return ((_e19 * max(abs(transform.z), abs(transform.w))) * max(abs(metadata.z), abs(metadata.w)));
+}
+
+fn fxSurfaceHelper_f2fa0e67c8860195_sampleSurfaceTexture(tex: texture_2d<f32>, smp: sampler, uv: vec2<f32>, footprint_1: f32) -> vec4<f32> {
+    let _e3 = textureSample(tex, smp, uv);
+    return _e3;
+}
+
+fn standardUsesTriplanarProjection() -> bool {
+    return false;
+}
+
+fn standardUsesObjectSpaceNormal() -> bool {
+    return false;
+}
+
+@vertex 
+fn vs_main(in: VsInput, @builtin(instance_index) idx: u32) -> VsOut {
+    let _e2 = shadowVertex(in, idx);
+    return _e2;
+}
+
+@vertex 
+fn vs_scene_index(in_1: VsInput, @builtin(instance_index) idx_1: u32) -> VsOut {
+    let _e2 = shadowVertex(in_1, idx_1);
+    return _e2;
+}
+
+@fragment 
+fn fs_shadow(in_2: VsOut, @builtin(front_facing) frontFacing: bool) {
+    let _e2 = evaluateShadowSurface(in_2, frontFacing);
+    alphaTestShadowSurface(_e2);
+    return;
+}
+
+@fragment 
+fn fs_main(in_3: VsOut, @builtin(front_facing) frontFacing_1: bool) {
+    let _e2 = evaluateShadowSurface(in_3, frontFacing_1);
+    alphaTestShadowSurface(_e2);
+    return;
+}

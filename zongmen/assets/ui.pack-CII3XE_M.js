@@ -1,0 +1,1 @@
+import{t as e}from"./app-CTCcf_9n.js";var t={name:`zongmen/ui`,inject:[`gameHost`],async apply(t){let n=t.gameHost;if(!n?.uiRoot)throw Error(`宗门内奸的界面需要 GameHost.uiRoot`);await t.effect(async function*(){let t=await e({uiRoot:n.uiRoot,port:n.presentationPort??n.port});yield()=>t.dispose()},`zongmen/ui`)}};export{t};
