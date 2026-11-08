@@ -1,0 +1,1 @@
+import{t as e}from"./bundle.gen-_8LEkml5.js";export{e as GAME_DATA};

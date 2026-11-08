@@ -1,0 +1,1 @@
+function e(e){return[`${e.case.time_slot}你在哪里？`,`那时你见到了谁？`,`你怎么看这件事？`]}function t(e,t){return`你${e.case.time_slot}见过${e.name(t)}吗？`}export{e as n,t};

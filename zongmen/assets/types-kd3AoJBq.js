@@ -1,0 +1,1 @@
+var e=[`calm`,`nervous`,`angry`,`scared`,`sad`,`relieved`],t=[`friendly`,`neutral`,`pressing`,`threatening`,`off_topic`,`manipulation`];export{t as n,e as t};

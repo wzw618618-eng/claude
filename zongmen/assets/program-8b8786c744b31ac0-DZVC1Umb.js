@@ -1,0 +1,1 @@
+import{i as e,n as t,r as n,t as r}from"./facts-CVNvrT-z.js";export{r as categoryOf,t as contradicts,n as deriveContradictions,e as placements};
