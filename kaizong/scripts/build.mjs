@@ -13,9 +13,10 @@ if (process.argv.includes('--sim')) {
     entryPoints: ['src/main.ts'], bundle: true, format: 'iife', target: 'es2019', minify: true, write: false, charset: 'utf8', logLevel: 'warning',
   });
   const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-  const css = await readFile('src/ui/style.css', 'utf8');
+  const css = (await Promise.all(['src/ui/style.css', 'src/ui/refinement.css'].map(p => readFile(p, 'utf8')))).join('\n');
   const head = (await readFile('src/ui/head.html', 'utf8')).replace('/*__CSS__*/', () => css);
   const html = `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n${head}</head>\n<body>\n<div id="app"></div>\n<script>${js}</script>\n</body>\n</html>\n`;
   await writeFile('index.html', html);
   console.log(`built index.html (${(html.length / 1024).toFixed(0)} KB)`);
 }
+

@@ -53,18 +53,33 @@ function toast(t: string) {
   toastTimer = setTimeout(() => { ui.toast = null; render(); }, 2600);
 }
 
+let renderedTab: Tab | null = null;
+let returnFocus: { act: string; id?: string } | null = null;
 function render() {
+  const previousDialog = app.querySelector('.modal');
+  const active = document.activeElement as HTMLElement | null;
+  const activeKey = active?.dataset.act ? { act: active.dataset.act, id: active.dataset.id } : null;
+  if (!previousDialog && ui.modal) returnFocus = activeKey;
   const scroll = (app.querySelector('.panel') as HTMLElement | null)?.scrollTop ?? 0;
   const mScroll = (app.querySelector('.modal') as HTMLElement | null)?.scrollTop ?? 0;
   const lines = app.querySelector('.chat-lines') as HTMLElement | null;
   const focusChat = document.activeElement?.getAttribute('name') === 'say';
-  if (ui.screen === 'title') app.innerHTML = titleView(ui);
+  if (ui.screen === 'title') app.innerHTML = titleView(ui, cfg, meter);
   else if (ui.screen === 'setup') app.innerHTML = setupView(ui);
   else if (w) app.innerHTML = gameView(w, ui, cfg, meter);
   const panel = app.querySelector('.panel') as HTMLElement | null;
-  if (panel) panel.scrollTop = scroll;
+  if (panel) panel.scrollTop = renderedTab === ui.tab ? scroll : 0;
+  renderedTab = ui.tab;
   const modal = app.querySelector('.modal') as HTMLElement | null;
   if (modal) modal.scrollTop = mScroll;
+  const restore = (key: {act: string; id?: string} | null) => {
+    const target = key && Array.from(app.querySelectorAll<HTMLElement>('[data-act]')).find(el => el.dataset.act === key.act && el.dataset.id === key.id);
+    target?.focus({ preventScroll: true });
+    return !!target;
+  };
+  if (modal && !previousDialog) modal.focus({ preventScroll: true });
+  else if (modal && previousDialog && !focusChat) { if (!restore(activeKey)) modal.focus({ preventScroll: true }); }
+  else if (!modal && previousDialog) restore(returnFocus);
   const nl = app.querySelector('.chat-lines') as HTMLElement | null;
   if (nl) nl.scrollTop = nl.scrollHeight;
   if (focusChat || (lines && ui.streaming === null)) (app.querySelector('input[name=say]') as HTMLInputElement | null)?.focus();
@@ -180,7 +195,7 @@ function act(a: string, id: string, v: string, el: HTMLElement) {
   }
   if (!w || !r) return;
   switch (a) {
-    case 'tab': ui.tab = id as Tab; render(); return;
+    case 'tab': ui.tab = id as Tab; render(); if (matchMedia('(max-width: 860px)').matches) app.querySelector('.right')?.scrollIntoView({ block: 'start' }); return;
     case 'person': ui.modal = { kind: 'person', id }; render(); return;
     case 'hall': ui.tab = 'staff'; ui.modal = null; render(); document.getElementById(`hall-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return;
     case 'advance':
@@ -317,8 +332,17 @@ app.addEventListener('submit', (e) => {
   }
 });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && ui.modal) {
+    const dialog = app.querySelector<HTMLElement>('.modal');
+    const focusable = Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],[tabindex="0"]') ?? []).filter(el => el.getClientRects().length > 0);
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (!first) { e.preventDefault(); dialog?.focus(); }
+    else if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { e.preventDefault(); last?.focus(); }
+    else if (!e.shiftKey && (document.activeElement === last || document.activeElement === dialog)) { e.preventDefault(); first.focus(); }
+  }
   if (e.key === 'Escape' && ui.modal && ui.modal.kind !== 'war' && ui.modal.kind !== 'end') { ui.modal = null; render(); }
 });
 
 render();
 void members;
+

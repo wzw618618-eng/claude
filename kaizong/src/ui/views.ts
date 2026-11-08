@@ -50,21 +50,22 @@ const TAG_NAME: Record<string, string> = { friend: '至交', rival: '死对头',
 
 // ───────────────────────── 标题、开局 ─────────────────────────
 
-export function titleView(ui: Ui) {
+export function titleView(ui: Ui, cfg: AiConfig, meter: Meter) {
   return `<main class="title-screen">
     <div class="title-art" aria-hidden="true"></div>
     <div class="title-box">
+      <span class="eyebrow">修仙 · 宗门经营</span>
       <h1 class="logo">开宗立派</h1>
-      <p class="tagline">荒山开宗，收徒用人，定方略，御强敌。<br>弟子们各有心思——由 AI 按性格自己过日子。</p>
+      <p class="tagline">从一座荒山，到一方仙门。<br>择良徒，安人心；承道统，御强敌。</p>
       <div class="title-btns">
         ${ui.hasSave ? '<button class="btn primary big" data-act="continue">继续</button>' : ''}
         <button class="btn ${ui.hasSave ? '' : 'primary'} big" data-act="new">开新局</button>
-        <button class="btn ghost" data-act="settings">设置（接 AI）</button>
+        <button class="btn ghost" data-act="settings">游戏设置</button>
         <button class="btn ghost" data-act="help">怎么玩</button>
       </div>
-      <p class="fine">试玩版 · 十年为一局 · 占位画面，正式立绘还在画</p>
+      <p class="fine">十年一局 · 一季一步 · 进度自动保存</p>
     </div>
-    ${ui.modal ? modalView(null, ui, null as unknown as AiConfig, null as unknown as Meter) : ''}
+    ${ui.modal ? modalView(null, ui, cfg, meter) : ''}
   </main>`;
 }
 
@@ -112,21 +113,25 @@ export function gameView(w: World, ui: Ui, cfg: AiConfig, meter: Meter) {
       </div>
     </header>
     <section class="left">
+      <div class="section-heading"><h2>山门一览</h2><span>${seasonName(w.t)} · 点击人物或殿堂</span></div>
       ${mapView(w)}
+      <p class="map-note">宗门示意图 · ★ 为关注弟子 · “怨”为高怨气提示</p>
       ${overview(w)}
       <div class="advance">
         ${block ? `<div class="banner">新的一年：先${w.needPolicy ? '定今年的方略' : ''}${w.needPolicy && w.needTech ? '、' : ''}${w.needTech ? '点一格传承' : ''}。<button class="btn sm primary" data-act="open-year">去定</button></div>` : ''}
         ${w.war ? `<div class="banner bad">${esc(w.rivals.find((r) => r.id === w.war!.enemy)?.name)}打过来了！<button class="btn sm primary" data-act="open-war">去部署</button></div>` : ''}
         <button class="btn primary big next" data-act="advance" ${block || w.war ? 'disabled' : ''}>过季 → ${timeText(w.t + 1)}${pend ? `<small>还有 ${pend} 件事待裁决</small>` : ''}</button>
+        <p class="advance-note">安排人手 → 处理事务 → 过季查看结果</p>
       </div>
     </section>
     <section class="right">
-      <nav class="tabs">${TABS.map(([t, n]) => `<button class="tab${ui.tab === t ? ' on' : ''}" data-act="tab" data-id="${t}">${n}${t === 'report' && pend ? `<i class="dot">${pend}</i>` : ''}${t === 'recruit' && w.candidates.length ? `<i class="dot soft">${w.candidates.length}</i>` : ''}</button>`).join('')}</nav>
-      <div class="panel">${tabView(w, ui)}</div>
+      <nav class="tabs" aria-label="宗门事务">${TABS.map(([t, n]) => `<button class="tab${ui.tab === t ? ' on' : ''}" aria-current="${ui.tab === t ? 'page' : 'false'}" data-act="tab" data-id="${t}">${n}${t === 'report' && pend ? `<i class="dot">${pend}</i>` : ''}${t === 'recruit' && w.candidates.length ? `<i class="dot soft">${w.candidates.length}</i>` : ''}</button>`).join('')}</nav>
+      <div class="panel-heading"><h2 id="panel-title">${{report:'宗门纪事',people:'门下弟子',staff:'执事任命',recruit:'山门迎客',sect:'宗门传承',world:'天下风云'}[ui.tab]}</h2><span>${{report:'知兴衰，察人心',people:'识其才，尽其用',staff:'各司其职，人尽其才',recruit:'仙缘初至，择才入门',sect:'薪火相传，道统不息',world:'远交近攻，纵览一州'}[ui.tab]}</span></div>
+      <div class="panel" role="region" aria-labelledby="panel-title">${tabView(w, ui)}</div>
     </section>
     ${ui.modal ? modalView(w, ui, cfg, meter) : ''}
-    ${ui.busy ? `<div class="busy"><div class="busy-box"><div class="spinner"></div><p>${esc(ui.busy)}</p></div></div>` : ''}
-    ${ui.toast ? `<div class="toast">${esc(ui.toast)}</div>` : ''}
+    ${ui.busy ? `<div class="busy" role="status" aria-live="polite"><div class="busy-box"><div class="spinner"></div><p>${esc(ui.busy)}</p></div></div>` : ''}
+    ${ui.toast ? `<div class="toast" role="status">${esc(ui.toast)}</div>` : ''}
   </div>`;
 }
 
@@ -138,7 +143,10 @@ function overview(w: World) {
   const angry = ms.filter((p) => p.grudge >= 50);
   const neck = ms.filter((p) => atBottleneck(p));
   const foes = w.rivals.filter((r) => r.alive && !r.passive);
-  const ov = (k: string, v: string, tone = '') => `<div class="ov ${tone}"><b>${k}</b><span>${v}</span></div>`;
+  const ov = (k: string, v: string, tone = '') => {
+    const tab: Tab = k === '方略' ? 'sect' : k === '弟子' || k === '不服' ? 'staff' : k === '待裁决' ? 'report' : k === '迎客堂' ? 'recruit' : k === '怨气大的' || k === '待冲关' ? 'people' : 'world';
+    return `<button class="ov ${tone}" data-act="tab" data-id="${tab}"><b>${esc(k)}</b><span>${esc(v)}</span></button>`;
+  };
   return `<div class="overview">
     ${w.sect.veins <= 0 ? ov('灵脉', '丢光了！再输一场守山战，山门就没了', 'bad') : ''}
     ${ov('方略', w.sect.policy ? POLICY[w.sect.policy].name : '未定', w.sect.policy ? '' : 'bad')}
@@ -379,7 +387,7 @@ function modalView(w: World | null, ui: Ui, cfg: AiConfig, meter: Meter) {
     case 'confirm': body = `<p>${esc(m.text)}</p><div class="d-opts"><button class="btn primary" data-act="${m.act}" data-v="yes">确定</button><button class="btn ghost" data-act="close">取消</button></div>`; break;
   }
   const closable = !(m.kind === 'war' || m.kind === 'end');
-  return `<div class="modal-bg"${closable ? ' data-act="close-bg"' : ''}><div class="modal${wide ? ' wide' : ''}" role="dialog">${closable ? '<button class="close" data-act="close" aria-label="关闭">×</button>' : ''}${body}</div></div>`;
+  return `<div class="modal-bg"${closable ? ' data-act="close-bg"' : ''}><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-label="${{person:'弟子详情',year:'年度方略',settings:'游戏设置',war:'宗门战',chat:'交谈',end:'本局结算',help:'玩法说明',confirm:'确认操作'}[m.kind]}" tabindex="-1">${closable ? '<button class="close" data-act="close" aria-label="关闭">×</button>' : ''}${body}</div></div>`;
 }
 
 function personModal(w: World, p: Person, cfg: AiConfig) {
@@ -516,3 +524,4 @@ function helpModal() {
 }
 
 export { REALM_NAME, seasonName, MOVE_NAME };
+
